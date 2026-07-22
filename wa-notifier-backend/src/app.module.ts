@@ -1,0 +1,61 @@
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AuthModule } from './auth/auth.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { WhatsAppAccountsModule } from './whatsapp-accounts/whatsapp-accounts.module';
+import { ContactsModule } from './contacts/contacts.module';
+import { TemplatesModule } from './templates/templates.module';
+import { BroadcastsModule } from './broadcasts/broadcasts.module';
+import { InboxModule } from './inbox/inbox.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { PlansModule } from './plans/plans.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { PricingModule } from './pricing/pricing.module';
+import { WalletModule } from './wallet/wallet.module';
+import { PaymentsModule } from './payments/payments.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
+import { SettingsModule } from './settings/settings.module';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({ uri: cfg.get('MONGODB_URI') }),
+    }),
+    ScheduleModule.forRoot(),
+    AuthModule,
+    TenantsModule,
+    WhatsAppAccountsModule,
+    ContactsModule,
+    TemplatesModule,
+    BroadcastsModule,
+    InboxModule,
+    ChatbotModule,
+    AnalyticsModule,
+    WebhooksModule,
+    PlansModule,
+    SubscriptionsModule,
+    PricingModule,
+    WalletModule,
+    PaymentsModule,
+    AuditLogModule,
+    SettingsModule,
+  ],
+  providers: [
+    // Guards run in registration order: JwtAuthGuard populates req.user first
+    // (or short-circuits for @Public() routes), then RolesGuard checks @Roles()
+    // metadata against req.user.role. Routes with no @Roles() are unrestricted
+    // to any authenticated user, same as before this change.
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
+})
+export class AppModule {}

@@ -1,0 +1,213 @@
+{
+  "info": {
+    "_postman_id": "f6ef0a64-76b8-4fd3-9f4d-meta-permission-tests",
+    "name": "Meta Permission Test Calls",
+    "description": "Graph API calls to exercise permissions before Meta App Review. Set graphToken and IDs in collection variables before running.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{graphToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "graphBaseUrl",
+      "value": "https://graph.facebook.com"
+    },
+    {
+      "key": "graphVersion",
+      "value": "v25.0"
+    },
+    {
+      "key": "graphToken",
+      "value": ""
+    },
+    {
+      "key": "businessId",
+      "value": "3906788792963411"
+    },
+    {
+      "key": "wabaId",
+      "value": "2386528398417527"
+    },
+    {
+      "key": "phoneNumberId",
+      "value": "1223987500795260"
+    },
+    {
+      "key": "recipientPhone",
+      "value": "91XXXXXXXXXX"
+    }
+  ],
+  "item": [
+    {
+      "name": "public_profile - Get Me",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/me?fields=id,name",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "me"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "id,name"
+            }
+          ]
+        },
+        "description": "Exercises public_profile."
+      }
+    },
+    {
+      "name": "email - Get Me Email",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/me?fields=email",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "me"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "email"
+            }
+          ]
+        },
+        "description": "Exercises email."
+      }
+    },
+    {
+      "name": "business_management - Get Business",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{businessId}}?fields=id,name,verification_status",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{businessId}}"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "id,name,verification_status"
+            }
+          ]
+        },
+        "description": "Exercises business_management."
+      }
+    },
+    {
+      "name": "manage_app_solution - Assigned Applications",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/me/assigned_applications",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "me",
+            "assigned_applications"
+          ]
+        },
+        "description": "Exercises manage_app_solution. Use a user token with manage_app_solution."
+      }
+    },
+    {
+      "name": "whatsapp_business_management - WABA Phone Numbers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{wabaId}}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{wabaId}}",
+            "phone_numbers"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status"
+            }
+          ]
+        },
+        "description": "Exercises whatsapp_business_management."
+      }
+    },
+    {
+      "name": "whatsapp_business_manage_events - WABA Dataset",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{wabaId}}/dataset",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{wabaId}}",
+            "dataset"
+          ]
+        },
+        "description": "Exercises whatsapp_business_manage_events for WhatsApp business/conversion event logging. If this endpoint fails and your app does not actually log conversion events, remove this permission from App Review."
+      }
+    },
+    {
+      "name": "whatsapp_business_messaging - Send Text",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{recipientPhone}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Test message from Jaikvik WMS for Meta App Review.\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{phoneNumberId}}/messages",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{phoneNumberId}}",
+            "messages"
+          ]
+        },
+        "description": "Exercises whatsapp_business_messaging. recipientPhone must be an allowed test recipient if using a test number."
+      }
+    }
+  ]
+}

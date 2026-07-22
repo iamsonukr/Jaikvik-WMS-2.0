@@ -1,0 +1,174 @@
+<mxfile host="app.diagrams.net" modified="2026-07-02T00:00:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="overall-flow" name="WhatsApp Management System - Overall Flow">
+    <mxGraphModel dx="1800" dy="1300" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="2300" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="WhatsApp Management System - Overall Functional Flow" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=28;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="300" y="30" width="1300" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="legend" value="Main navigation starts from Dashboard. Each feature uses the active selected Client.&#10;Blue = user/frontend screen | Green = setup/data | Orange = content/campaign | Purple = WhatsApp/Meta | Red = decision/error path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#94a3b8;fontSize=14;align=left;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="115" width="470" height="95" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="login" value="Admin / Agent Login&#10;email + password" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="120" width="240" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="auth" value="JWT Session&#10;Store wa_token&#10;Load profile using /auth/me" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="820" y="240" width="240" height="85" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dashboard" value="Dashboard&#10;Overview metrics&#10;Quick access to all modules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="380" width="240" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="clientLane" value="1. Client and WhatsApp Setup" style="swimlane;whiteSpace=wrap;html=1;rounded=1;startSize=35;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="560" width="380" height="570" as="geometry"/>
+        </mxCell>
+        <mxCell id="clientsPage" value="Clients Page&#10;Create / edit / delete client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;" vertex="1" parent="clientLane">
+          <mxGeometry x="55" y="65" width="270" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="clientConfig" value="Store Client Details&#10;name, industry, timezone&#10;phone display number" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;" vertex="1" parent="clientLane">
+          <mxGeometry x="55" y="185" width="270" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="wabaConfig" value="Connect WhatsApp Business&#10;WABA ID&#10;phoneNumberId&#10;permanent access token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;" vertex="1" parent="clientLane">
+          <mxGeometry x="55" y="310" width="270" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="activeClient" value="Select Active Client&#10;Sidebar client switcher&#10;All modules become client-scoped" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbf7d0;strokeColor=#15803d;fontSize=14;fontStyle=1;" vertex="1" parent="clientLane">
+          <mxGeometry x="55" y="455" width="270" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="contentLane" value="2. Contacts and Templates" style="swimlane;whiteSpace=wrap;html=1;rounded=1;startSize=35;fillColor=#ffedd5;strokeColor=#f97316;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="560" width="380" height="570" as="geometry"/>
+        </mxCell>
+        <mxCell id="contactsPage" value="Contacts Page&#10;Add contacts&#10;Bulk import contacts&#10;Edit tags and variables" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#f97316;fontSize=14;" vertex="1" parent="contentLane">
+          <mxGeometry x="55" y="65" width="270" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="segments" value="Segmentation&#10;Tags&#10;Active / opted-out filters&#10;Template variables for personalization" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#f97316;fontSize=14;" vertex="1" parent="contentLane">
+          <mxGeometry x="55" y="210" width="270" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="templatesPage" value="Templates Page&#10;Sync templates from Meta&#10;View category, language, status and components" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#f97316;fontSize=14;" vertex="1" parent="contentLane">
+          <mxGeometry x="55" y="360" width="270" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="templateApproved" value="Approved Template Available?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=14;" vertex="1" parent="contentLane">
+          <mxGeometry x="90" y="490" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="broadcastLane" value="3. Broadcast Campaigns" style="swimlane;whiteSpace=wrap;html=1;rounded=1;startSize=35;fillColor=#ffedd5;strokeColor=#d97706;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="560" width="380" height="570" as="geometry"/>
+        </mxCell>
+        <mxCell id="broadcastsPage" value="Broadcasts Page&#10;List campaigns&#10;Open campaign details and logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#d97706;fontSize=14;" vertex="1" parent="broadcastLane">
+          <mxGeometry x="55" y="65" width="270" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="createBroadcast" value="Create Broadcast&#10;Choose template&#10;Select language&#10;Set components and target tags" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#d97706;fontSize=14;" vertex="1" parent="broadcastLane">
+          <mxGeometry x="55" y="195" width="270" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="sendBroadcast" value="Send Campaign&#10;POST /broadcasts/:id/send&#10;Background send job" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#d97706;fontSize=14;" vertex="1" parent="broadcastLane">
+          <mxGeometry x="55" y="350" width="270" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="broadcastLogs" value="Broadcast Logs&#10;queued, sent, delivered, read, failed&#10;Meta message IDs and errors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7aa;strokeColor=#ea580c;fontSize=14;fontStyle=1;" vertex="1" parent="broadcastLane">
+          <mxGeometry x="55" y="480" width="270" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="metaLane" value="4. Meta / WhatsApp Delivery" style="swimlane;whiteSpace=wrap;html=1;rounded=1;startSize=35;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1460" y="560" width="360" height="570" as="geometry"/>
+        </mxCell>
+        <mxCell id="metaApi" value="WhatsApp Cloud API&#10;Send template messages&#10;Send text replies&#10;Mark messages read" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f3ff;strokeColor=#7c3aed;fontSize=14;" vertex="1" parent="metaLane">
+          <mxGeometry x="50" y="80" width="260" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="recipient" value="Recipient&#10;Receives campaign or reply&#10;Can respond on WhatsApp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f3ff;strokeColor=#7c3aed;fontSize=14;" vertex="1" parent="metaLane">
+          <mxGeometry x="50" y="240" width="260" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="webhook" value="Webhook Callback&#10;GET /webhooks/meta verification&#10;POST /webhooks/meta inbound messages and statuses" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ddd6fe;strokeColor=#6d28d9;fontSize=14;fontStyle=1;" vertex="1" parent="metaLane">
+          <mxGeometry x="50" y="390" width="260" height="115" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="inboxLane" value="5. Inbox and Chatbot" style="swimlane;whiteSpace=wrap;html=1;rounded=1;startSize=35;fillColor=#e0f2fe;strokeColor=#0284c7;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1280" width="500" height="620" as="geometry"/>
+        </mxCell>
+        <mxCell id="inboxPage" value="Inbox Page&#10;View threads&#10;Open messages by phone&#10;Reply manually" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#0284c7;fontSize=14;" vertex="1" parent="inboxLane">
+          <mxGeometry x="45" y="70" width="190" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="assignResolve" value="Agent Actions&#10;Assign thread&#10;Resolve conversation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#0284c7;fontSize=14;" vertex="1" parent="inboxLane">
+          <mxGeometry x="265" y="70" width="190" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="chatbotPage" value="Chatbot Page&#10;Create keyword rules&#10;contains / exact / starts_with&#10;priority and active flag" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#0284c7;fontSize=14;" vertex="1" parent="inboxLane">
+          <mxGeometry x="45" y="240" width="190" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="autoReply" value="Auto Reply Flow&#10;Inbound text message&#10;Match active chatbot rule&#10;Send reply through Meta&#10;Store outbound message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bfdbfe;strokeColor=#2563eb;fontSize=14;fontStyle=1;" vertex="1" parent="inboxLane">
+          <mxGeometry x="265" y="240" width="190" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="messageStore" value="Message Store&#10;inbound / outbound&#10;text / media / template&#10;open / assigned / resolved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#0284c7;fontSize=14;" vertex="1" parent="inboxLane">
+          <mxGeometry x="155" y="455" width="190" height="115" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="analyticsLane" value="6. Analytics and Settings" style="swimlane;whiteSpace=wrap;html=1;rounded=1;startSize=35;fillColor=#f3e8ff;strokeColor=#9333ea;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1280" width="500" height="620" as="geometry"/>
+        </mxCell>
+        <mxCell id="analyticsPage" value="Analytics Page&#10;Overview totals&#10;Daily send stats&#10;Inbox stats" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#9333ea;fontSize=14;" vertex="1" parent="analyticsLane">
+          <mxGeometry x="55" y="70" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="analyticsData" value="Metrics Sources&#10;Contacts count&#10;Broadcast counters&#10;Message inbound/outbound counts&#10;Open threads" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#9333ea;fontSize=14;" vertex="1" parent="analyticsLane">
+          <mxGeometry x="265" y="70" width="190" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="settingsPage" value="Settings Page&#10;Profile update&#10;Password change&#10;Session/logout controls" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#9333ea;fontSize=14;" vertex="1" parent="analyticsLane">
+          <mxGeometry x="55" y="265" width="180" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="adminReview" value="Operational Review&#10;Check campaign logs&#10;Inspect failed sends&#10;Review inbox workload&#10;Adjust contacts, templates or chatbot rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e9d5ff;strokeColor=#7e22ce;fontSize=14;fontStyle=1;" vertex="1" parent="analyticsLane">
+          <mxGeometry x="265" y="265" width="190" height="145" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="rejectedTemplate" value="If template not approved&#10;Edit in Meta / wait for approval&#10;Then sync templates again" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="560" y="1170" width="330" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-login-auth" edge="1" parent="1" source="login" target="auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#2563eb;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-auth-dashboard" edge="1" parent="1" source="auth" target="dashboard" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#2563eb;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-dashboard-client" edge="1" parent="1" source="dashboard" target="clientsPage" value="Clients" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#16a34a;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-dashboard-contacts" edge="1" parent="1" source="dashboard" target="contactsPage" value="Contacts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#f97316;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-dashboard-broadcast" edge="1" parent="1" source="dashboard" target="broadcastsPage" value="Broadcasts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#d97706;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-dashboard-inbox" edge="1" parent="1" source="dashboard" target="inboxPage" value="Inbox" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#0284c7;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="940" y="1220"/><mxPoint x="395" y="1220"/></Array></mxGeometry></mxCell>
+        <mxCell id="e-dashboard-analytics" edge="1" parent="1" source="dashboard" target="analyticsPage" value="Analytics / Settings" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#9333ea;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="940" y="1220"/><mxPoint x="1185" y="1220"/></Array></mxGeometry></mxCell>
+
+        <mxCell id="e-client-1" edge="1" parent="clientLane" source="clientsPage" target="clientConfig" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#16a34a;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-client-2" edge="1" parent="clientLane" source="clientConfig" target="wabaConfig" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#16a34a;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-client-3" edge="1" parent="clientLane" source="wabaConfig" target="activeClient" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#16a34a;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="e-content-1" edge="1" parent="contentLane" source="contactsPage" target="segments" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#f97316;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-content-2" edge="1" parent="contentLane" source="segments" target="templatesPage" value="Prepare audience" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#f97316;fontSize=12;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-content-3" edge="1" parent="contentLane" source="templatesPage" target="templateApproved" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#f97316;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="e-broadcast-1" edge="1" parent="broadcastLane" source="broadcastsPage" target="createBroadcast" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#d97706;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-broadcast-2" edge="1" parent="broadcastLane" source="createBroadcast" target="sendBroadcast" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#d97706;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-broadcast-3" edge="1" parent="broadcastLane" source="sendBroadcast" target="broadcastLogs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#d97706;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="e-meta-1" edge="1" parent="metaLane" source="metaApi" target="recipient" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#7c3aed;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-meta-2" edge="1" parent="metaLane" source="recipient" target="webhook" value="reply/status" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#7c3aed;fontSize=12;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="e-inbox-1" edge="1" parent="inboxLane" source="inboxPage" target="assignResolve" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#0284c7;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-inbox-2" edge="1" parent="inboxLane" source="chatbotPage" target="autoReply" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#0284c7;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-inbox-3" edge="1" parent="inboxLane" source="inboxPage" target="messageStore" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#0284c7;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-inbox-4" edge="1" parent="inboxLane" source="autoReply" target="messageStore" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#0284c7;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="e-analytics-1" edge="1" parent="analyticsLane" source="analyticsPage" target="analyticsData" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9333ea;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-analytics-2" edge="1" parent="analyticsLane" source="analyticsData" target="adminReview" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9333ea;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-analytics-3" edge="1" parent="analyticsLane" source="settingsPage" target="adminReview" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9333ea;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <mxCell id="e-template-to-broadcast" edge="1" parent="1" source="templateApproved" target="createBroadcast" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#d97706;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-template-reject" edge="1" parent="1" source="templateApproved" target="rejectedTemplate" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#b85450;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-retry-template" edge="1" parent="1" source="rejectedTemplate" target="templatesPage" value="retry sync" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#b85450;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="490" y="1210"/><mxPoint x="490" y="975"/></Array></mxGeometry></mxCell>
+
+        <mxCell id="e-send-meta" edge="1" parent="1" source="sendBroadcast" target="metaApi" value="send templates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=2;strokeColor=#7c3aed;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e-webhook-inbox" edge="1" parent="1" source="webhook" target="inboxPage" value="inbound messages" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeWidth=2;strokeColor=#0284c7;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1620" y="1210"/><mxPoint x="395" y="1210"/></Array></mxGeometry></mxCell>
+        <mxCell id="e-webhook-logs" edge="1" parent="1" source="webhook" target="broadcastLogs" value="delivery/read statuses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeWidth=2;strokeColor=#d97706;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1430" y="1020"/></Array></mxGeometry></mxCell>
+        <mxCell id="e-chatbot-meta" edge="1" parent="1" source="autoReply" target="metaApi" value="auto reply" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeWidth=2;strokeColor=#7c3aed;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1530" y="1600"/><mxPoint x="1530" y="690"/></Array></mxGeometry></mxCell>
+        <mxCell id="e-broadcast-analytics" edge="1" parent="1" source="broadcastLogs" target="analyticsData" value="campaign metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#9333ea;fontSize=13;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1190" y="1190"/><mxPoint x="1398" y="1190"/></Array></mxGeometry></mxCell>
+        <mxCell id="e-inbox-analytics" edge="1" parent="1" source="messageStore" target="analyticsData" value="inbox metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#9333ea;fontSize=13;"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

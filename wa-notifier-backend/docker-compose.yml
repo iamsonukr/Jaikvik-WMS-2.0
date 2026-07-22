@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-changeme}
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mongo
+    environment:
+      MONGODB_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS:-changeme}@mongo:27017/wa_notifier?authSource=admin
+
+volumes:
+  mongo_data:

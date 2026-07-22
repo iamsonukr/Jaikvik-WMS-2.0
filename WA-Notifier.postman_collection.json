@@ -1,0 +1,1257 @@
+{
+  "info": {
+    "_postman_id": "9b3f3a74-5a13-4f63-9b36-wa-notifier-api",
+    "name": "WA Notifier API",
+    "description": "Postman collection for the NestJS backend. Run Auth/Login first to store {{token}}, then set {{clientId}} and other IDs as needed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": "admin@wanotifier.com"
+    },
+    {
+      "key": "password",
+      "value": "Admin@123"
+    },
+    {
+      "key": "clientId",
+      "value": "6a5748ecacd000c8f8de34f2"
+    },
+    {
+      "key": "contactId",
+      "value": ""
+    },
+    {
+      "key": "broadcastId",
+      "value": ""
+    },
+    {
+      "key": "chatbotRuleId",
+      "value": ""
+    },
+    {
+      "key": "messageId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "phone",
+      "value": "919810000001"
+    },
+    {
+      "key": "wabaId",
+      "value": "2386528398417527"
+    },
+    {
+      "key": "phoneNumberId",
+      "value": "1223987500795260"
+    },
+    {
+      "key": "clientAccessToken",
+      "value": ""
+    },
+    {
+      "key": "metaCode",
+      "value": ""
+    },
+    {
+      "key": "inviteToken",
+      "value": "connect_token"
+    },
+    {
+      "key": "verifyToken",
+      "value": "wa_notifier_verify"
+    },
+    {
+      "key": "challenge",
+      "value": "123456789"
+    },
+    {
+      "key": "registerPin",
+      "value": "123456"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) pm.collectionVariables.set('token', json.access_token);",
+                  "if (json.user?.id) pm.collectionVariables.set('userId', json.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) pm.collectionVariables.set('token', json.access_token);",
+                  "if (json.user?.id) pm.collectionVariables.set('userId', json.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"{{email}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"Admin@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clients",
+      "item": [
+        {
+          "name": "List Clients",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Client",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clientId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Client",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo WhatsApp Client\",\n  \"wabaId\": \"{{wabaId}}\",\n  \"phoneNumberId\": \"{{phoneNumberId}}\",\n  \"accessToken\": \"{{clientAccessToken}}\",\n  \"phone\": \"+91 98100 00001\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"industry\": \"Retail\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json._id) pm.collectionVariables.set('clientId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Embedded Signup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{metaCode}}\",\n  \"wabaId\": \"{{wabaId}}\",\n  \"phoneNumberId\": \"{{phoneNumberId}}\",\n  \"name\": \"Embedded Signup Client\",\n  \"redirectUri\": \"http://localhost:3000/meta-embedded-signup\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients/embedded-signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "embedded-signup"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Public Embedded Signup",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inviteToken\": \"{{inviteToken}}\",\n  \"code\": \"{{metaCode}}\",\n  \"wabaId\": \"{{wabaId}}\",\n  \"phoneNumberId\": \"{{phoneNumberId}}\",\n  \"name\": \"Public Signup Client\",\n  \"redirectUri\": \"http://localhost:3000/meta-embedded-signup\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients/embedded-signup/public",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "embedded-signup",
+                "public"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Subscribe Client Webhooks",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}/webhooks/subscribe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clientId}}",
+                "webhooks",
+                "subscribe"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Register Phone Number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pin\": \"{{registerPin}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clientId}}",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sending Diagnostics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}/sending-diagnostics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clientId}}",
+                "sending-diagnostics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Client",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated WhatsApp Client\",\n  \"phone\": \"+91 98100 00001\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"industry\": \"Retail\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clientId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Client",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "clients",
+                "{{clientId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contacts",
+      "item": [
+        {
+          "name": "List Contacts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contacts?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "tag",
+                  "value": "vip",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Contact Tags",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contacts/tags?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts",
+                "tags"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Contact Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contacts/count?clientId={{clientId}}&tag=vip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts",
+                "count"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "tag",
+                  "value": "vip"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"phone\": \"{{phone}}\",\n  \"name\": \"Demo Contact\",\n  \"tags\": [\"vip\", \"retail\"],\n  \"variables\": {\n    \"first_name\": \"Demo\",\n    \"city\": \"Delhi\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contacts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json._id) pm.collectionVariables.set('contactId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bulk Upsert Contacts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"contacts\": [\n    {\n      \"phone\": \"919810000001\",\n      \"name\": \"Amit Customer\",\n      \"tags\": [\"vip\"]\n    },\n    {\n      \"phone\": \"919810000002\",\n      \"name\": \"Priya Customer\",\n      \"tags\": [\"new\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contacts/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts",
+                "bulk"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Contact",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Contact\",\n  \"tags\": [\"vip\", \"updated\"],\n  \"variables\": {\n    \"first_name\": \"Updated\"\n  },\n  \"isActive\": true,\n  \"isOptedOut\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/contacts/{{contactId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts",
+                "{{contactId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Contact",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/contacts/{{contactId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contacts",
+                "{{contactId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Templates",
+      "item": [
+        {
+          "name": "List Templates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/templates?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "templates"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sync Templates From Meta",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/templates/sync/{{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "templates",
+                "sync",
+                "{{clientId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Broadcasts",
+      "item": [
+        {
+          "name": "List Broadcasts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/broadcasts?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "broadcasts"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Broadcast",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/broadcasts/{{broadcastId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "broadcasts",
+                "{{broadcastId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Broadcast Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/broadcasts/{{broadcastId}}/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "broadcasts",
+                "{{broadcastId}}",
+                "logs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Broadcast",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"name\": \"Demo Campaign\",\n  \"templateName\": \"hello_world\",\n  \"languageCode\": \"en_US\",\n  \"components\": [],\n  \"targetTags\": [\"vip\"],\n  \"status\": \"draft\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/broadcasts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "broadcasts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json._id) pm.collectionVariables.set('broadcastId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Broadcast",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Demo Campaign\",\n  \"templateName\": \"hello_world\",\n  \"languageCode\": \"en_US\",\n  \"targetTags\": [\"vip\"],\n  \"status\": \"draft\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/broadcasts/{{broadcastId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "broadcasts",
+                "{{broadcastId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send Broadcast",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/broadcasts/{{broadcastId}}/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "broadcasts",
+                "{{broadcastId}}",
+                "send"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inbox",
+      "item": [
+        {
+          "name": "Threads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inbox/threads?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "inbox",
+                "threads"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/inbox/messages?clientId={{clientId}}&phone={{phone}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "inbox",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "phone",
+                  "value": "{{phone}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reply",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"phone\": \"{{phone}}\",\n  \"text\": \"Hello from Postman\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inbox/reply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "inbox",
+                "reply"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Assign Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inbox/assign/{{messageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "inbox",
+                "assign",
+                "{{messageId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve Thread",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"phone\": \"{{phone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/inbox/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "inbox",
+                "resolve"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chatbot",
+      "item": [
+        {
+          "name": "List Rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chatbot?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chatbot"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"keyword\": \"price\",\n  \"matchType\": \"contains\",\n  \"replyText\": \"Thanks for asking. Our team will share pricing shortly.\",\n  \"isActive\": true,\n  \"priority\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chatbot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chatbot"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json._id) pm.collectionVariables.set('chatbotRuleId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Rule",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keyword\": \"price\",\n  \"matchType\": \"contains\",\n  \"replyText\": \"Pricing details are on the way.\",\n  \"isActive\": true,\n  \"priority\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chatbot/{{chatbotRuleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chatbot",
+                "{{chatbotRuleId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Rule",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chatbot/{{chatbotRuleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chatbot",
+                "{{chatbotRuleId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/overview?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Daily",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/daily?clientId={{clientId}}&days=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "daily"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Inbox",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/inbox?clientId={{clientId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "inbox"
+              ],
+              "query": [
+                {
+                  "key": "clientId",
+                  "value": "{{clientId}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Meta Verify",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/meta?hub.mode=subscribe&hub.verify_token={{verifyToken}}&hub.challenge={{challenge}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "meta"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "subscribe"
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "{{verifyToken}}"
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "{{challenge}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Meta Incoming Event",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"{{wabaId}}\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"919217903430\",\n              \"phone_number_id\": \"{{phoneNumberId}}\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": {\n                  \"name\": \"Demo Sender\"\n                },\n                \"wa_id\": \"{{phone}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{phone}}\",\n                \"id\": \"wamid.demo_postman_message\",\n                \"timestamp\": \"1752470400\",\n                \"text\": {\n                  \"body\": \"price\"\n                },\n                \"type\": \"text\"\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/meta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "meta"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
