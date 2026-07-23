@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Broadcast, BroadcastDocument, BroadcastLog, BroadcastLogDocument } from './broadcast.schema';
@@ -9,6 +9,7 @@ import { TemplatesService } from '../templates/templates.service';
 import { PricingService } from '../pricing/pricing.service';
 import { WalletService } from '../wallet/wallet.service';
 import { MessageCategory } from '../pricing/message-pricing.schema';
+import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -43,7 +44,7 @@ export class BroadcastsService {
     const client = await this.clients.findOne(dto.clientId);
     return this.broadcastModel.create({
       ...dto,
-      clientId: this.toObjectId(dto.clientId),
+      clientId: toObjectId(dto.clientId, 'clientId'),
       tenantId: client?.tenantId,
     });
   }
@@ -55,7 +56,7 @@ export class BroadcastsService {
   }
 
   logs(broadcastId: string) {
-    return this.logModel.find({ broadcastId: new Types.ObjectId(broadcastId) }).limit(500);
+    return this.logModel.find({ broadcastId: toObjectId(broadcastId, 'broadcastId') }).limit(500);
   }
 
   /**
@@ -69,10 +70,10 @@ export class BroadcastsService {
     if (!broadcast) throw new NotFoundException();
 
     const client = await this.clients.findOne(String(broadcast.clientId));
-    const tenantId = String(broadcast.tenantId || client.tenantId);
+    const tenantId = toObjectId(broadcast.tenantId || client.tenantId, 'tenantId');
     const contacts = await this.contacts.findBySegment(String(broadcast.clientId), broadcast.targetTags);
     const category = await this.resolveCategory(broadcast);
-    const price = await this.pricing.resolvePrice(tenantId, category, 'default');
+    const price = await this.pricing.resolvePrice(String(tenantId), category, 'default');
     const walletBalance = await this.wallet.getBalance(tenantId);
 
     const recipients = contacts.length;
@@ -109,10 +110,10 @@ export class BroadcastsService {
     }
 
     const client = await this.clients.findOne(String(broadcast.clientId));
-    const tenantId = String(broadcast.tenantId || client.tenantId);
+    const tenantId = toObjectId(broadcast.tenantId || client.tenantId, 'tenantId');
     const contacts = await this.contacts.findBySegment(String(broadcast.clientId), broadcast.targetTags);
     const category = await this.resolveCategory(broadcast);
-    const price = await this.pricing.resolvePrice(tenantId, category, 'default');
+    const price = await this.pricing.resolvePrice(String(tenantId), category, 'default');
 
     const totalCost = Number(
       (price.sellingPrice * contacts.length * (1 + price.taxPercent / 100)).toFixed(4),
@@ -147,7 +148,7 @@ export class BroadcastsService {
     // historical reports stay correct even after pricing changes later.
     const logs = contacts.map(c => ({
       broadcastId: broadcast._id,
-      clientId: broadcast.clientId,
+      clientId: toObjectId(broadcast.clientId, 'clientId'),
       tenantId,
       phone: c.phone,
       contactName: c.name,
@@ -173,7 +174,7 @@ export class BroadcastsService {
     contacts: any[];
     category: MessageCategory;
     price: { sellingPrice: number; taxPercent: number };
-    tenantId: string;
+    tenantId: Types.ObjectId;
   }) {
     const { broadcast, client, contacts, category, price, tenantId } = prepared;
 
@@ -266,20 +267,8 @@ export class BroadcastsService {
     }));
   }
 
-  private toObjectId(id: string) {
-    if (!Types.ObjectId.isValid(String(id))) {
-      throw new BadRequestException('A valid clientId is required.');
-    }
-    return new Types.ObjectId(String(id));
-  }
-
   private clientIdQuery(id: string) {
-    return {
-      $or: [
-        { clientId: this.toObjectId(id) },
-        { $expr: { $eq: ['$clientId', String(id)] } },
-      ],
-    };
+    return legacyObjectIdFilter('clientId', id);
   }
 
   /** Called by webhook when Meta sends status update. */

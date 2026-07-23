@@ -1,11 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type AuditLogDocument = AuditLog & Document;
 
 @Schema({ timestamps: true })
 export class AuditLog {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true }) actorUserId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true }) actorUserId: Types.ObjectId;
   @Prop({ required: true }) actorRole: string;
 
   // e.g. 'tenant.suspend', 'wallet.manual_credit', 'plan.update'
@@ -13,7 +13,7 @@ export class AuditLog {
 
   // e.g. 'Tenant', 'Wallet', 'Plan'
   @Prop({ required: true }) targetType: string;
-  @Prop({ type: Types.ObjectId }) targetId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId }) targetId: Types.ObjectId;
 
   @Prop() reason: string;
   @Prop({ type: Object }) metadata: Record<string, any>;

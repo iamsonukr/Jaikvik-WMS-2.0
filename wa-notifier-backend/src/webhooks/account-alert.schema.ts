@@ -1,12 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type AccountAlertDocument = AccountAlert & Document;
 
 @Schema({ timestamps: true })
 export class AccountAlert {
-  @Prop({ type: Types.ObjectId, ref: 'WhatsAppAccount' }) clientId?: Types.ObjectId;
-  @Prop({ type: Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount' }) clientId?: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop() field: string;
   @Prop() entityType: string;
   @Prop({ index: true }) entityId: string;

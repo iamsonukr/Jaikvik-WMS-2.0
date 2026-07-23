@@ -9,6 +9,7 @@ import {
   ChangeSubscriptionPlanDto,
   ExtendSubscriptionDto,
 } from './subscription.dto';
+import { toObjectId } from '../common/mongo-id';
 
 const CYCLE_DAYS: Record<string, number> = {
   monthly: 30,
@@ -31,12 +32,12 @@ export class SubscriptionsService {
   }
 
   async findByTenant(tenantId: string) {
-    return this.subModel.find({ tenantId }).sort({ createdAt: -1 }).populate('planId');
+    return this.subModel.find({ tenantId: toObjectId(tenantId, 'tenantId') }).sort({ createdAt: -1 }).populate('planId');
   }
 
   async currentForTenant(tenantId: string) {
     return this.subModel
-      .findOne({ tenantId, status: SubscriptionStatus.ACTIVE })
+      .findOne({ tenantId: toObjectId(tenantId, 'tenantId'), status: SubscriptionStatus.ACTIVE })
       .sort({ createdAt: -1 })
       .populate('planId');
   }
@@ -45,14 +46,17 @@ export class SubscriptionsService {
   // one replacing whatever's currently active (the previous one is marked
   // cancelled rather than deleted, preserving billing history).
   async assign(dto: AssignSubscriptionDto) {
-    const plan = await this.planModel.findById(dto.planId);
+    const tenantId = toObjectId(dto.tenantId, 'tenantId');
+    const planId = toObjectId(dto.planId, 'planId');
+
+    const plan = await this.planModel.findById(planId);
     if (!plan) throw new NotFoundException('Plan not found');
 
-    const tenant = await this.tenantModel.findById(dto.tenantId);
+    const tenant = await this.tenantModel.findById(tenantId);
     if (!tenant) throw new NotFoundException('Tenant not found');
 
     await this.subModel.updateMany(
-      { tenantId: dto.tenantId, status: SubscriptionStatus.ACTIVE },
+      { tenantId, status: SubscriptionStatus.ACTIVE },
       { status: SubscriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: 'Superseded by new plan assignment' },
     );
 
@@ -60,8 +64,8 @@ export class SubscriptionsService {
     const endDate = this.computeEndDate(startDate, plan.billingCycle);
 
     const subscription = await this.subModel.create({
-      tenantId: dto.tenantId,
-      planId: plan._id,
+      tenantId,
+      planId,
       startDate,
       endDate,
       status: SubscriptionStatus.ACTIVE,

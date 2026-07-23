@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Broadcast, BroadcastDocument } from '../broadcasts/broadcast.schema';
 import { Message, MessageDocument } from '../inbox/message.schema';
 import { Contact, ContactDocument } from '../contacts/contact.schema';
 import { AccountAlert, AccountAlertDocument } from '../webhooks/account-alert.schema';
+import { legacyObjectIdFilter } from '../common/mongo-id';
 
 @Injectable()
 export class AnalyticsService {
@@ -83,14 +84,6 @@ export class AnalyticsService {
   }
 
   private clientIdQuery(clientId: string) {
-    if (!Types.ObjectId.isValid(String(clientId))) {
-      throw new BadRequestException('A valid clientId is required.');
-    }
-    return {
-      $or: [
-        { clientId: new Types.ObjectId(clientId) },
-        { $expr: { $eq: ['$clientId', String(clientId)] } },
-      ],
-    };
+    return legacyObjectIdFilter('clientId', clientId);
   }
 }

@@ -1,12 +1,12 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsMongoId, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { MessageCategory, PricingScope } from './message-pricing.schema';
 
 export class CreateMessagePricingDto {
   @IsEnum(MessageCategory) category: MessageCategory;
   @IsOptional() @IsString() country?: string; // defaults to 'default'
   @IsEnum(PricingScope) scope: PricingScope;
-  @IsOptional() @IsString() planId?: string;
-  @IsOptional() @IsString() tenantId?: string;
+  @IsOptional() @IsMongoId() planId?: string;
+  @IsOptional() @IsMongoId() tenantId?: string;
 
   @IsNumber() @Min(0) baseCost: number;
   @IsNumber() @Min(0) sellingPrice: number;

@@ -10,6 +10,7 @@ import {
   PaymentStatus,
 } from './razorpay-payment.schema';
 import { WalletService } from '../wallet/wallet.service';
+import { toObjectId } from '../common/mongo-id';
 
 @Injectable()
 export class PaymentsService {
@@ -24,7 +25,7 @@ export class PaymentsService {
   }
 
   findByTenant(tenantId: string) {
-    return this.model.find({ tenantId }).sort({ createdAt: -1 });
+    return this.model.find({ tenantId: toObjectId(tenantId, 'tenantId') }).sort({ createdAt: -1 });
   }
 
   private get keyId() {
@@ -44,7 +45,10 @@ export class PaymentsService {
       );
     }
 
-    const receipt = `wallet_${tenantId}_${Date.now()}`;
+    const receipt = this.createReceipt();
+    if (receipt.length > 40) {
+      throw new BadRequestException(`Generated Razorpay receipt is too long (${receipt.length}/40)`);
+    }
     const auth = Buffer.from(`${this.keyId}:${this.keySecret}`).toString('base64');
 
     const response = await fetch('https://api.razorpay.com/v1/orders', {
@@ -60,12 +64,12 @@ export class PaymentsService {
 
     if (!response.ok) {
       const body = await response.text();
-      throw new BadRequestException(`Razorpay order creation failed: ${body}`);
+      throw new BadRequestException(`Razorpay order creation failed for receipt ${receipt} (${receipt.length}/40): ${body}`);
     }
     const order: any = await response.json();
 
     await this.model.create({
-      tenantId,
+      tenantId: toObjectId(tenantId, 'tenantId'),
       purpose: PaymentPurpose.WALLET_RECHARGE,
       razorpayOrderId: order.id,
       amount,
@@ -149,6 +153,10 @@ export class PaymentsService {
 
   private sign(payload: string, secret: string): string {
     return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  }
+
+  private createReceipt(): string {
+    return `wr_${crypto.randomBytes(12).toString('hex')}`;
   }
 
   private safeCompare(a: string, b: string): boolean {

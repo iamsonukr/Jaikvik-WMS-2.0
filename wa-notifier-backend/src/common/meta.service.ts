@@ -72,6 +72,42 @@ export class MetaService {
     return data.data;
   }
 
+  async getTemplateLibrary(accessToken: string, filters: Record<string, any> = {}) {
+    const params = Object.fromEntries(
+      Object.entries(filters)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => [key, String(value)]),
+    );
+
+    const { data } = await axios.get(`https://graph.facebook.com/${this.version}/message_template_library`, {
+      params,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return data;
+  }
+
+  async createTemplate(wabaId: string, accessToken: string, payload: any) {
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${this.version}/${wabaId}/message_templates`,
+        payload,
+        { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } },
+      );
+      return data;
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta createTemplate failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        wabaId,
+      });
+      throw new BadRequestException(`Could not create WhatsApp template: ${message}`);
+    }
+  }
+
   async getPhoneNumberInfo(phoneNumberId: string, accessToken: string) {
     const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${phoneNumberId}`, {
       params: {

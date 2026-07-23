@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type TenantDocument = Tenant & Document;
 
@@ -21,8 +21,8 @@ export class Tenant {
   // Denormalized "current plan" pointer for cheap reads (dashboard headers,
   // feature-gate checks). SubscriptionsService keeps this in sync; the
   // Subscription collection remains the source of truth / billing history.
-  @Prop({ type: Types.ObjectId, ref: 'Plan', default: null }) planId: Types.ObjectId | null;
-  @Prop({ type: Types.ObjectId, ref: 'Subscription', default: null }) currentSubscriptionId: Types.ObjectId | null;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Plan', default: null }) planId: Types.ObjectId | null;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Subscription', default: null }) currentSubscriptionId: Types.ObjectId | null;
   @Prop() subscriptionStartAt?: Date;
   @Prop() subscriptionEndAt?: Date;
 

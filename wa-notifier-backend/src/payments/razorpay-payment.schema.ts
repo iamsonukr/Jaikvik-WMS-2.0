@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type RazorpayPaymentDocument = RazorpayPayment & Document;
 
@@ -16,7 +16,7 @@ export enum PaymentStatus {
 
 @Schema({ timestamps: true })
 export class RazorpayPayment {
-  @Prop({ type: Types.ObjectId, ref: 'Tenant', required: true }) tenantId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant', required: true }) tenantId: Types.ObjectId;
   @Prop({ required: true, enum: Object.values(PaymentPurpose) }) purpose: PaymentPurpose;
 
   @Prop({ required: true, unique: true }) razorpayOrderId: string;
@@ -31,7 +31,7 @@ export class RazorpayPayment {
 
   // Set once the wallet has actually been credited for this payment — the
   // presence of this field is what makes credit-on-webhook idempotent.
-  @Prop({ type: Types.ObjectId, ref: 'WalletTransaction', default: null })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WalletTransaction', default: null })
   walletTransactionId: Types.ObjectId | null;
 
   @Prop({ type: Object }) notes: Record<string, any>;

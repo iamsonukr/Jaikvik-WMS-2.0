@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Contact, ContactDocument } from './contact.schema';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
+import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
 
 @Injectable()
 export class ContactsService {
@@ -12,7 +13,7 @@ export class ContactsService {
   ) {}
 
   findAll(clientId: string, tag?: string) {
-    const q: any = { clientId: this.clientIdQuery(clientId), isActive: true };
+    const q: any = { ...this.clientIdQuery(clientId), isActive: true };
     if (tag) q.tags = tag;
     return this.model.find(q);
   }
@@ -23,7 +24,7 @@ export class ContactsService {
     const client = await this.clients.findOne(dto.clientId);
     return this.model.create({
       ...dto,
-      clientId: this.toObjectId(dto.clientId),
+      clientId: toObjectId(dto.clientId, 'clientId'),
       tenantId: client?.tenantId,
       phone: String(dto.phone || '').trim(),
     });
@@ -31,6 +32,7 @@ export class ContactsService {
 
   async bulkUpsert(clientId: string, contacts: Partial<Contact>[]) {
     const client = await this.clients.findOne(clientId);
+    const clientObjectId = toObjectId(clientId, 'clientId');
     const valid = contacts
       .filter(c => c.phone && String(c.phone).trim().length > 0)
       .map(c => ({ ...c, phone: String(c.phone).trim() }));
@@ -39,8 +41,8 @@ export class ContactsService {
 
     const ops = valid.map(c => ({
       updateOne: {
-        filter: { clientId: this.toObjectId(clientId), phone: c.phone },
-        update: { $set: { ...c, clientId: this.toObjectId(clientId), tenantId: client?.tenantId } },
+        filter: { clientId: clientObjectId, phone: c.phone },
+        update: { $set: { ...c, clientId: clientObjectId, tenantId: client?.tenantId } },
         upsert: true,
       },
     }));
@@ -55,26 +57,22 @@ export class ContactsService {
   remove(id: string) { return this.model.findByIdAndDelete(id); }
 
   getTags(clientId: string) {
-    return this.model.distinct('tags', { clientId: this.clientIdQuery(clientId) });
+    return this.model.distinct('tags', this.clientIdQuery(clientId));
   }
 
   countBySegment(clientId: string, tags: string[]) {
-    const q: any = { clientId: this.clientIdQuery(clientId), isOptedOut: false, isActive: true };
+    const q: any = { ...this.clientIdQuery(clientId), isOptedOut: false, isActive: true };
     if (tags?.length) q.tags = { $in: tags };
     return this.model.countDocuments(q);
   }
 
   findBySegment(clientId: string, tags: string[]) {
-    const q: any = { clientId: this.clientIdQuery(clientId), isOptedOut: false, isActive: true };
+    const q: any = { ...this.clientIdQuery(clientId), isOptedOut: false, isActive: true };
     if (tags?.length) q.tags = { $in: tags };
     return this.model.find(q);
   }
 
-  private toObjectId(id: string) {
-    return new Types.ObjectId(String(id));
-  }
-
   private clientIdQuery(id: string) {
-    return { $in: [this.toObjectId(id), String(id)] };
+    return legacyObjectIdFilter('clientId', id);
   }
 }

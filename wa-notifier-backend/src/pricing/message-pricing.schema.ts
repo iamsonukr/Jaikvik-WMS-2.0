@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type MessagePricingDocument = MessagePricing & Document;
 
@@ -25,8 +25,8 @@ export class MessagePricing {
   @Prop({ required: true, default: 'default' }) country: string;
 
   @Prop({ required: true, enum: Object.values(PricingScope) }) scope: PricingScope;
-  @Prop({ type: Types.ObjectId, ref: 'Plan', default: null }) planId: Types.ObjectId | null;
-  @Prop({ type: Types.ObjectId, ref: 'Tenant', default: null }) tenantId: Types.ObjectId | null;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Plan', default: null }) planId: Types.ObjectId | null;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant', default: null }) tenantId: Types.ObjectId | null;
 
   @Prop({ required: true }) baseCost: number; // platform's cost from Meta
   @Prop({ required: true }) sellingPrice: number; // what the tenant is charged

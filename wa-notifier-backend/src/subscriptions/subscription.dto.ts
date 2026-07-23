@@ -1,13 +1,13 @@
-import { IsBoolean, IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsMongoId, IsOptional, IsString } from 'class-validator';
 
 export class AssignSubscriptionDto {
-  @IsString() tenantId: string;
-  @IsString() planId: string;
+  @IsMongoId() tenantId: string;
+  @IsMongoId() planId: string;
   @IsOptional() @IsDateString() startDate?: string; // defaults to now
 }
 
 export class ChangeSubscriptionPlanDto {
-  @IsString() planId: string;
+  @IsMongoId() planId: string;
 }
 
 export class ExtendSubscriptionDto {

@@ -3,6 +3,7 @@ import { WhatsAppAccountsService } from './whatsapp-accounts.service';
 import { CreateWhatsAppAccountDto, EmbeddedSignupDto, PublicEmbeddedSignupDto, RegisterPhoneNumberDto, UpdateWhatsAppAccountDto } from './whatsapp-account.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/role.enum';
 import { WhatsAppAccountOwnershipGuard } from './whatsapp-account-ownership.guard';
 
@@ -26,15 +27,16 @@ export class WhatsAppAccountsController {
   @Get(':id')
   findOne(@Param('id') id: string) { return this.svc.findOnePublic(id); }
 
-  // A tenant-scoped user's own tenantId is stamped automatically — never
-  // trusted from the request body, so a client can't create an account
-  // under (or accidentally orphaned from) another tenant.
+  // Manual account creation belongs to platform staff. Tenant owners use
+  // Embedded Signup so their own tenantId is stamped server-side.
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
   @Post()
   create(@Body() dto: CreateWhatsAppAccountDto, @CurrentUser() user: any) {
     const tenantId = user.role === UserRole.ADMIN || user.role === UserRole.MASTER ? undefined : user.tenantId;
     return this.svc.create(dto, tenantId);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @Post('embedded-signup')
   embeddedSignup(@Body() dto: EmbeddedSignupDto, @CurrentUser() user: any) {
     const tenantId = user.role === UserRole.ADMIN || user.role === UserRole.MASTER ? undefined : user.tenantId;
@@ -47,24 +49,29 @@ export class WhatsAppAccountsController {
     return this.svc.createFromPublicEmbeddedSignup(dto);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Post(':id/webhooks/subscribe')
   subscribeWebhooks(@Param('id') id: string) { return this.svc.subscribeWebhooks(id); }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Post(':id/register')
   registerPhoneNumber(@Param('id') id: string, @Body() dto: RegisterPhoneNumberDto) {
     return this.svc.registerPhoneNumber(id, dto.pin);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Get(':id/sending-diagnostics')
   sendingDiagnostics(@Param('id') id: string) { return this.svc.diagnoseSending(id); }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateWhatsAppAccountDto) { return this.svc.update(id, dto); }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Delete(':id')
   remove(@Param('id') id: string) { return this.svc.remove(id); }

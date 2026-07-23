@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Wallet, WalletDocument } from './wallet.schema';
 import {
   WalletTransaction,
@@ -9,9 +9,10 @@ import {
   WalletTransactionType,
 } from './wallet-transaction.schema';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { ObjectIdInput, toObjectId } from '../common/mongo-id';
 
 export interface LedgerEntryInput {
-  tenantId: string;
+  tenantId: ObjectIdInput;
   type: WalletTransactionType;
   amount: number;
   description?: string;
@@ -44,16 +45,17 @@ export class WalletService {
     private auditLog: AuditLogService,
   ) {}
 
-  async getOrCreateWallet(tenantId: string): Promise<WalletDocument> {
+  async getOrCreateWallet(tenantId: ObjectIdInput): Promise<WalletDocument> {
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
     const wallet = await this.walletModel.findOneAndUpdate(
-      { tenantId },
-      { $setOnInsert: { tenantId, balance: 0, totalRecharged: 0, totalSpent: 0 } },
+      { tenantId: tenantObjectId },
+      { $setOnInsert: { tenantId: tenantObjectId, balance: 0, totalRecharged: 0, totalSpent: 0 } },
       { new: true, upsert: true },
     );
     return wallet;
   }
 
-  async getBalance(tenantId: string) {
+  async getBalance(tenantId: ObjectIdInput) {
     const wallet = await this.getOrCreateWallet(tenantId);
     return {
       balance: wallet.balance,
@@ -63,12 +65,13 @@ export class WalletService {
     };
   }
 
-  async getLedger(tenantId: string, page = 1, limit = 25) {
+  async getLedger(tenantId: ObjectIdInput, page = 1, limit = 25) {
     page = Math.max(1, page);
     limit = Math.min(100, limit);
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
     const [items, total] = await Promise.all([
-      this.txnModel.find({ tenantId }).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
-      this.txnModel.countDocuments({ tenantId }),
+      this.txnModel.find({ tenantId: tenantObjectId }).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+      this.txnModel.countDocuments({ tenantId: tenantObjectId }),
     ]);
     return { items, total, page, limit };
   }
@@ -86,6 +89,7 @@ export class WalletService {
     const isCredit = CREDIT_TYPES.has(input.type);
     const amount = Math.abs(input.amount);
     if (amount <= 0) throw new BadRequestException('Amount must be greater than zero');
+    const tenantObjectId = toObjectId(input.tenantId, 'tenantId');
 
     // Idempotency guard for Razorpay: if this payment ID was already
     // credited, the unique sparse index on razorpayPaymentId will reject a
@@ -100,13 +104,13 @@ export class WalletService {
       const inc: Record<string, number> = { balance: amount };
       if (input.type === WalletTransactionType.RECHARGE) inc.totalRecharged = amount;
       wallet = await this.walletModel.findOneAndUpdate(
-        { tenantId: input.tenantId },
-        { $inc: inc, $setOnInsert: { totalSpent: 0 } },
+        { tenantId: tenantObjectId },
+        { $inc: inc, $setOnInsert: { tenantId: tenantObjectId, totalSpent: 0 } },
         { new: true, upsert: true },
       );
     } else {
       wallet = await this.walletModel.findOneAndUpdate(
-        { tenantId: input.tenantId, balance: { $gte: amount } },
+        { tenantId: tenantObjectId, balance: { $gte: amount } },
         { $inc: { balance: -amount, totalSpent: amount } },
         { new: true },
       );
@@ -120,7 +124,7 @@ export class WalletService {
 
     try {
       return await this.txnModel.create({
-        tenantId: input.tenantId,
+        tenantId: tenantObjectId,
         type: input.type,
         creditAmount: isCredit ? amount : 0,
         debitAmount: isCredit ? 0 : amount,
@@ -146,7 +150,7 @@ export class WalletService {
       const compensating: Record<string, number> = isCredit
         ? { balance: -amount, ...(input.type === WalletTransactionType.RECHARGE ? { totalRecharged: -amount } : {}) }
         : { balance: amount, totalSpent: -amount };
-      await this.walletModel.updateOne({ tenantId: input.tenantId }, { $inc: compensating });
+      await this.walletModel.updateOne({ tenantId: tenantObjectId }, { $inc: compensating });
 
       if (err?.code === 11000 && input.razorpayPaymentId) {
         const existing = await this.txnModel.findOne({ razorpayPaymentId: input.razorpayPaymentId });
@@ -156,19 +160,19 @@ export class WalletService {
     }
   }
 
-  async recharge(tenantId: string, amount: number, meta: Partial<LedgerEntryInput> = {}) {
+  async recharge(tenantId: ObjectIdInput, amount: number, meta: Partial<LedgerEntryInput> = {}) {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.RECHARGE, amount, ...meta });
   }
 
-  async debitForMessage(tenantId: string, amount: number, meta: Partial<LedgerEntryInput> = {}) {
+  async debitForMessage(tenantId: ObjectIdInput, amount: number, meta: Partial<LedgerEntryInput> = {}) {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.MESSAGE_DEBIT, amount, ...meta });
   }
 
-  async reserveForCampaign(tenantId: string, amount: number, meta: Partial<LedgerEntryInput> = {}) {
+  async reserveForCampaign(tenantId: ObjectIdInput, amount: number, meta: Partial<LedgerEntryInput> = {}) {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.CAMPAIGN_RESERVATION, amount, ...meta });
   }
 
-  async refund(tenantId: string, amount: number, meta: Partial<LedgerEntryInput> = {}) {
+  async refund(tenantId: ObjectIdInput, amount: number, meta: Partial<LedgerEntryInput> = {}) {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.REFUND, amount, ...meta });
   }
 

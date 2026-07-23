@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { UserRole } from '../common/enums/role.enum';
 
@@ -15,7 +15,7 @@ export class User {
 
   // Owning tenant. Required for CLIENT_OWNER/CLIENT_USER; null for platform
   // staff (ADMIN/MASTER aren't scoped to a single tenant).
-  @Prop({ type: Types.ObjectId, ref: 'Tenant', default: null })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant', default: null })
   tenantId: Types.ObjectId | null;
 
   // Fine-grained capabilities for ADMIN accounts (e.g. 'plans:write', 'wallet:credit').

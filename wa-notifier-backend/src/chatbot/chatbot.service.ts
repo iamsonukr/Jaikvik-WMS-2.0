@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { ChatbotRule, ChatbotRuleDocument } from './chatbot-rule.schema';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
+import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
 
 @Injectable()
 export class ChatbotService {
@@ -22,7 +23,7 @@ export class ChatbotService {
     const client = await this.clients.findOne(dto.clientId);
     return this.model.create({
       ...dto,
-      clientId: this.toObjectId(dto.clientId),
+      clientId: toObjectId(dto.clientId, 'clientId'),
       tenantId: client?.tenantId,
     });
   }
@@ -46,19 +47,7 @@ export class ChatbotService {
     return null;
   }
 
-  private toObjectId(id: string) {
-    if (!Types.ObjectId.isValid(String(id))) {
-      throw new BadRequestException('A valid clientId is required.');
-    }
-    return new Types.ObjectId(String(id));
-  }
-
   private clientIdQuery(id: string) {
-    return {
-      $or: [
-        { clientId: this.toObjectId(id) },
-        { $expr: { $eq: ['$clientId', String(id)] } },
-      ],
-    };
+    return legacyObjectIdFilter('clientId', id);
   }
 }

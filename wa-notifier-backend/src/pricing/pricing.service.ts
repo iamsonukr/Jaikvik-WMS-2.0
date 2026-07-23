@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { MessagePricing, MessagePricingDocument, MessageCategory, PricingScope } from './message-pricing.schema';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { CreateMessagePricingDto, UpdateMessagePricingDto } from './message-pricing.dto';
+import { optionalObjectId, toObjectId } from '../common/mongo-id';
 
 export interface ResolvedPrice {
   category: MessageCategory;
@@ -33,11 +34,11 @@ export class PricingService {
   }
 
   async create(dto: CreateMessagePricingDto) {
-    return this.model.create({ ...dto, country: dto.country || 'default' });
+    return this.model.create(this.normalizePricingRefs({ ...dto, country: dto.country || 'default' }));
   }
 
   async update(id: string, dto: UpdateMessagePricingDto) {
-    const row = await this.model.findByIdAndUpdate(id, dto, { new: true });
+    const row = await this.model.findByIdAndUpdate(id, this.normalizePricingRefs(dto), { new: true });
     if (!row) throw new NotFoundException('Pricing rule not found');
     return row;
   }
@@ -60,15 +61,16 @@ export class PricingService {
    * the frontend only ever displays what this returns, never computes it.
    */
   async resolvePrice(tenantId: string, category: MessageCategory, country: string): Promise<ResolvedPrice> {
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
     const clientPrice = await this.model.findOne({
       category,
       scope: PricingScope.CLIENT,
-      tenantId,
+      tenantId: tenantObjectId,
       isActive: true,
     });
     if (clientPrice) return this.toResolved(clientPrice);
 
-    const tenant = await this.tenantModel.findById(tenantId);
+    const tenant = await this.tenantModel.findById(tenantObjectId);
     if (tenant?.planId) {
       const planPrice = await this.model.findOne({
         category,
@@ -110,5 +112,12 @@ export class PricingService {
       scope: row.scope,
       pricingId: String(row._id),
     };
+  }
+
+  private normalizePricingRefs<T extends CreateMessagePricingDto | UpdateMessagePricingDto>(dto: T): T {
+    const normalized: Record<string, any> = { ...dto };
+    if ('tenantId' in normalized) normalized.tenantId = optionalObjectId(normalized.tenantId, 'tenantId');
+    if ('planId' in normalized) normalized.planId = optionalObjectId(normalized.planId, 'planId');
+    return normalized as T;
   }
 }

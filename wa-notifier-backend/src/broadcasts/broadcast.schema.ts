@@ -28,7 +28,7 @@ export class Broadcast {
   @Prop() appliedUnitPrice: number;
   @Prop() appliedTaxPercent: number;
   @Prop({ default: 0 }) reservedAmount: number;
-  @Prop({ type: Types.ObjectId, ref: 'WalletTransaction' }) reservationTxnId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WalletTransaction' }) reservationTxnId: Types.ObjectId;
 }
 
 export const BroadcastSchema = SchemaFactory.createForClass(Broadcast);

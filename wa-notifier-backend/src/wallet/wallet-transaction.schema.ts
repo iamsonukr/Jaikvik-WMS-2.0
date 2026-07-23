@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type WalletTransactionDocument = WalletTransaction & Document;
 
@@ -22,7 +22,7 @@ export enum WalletTransactionStatus {
 
 @Schema({ timestamps: true })
 export class WalletTransaction {
-  @Prop({ type: Types.ObjectId, ref: 'Tenant', required: true }) tenantId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant', required: true }) tenantId: Types.ObjectId;
   @Prop({ required: true, enum: Object.values(WalletTransactionType) }) type: WalletTransactionType;
 
   @Prop({ default: 0 }) creditAmount: number;
@@ -36,8 +36,8 @@ export class WalletTransaction {
   @Prop() razorpayOrderId: string;
   @Prop() razorpayPaymentId: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Broadcast' }) campaignId: Types.ObjectId;
-  @Prop({ type: Types.ObjectId }) messageId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Broadcast' }) campaignId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId }) messageId: Types.ObjectId;
   @Prop() messageCategory: string;
   @Prop() appliedUnitPrice: number;
   @Prop({ default: 0 }) tax: number;
@@ -49,7 +49,7 @@ export class WalletTransaction {
   // in the service layer, not just here, since this field is optional for
   // system-generated transaction types (recharge, message_debit, etc.).
   @Prop() reason: string;
-  @Prop({ type: Types.ObjectId, ref: 'User' }) actorUserId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' }) actorUserId: Types.ObjectId;
 }
 
 export const WalletTransactionSchema = SchemaFactory.createForClass(WalletTransaction);

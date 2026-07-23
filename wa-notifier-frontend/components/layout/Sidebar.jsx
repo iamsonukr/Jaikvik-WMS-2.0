@@ -55,7 +55,7 @@ const clientNav = [
   { href: '/client/templates',   label: 'Templates',   icon: FileText },
   { href: '/client/chatbot',     label: 'Chatbot',     icon: Bot },
   { href: '/client/analytics',   label: 'Analytics',   icon: BarChart2 },
-  { href: '/client/clients',     label: 'WhatsApp Numbers', icon: Users },
+  { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true, requiresNoLinkedWhatsApp: true },
   { href: '/client/wallet',      label: 'Wallet',      icon: Wallet },
   { href: '/client/settings',    label: 'Settings',    icon: Settings },
 ];
@@ -88,7 +88,7 @@ function NavGroup({ title, items, pathname, onClose }) {
 export default function Sidebar({ open = false, onClose = () => {} }) {
   const pathname               = usePathname();
   const { user, logout }       = useAuth();
-  const { clients, activeClient, selectClient } = useClient();
+  const { clients, activeClient, selectClient, loading: clientsLoading } = useClient();
   const [clientOpen, setClientOpen] = useState(false);
 
   const role = normalizeRole(user?.role);
@@ -100,11 +100,17 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
   // handful of admin-exclusive control-panel actions. Client sees only its
   // own scoped nav.
   const controlPanelForRole = isAdmin ? controlPanelNav : controlPanelNav.filter((i) => !i.adminOnly);
+  const hasLinkedWhatsApp = clients.length > 0;
+  const clientNavForRole = clientNav.filter((item) => {
+    if (item.ownerOnly && role !== 'client_owner') return false;
+    if (item.requiresNoLinkedWhatsApp && (clientsLoading || hasLinkedWhatsApp)) return false;
+    return true;
+  });
 
-  // The WABA account-switcher only makes sense for roles that operate the
-  // messaging tools directly (Admin/Master see every account they're
-  // scoped to; a tenant sees only their own, already filtered server-side).
-  const showClientSwitcher = isAdmin || isMaster || isClient;
+  // Admin/Master can switch between WhatsApp accounts. Tenant users operate
+  // inside one company, so they see a fixed workspace identity instead.
+  const showClientSwitcher = (isAdmin || isMaster) && clients.length > 0;
+  const showClientCompany = isClient && activeClient;
 
   return (
     <aside
@@ -132,7 +138,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       </div>
 
       {/* WhatsApp account switcher */}
-      {showClientSwitcher && clients.length > 0 && (
+      {showClientSwitcher && (
         <div className="px-3 py-3 border-b border-white/10 relative">
           <button
             onClick={() => setClientOpen(p => !p)}
@@ -164,9 +170,23 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         </div>
       )}
 
+      {showClientCompany && (
+        <div className="px-3 py-3 border-b border-white/10">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-gradient text-[10px] font-bold text-white">
+              {activeClient.name?.[0]?.toUpperCase() || '?'}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-medium text-white">{activeClient.name}</span>
+              <span className="block truncate text-[11px] text-slate-500">WhatsApp workspace</span>
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {isClient && <NavGroup items={clientNav} pathname={pathname} onClose={onClose} />}
+        {isClient && <NavGroup items={clientNavForRole} pathname={pathname} onClose={onClose} />}
         {(isAdmin || isMaster) && (
           <>
             <NavGroup title="Control panel" items={controlPanelForRole} pathname={pathname} onClose={onClose} />

@@ -6,11 +6,13 @@ import { InboxController } from './inbox.controller';
 import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountsModule } from '../whatsapp-accounts/whatsapp-accounts.module';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
+import { TemplatesModule } from '../templates/templates.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Message.name, schema: MessageSchema }]),
     WhatsAppAccountsModule,
+    TemplatesModule,
   ],
   providers: [InboxService, MetaService, TenantOwnershipGuard],
   controllers: [InboxController],

@@ -6,6 +6,7 @@ import { Model } from 'mongoose';
 import { EmbeddedSignupDto, PublicEmbeddedSignupDto } from './whatsapp-account.dto';
 import { WhatsAppAccount, WhatsAppAccountDocument } from './whatsapp-account.schema';
 import { MetaService } from '../common/meta.service';
+import { ObjectIdInput, toObjectId } from '../common/mongo-id';
 
 @Injectable()
 export class WhatsAppAccountsService {
@@ -18,16 +19,18 @@ export class WhatsAppAccountsService {
   ) {}
 
   findAll() { return this.model.find().select('-accessToken'); }
-  findAllByTenant(tenantId: any) { return this.model.find({ tenantId }).select('-accessToken'); }
-  findOne(id: string) { return this.model.findById(id); }
-  findOnePublic(id: string) { return this.model.findById(id).select('-accessToken'); }
+  findAllByTenant(tenantId: ObjectIdInput) {
+    return this.model.find({ tenantId: toObjectId(tenantId, 'tenantId') }).select('-accessToken');
+  }
+  findOne(id: string) { return this.model.findById(toObjectId(id, 'clientId')); }
+  findOnePublic(id: string) { return this.model.findById(toObjectId(id, 'clientId')).select('-accessToken'); }
   findByPhoneNumberId(phoneNumberId: string) { return this.model.findOne({ phoneNumberId }); }
   findByMetaEntityId(entityId: string) { return this.model.findOne({ $or: [{ wabaId: entityId }, { phoneNumberId: entityId }] }); }
-  create(dto: Partial<WhatsAppAccount>, tenantId?: any) {
-    return this.model.create(tenantId ? { ...dto, tenantId } : dto);
+  create(dto: Partial<WhatsAppAccount>, tenantId?: ObjectIdInput) {
+    return this.model.create(tenantId ? { ...dto, tenantId: toObjectId(tenantId, 'tenantId') } : dto);
   }
 
-  async createFromEmbeddedSignup(dto: EmbeddedSignupDto, tenantId?: any) {
+  async createFromEmbeddedSignup(dto: EmbeddedSignupDto, tenantId?: ObjectIdInput) {
     const appId = this.cfg.get<string>('META_APP_ID');
     const appSecret = this.cfg.get<string>('META_APP_SECRET');
     const version = this.cfg.get<string>('META_API_VERSION', 'v19.0');
@@ -61,7 +64,7 @@ export class WhatsAppAccountsService {
       phone,
       isActive: true,
     };
-    if (tenantId) setFields.tenantId = tenantId;
+    if (tenantId) setFields.tenantId = toObjectId(tenantId, 'tenantId');
 
     const doc = await this.model.findOneAndUpdate(
       { phoneNumberId },

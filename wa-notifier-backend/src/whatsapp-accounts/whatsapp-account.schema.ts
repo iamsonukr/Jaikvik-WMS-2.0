@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type WhatsAppAccountDocument = WhatsAppAccount & Document;
 
@@ -10,7 +10,7 @@ export type WhatsAppAccountDocument = WhatsAppAccount & Document;
 // and indexes carry over with zero migration risk.
 @Schema({ timestamps: true, collection: 'clients' })
 export class WhatsAppAccount {
-  @Prop({ type: Types.ObjectId, ref: 'Tenant' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' })
   tenantId?: Types.ObjectId; // owning SaaS tenant; nullable during transition/backfill
 
   @Prop({ required: true }) name: string;

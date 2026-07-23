@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, Spinner } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 import {
@@ -21,7 +21,7 @@ const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 
 export default function ConnectWhatsAppPage() {
   const router = useRouter();
-  const { refreshClients } = useClient();
+  const { clients, loading: clientsLoading, refreshClients } = useClient();
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -80,6 +80,11 @@ export default function ConnectWhatsAppPage() {
     clearWaitTimer();
     signupRef.current = { code: '', setup: null, submitting: false, redirectUri: '' };
   };
+
+  useEffect(() => {
+    if (clientsLoading || connecting || connected) return;
+    if (clients.length > 0) router.replace('/client/dashboard');
+  }, [clients.length, clientsLoading, connected, connecting, router]);
 
   const finishEmbeddedSignup = useCallback(async () => {
     const current = signupRef.current;
@@ -246,8 +251,18 @@ export default function ConnectWhatsAppPage() {
     });
   };
 
+  if (clientsLoading || (clients.length > 0 && !connecting && !connected)) {
+    return (
+      <AppShell allowedRoles={['client_owner']}>
+        <div className="flex justify-center py-20">
+          <Spinner size={32} />
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
-    <AppShell allowedRoles={['client_owner', 'client_user']}>
+    <AppShell allowedRoles={['client_owner']}>
       <Card className="mx-auto max-w-md p-6">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-brand/10 text-brand">
           {connected ? <CheckCircle2 size={24} /> : <MessageCircle size={24} />}
