@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
 import { BillingCycle, PlanStatus } from './plan.schema';
 
 export class CreatePlanDto {
@@ -11,7 +11,7 @@ export class CreatePlanDto {
   @IsOptional() @IsNumber() @Min(0) taxPercent?: number;
   @IsOptional() @IsNumber() @Min(0) trialDays?: number;
 
-  @IsOptional() @IsObject() features?: Record<string, any>;
+  @IsOptional() @IsArray() @IsString({ each: true }) features?: string[];
   @IsOptional() @IsObject() limits?: Record<string, any>;
 
   @IsOptional() @IsEnum(PlanStatus) status?: PlanStatus;
@@ -31,7 +31,7 @@ export class UpdatePlanDto {
   @IsOptional() @IsNumber() @Min(0) taxPercent?: number;
   @IsOptional() @IsNumber() @Min(0) trialDays?: number;
 
-  @IsOptional() @IsObject() features?: Record<string, any>;
+  @IsOptional() @IsArray() @IsString({ each: true }) features?: string[];
   @IsOptional() @IsObject() limits?: Record<string, any>;
 
   @IsOptional() @IsEnum(PlanStatus) status?: PlanStatus;

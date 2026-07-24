@@ -34,11 +34,12 @@ export class PlansService {
       throw new BadRequestException('price is required unless billingCycle is on_request');
     }
     const count = await this.planModel.countDocuments();
-    return this.planModel.create({ ...dto, displayOrder: dto.displayOrder ?? count });
+    return this.planModel.create({ ...dto, features: this.cleanFeatures(dto.features), displayOrder: dto.displayOrder ?? count });
   }
 
   async update(id: string, dto: UpdatePlanDto) {
-    const plan = await this.planModel.findByIdAndUpdate(id, dto, { new: true });
+    const payload = dto.features ? { ...dto, features: this.cleanFeatures(dto.features) } : dto;
+    const plan = await this.planModel.findByIdAndUpdate(id, payload, { new: true });
     if (!plan) throw new NotFoundException('Plan not found');
     return plan;
   }
@@ -67,5 +68,9 @@ export class PlansService {
       dto.orderedIds.map((id, index) => this.planModel.updateOne({ _id: id }, { displayOrder: index })),
     );
     return this.findAll();
+  }
+
+  private cleanFeatures(features?: string[]) {
+    return Array.from(new Set((features || []).map((feature) => String(feature || '').trim()).filter(Boolean)));
   }
 }

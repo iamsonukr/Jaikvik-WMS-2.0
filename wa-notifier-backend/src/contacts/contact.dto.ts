@@ -20,3 +20,17 @@ export class BulkContactsDto {
   @IsMongoId() clientId: string;
   @IsArray() contacts: Array<{ phone: string; name?: string; tags?: string[] }>;
 }
+
+export class CreateContactTagDto {
+  @IsMongoId() clientId: string;
+  @IsString() @MinLength(1) name: string;
+  @IsOptional() @IsString() color?: string;
+  @IsOptional() @IsString() description?: string;
+}
+
+export class UpdateContactTagDto {
+  @IsOptional() @IsString() @MinLength(1) name?: string;
+  @IsOptional() @IsString() color?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}

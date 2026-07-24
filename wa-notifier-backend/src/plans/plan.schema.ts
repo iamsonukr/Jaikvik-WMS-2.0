@@ -32,7 +32,7 @@ export class Plan {
   // Configurable feature flags/values — deliberately untyped so Admin can add
   // new feature keys without a schema change. e.g.
   // { unlimitedAgents: true, chatbotFlows: true, campaignSendSpeed: 'fast' }
-  @Prop({ type: Object, default: {} }) features: Record<string, any>;
+  @Prop({ type: [String], default: [] }) features: string[];
 
   // Numeric/quantity caps. e.g.
   // { contacts: 5000, teamMembers: 3, whatsappNumbers: 1, customFields: 10, tags: 20, customEvents: 5 }

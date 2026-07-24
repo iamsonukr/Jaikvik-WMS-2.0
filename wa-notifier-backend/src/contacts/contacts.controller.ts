@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ContactsService } from './contacts.service';
-import { CreateContactDto, UpdateContactDto, BulkContactsDto } from './contact.dto';
+import { CreateContactDto, UpdateContactDto, BulkContactsDto, CreateContactTagDto, UpdateContactTagDto } from './contact.dto';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
 
 // TenantOwnershipGuard is applied per-route (not at the controller level)
@@ -17,6 +17,15 @@ export class ContactsController {
 
   @UseGuards(TenantOwnershipGuard)
   @Get('tags') getTags(@Query('clientId') cid: string) { return this.svc.getTags(cid); }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('tags') createTag(@Body() dto: CreateContactTagDto) { return this.svc.createTag(dto); }
+
+  @Patch('tags/:id') updateTag(@Param('id') id: string, @Body() dto: UpdateContactTagDto) {
+    return this.svc.updateTag(id, dto);
+  }
+
+  @Delete('tags/:id') removeTag(@Param('id') id: string) { return this.svc.removeTag(id); }
 
   @UseGuards(TenantOwnershipGuard)
   @Get('count') async count(@Query('clientId') cid: string, @Query('tag') tags: string | string[]) {

@@ -105,6 +105,109 @@ const demoClients = [
   },
 ];
 
+const demoPlans = [
+  {
+    name: 'Starter',
+    description: 'WhatsApp marketing essentials for small teams getting started.',
+    price: 3499,
+    billingCycle: 'quarterly',
+    currency: 'INR',
+    taxPercent: 18,
+    trialDays: 7,
+    features: [
+      'WhatsApp channel included',
+      'Bulk WhatsApp campaigns',
+      'Shared Team Inbox',
+      'Greeting and out-of-office automation',
+      'Template sync and approval tracking',
+      'Unlimited messages based on connected WhatsApp number',
+      '2 team members',
+      '10 custom tags',
+    ],
+    limits: { contacts: 2500, teamMembers: 2, whatsappNumbers: 1, customFields: 5, tags: 10 },
+    status: 'active',
+    displayOrder: 0,
+    isPopular: false,
+    showOnWebsite: true,
+    buttonText: 'Choose Starter',
+  },
+  {
+    name: 'Growth',
+    description: 'More automation and campaign controls for growing businesses.',
+    price: 7699,
+    billingCycle: 'quarterly',
+    currency: 'INR',
+    taxPercent: 18,
+    trialDays: 7,
+    features: [
+      'Everything in Starter',
+      'Advanced broadcast segmentation',
+      'FAQ automations and keyword chatbot rules',
+      'Bulk upload contacts',
+      'Team inbox for sales and support workflows',
+      'Campaign delivery analytics',
+      '5 team members',
+      '25 custom tags',
+    ],
+    limits: { contacts: 10000, teamMembers: 5, whatsappNumbers: 2, customFields: 15, tags: 25 },
+    status: 'active',
+    displayOrder: 1,
+    isPopular: true,
+    showOnWebsite: true,
+    buttonText: 'Choose Growth',
+  },
+  {
+    name: 'Advanced',
+    description: 'API access, webhooks, catalogs, and higher operational limits.',
+    price: 10499,
+    billingCycle: 'quarterly',
+    currency: 'INR',
+    taxPercent: 18,
+    trialDays: 7,
+    features: [
+      'Everything in Growth',
+      'Public APIs and webhook access',
+      'Catalog-ready template workflows',
+      'Higher campaign sending speed',
+      'Conversation and campaign performance analytics',
+      'Priority support',
+      '15 team members',
+      '50 custom tags',
+    ],
+    limits: { contacts: 50000, teamMembers: 15, whatsappNumbers: 5, customFields: 30, tags: 50 },
+    status: 'active',
+    displayOrder: 2,
+    isPopular: false,
+    showOnWebsite: true,
+    buttonText: 'Choose Advanced',
+  },
+  {
+    name: 'Enterprise',
+    description: 'Custom scale, support, and pricing for high-volume teams.',
+    price: null,
+    billingCycle: 'on_request',
+    currency: 'INR',
+    taxPercent: 18,
+    trialDays: 0,
+    features: [
+      'Everything in Advanced',
+      'Unlimited contacts and custom tags',
+      'Multiple WhatsApp numbers',
+      'No platform markup option',
+      'Higher rate limits',
+      'Dedicated account manager',
+      'Personalized onboarding and support',
+      'Custom integrations and SLA',
+    ],
+    limits: {},
+    status: 'active',
+    displayOrder: 3,
+    isPopular: false,
+    showOnWebsite: true,
+    buttonText: 'Contact Sales',
+  },
+];
+
 const contactNames = [
   ['Aarav Sharma', '+919876543210', ['vip', 'newsletter'], { first_name: 'Aarav', city: 'Delhi' }],
   ['Maya Iyer', '+919812345678', ['newsletter'], { first_name: 'Maya', city: 'Bengaluru' }],
@@ -228,6 +331,22 @@ async function upsertClients(db, tenantsBySlug) {
   }
 
   return result;
+}
+
+async function upsertPlans(db) {
+  const plans = db.collection('plans');
+  const byName = new Map();
+
+  for (const plan of demoPlans) {
+    await plans.updateOne(
+      { name: plan.name },
+      { $set: withTimestamps(plan) },
+      { upsert: true },
+    );
+    byName.set(plan.name, await plans.findOne({ name: plan.name }));
+  }
+
+  return byName;
 }
 
 async function refreshClientData(db, client, clientIndex) {
@@ -448,6 +567,7 @@ async function main() {
   const db = mongoose.connection.db;
   console.log(`Connected to MongoDB: ${uri}`);
 
+  await upsertPlans(db);
   const tenantsBySlug = await upsertTenants(db);
   await upsertUsers(db, tenantsBySlug);
   const clients = await upsertClients(db, tenantsBySlug);
