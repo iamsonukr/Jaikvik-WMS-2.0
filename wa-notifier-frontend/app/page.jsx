@@ -145,6 +145,13 @@ function cycleLabel(cycle) {
   return { monthly: '/month', quarterly: '/quarter', yearly: '/year', custom: '' }[cycle] || '';
 }
 
+function featureLines(features) {
+  if (Array.isArray(features)) return features.filter(Boolean);
+  return Object.entries(features || {})
+    .filter(([, value]) => value === true || typeof value === 'string' || typeof value === 'number')
+    .map(([key, value]) => value === true ? key.replace(/([A-Z])/g, ' $1').toLowerCase() : `${key}: ${value}`);
+}
+
 function Pricing() {
   const [plans, setPlans] = useState(null);
   const [error, setError] = useState(false);
@@ -197,10 +204,10 @@ function Pricing() {
                       {value === true ? key : `${value} ${key}`}
                     </li>
                   ))}
-                  {Object.entries(plan.features || {}).filter(([, v]) => v === true).slice(0, 3).map(([key]) => (
-                    <li key={key} className="flex items-center gap-2 text-muted-foreground capitalize">
+                  {featureLines(plan.features).slice(0, 6).map((feature) => (
+                    <li key={feature} className="flex items-center gap-2 text-muted-foreground">
                       <Check size={14} className="shrink-0 text-emerald-500" />
-                      {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
+                      {feature}
                     </li>
                   ))}
                 </ul>

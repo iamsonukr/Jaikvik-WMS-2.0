@@ -6,6 +6,8 @@ import { Button, Card, Input, Select, PageHeader } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
+const tagName = (tag) => typeof tag === 'string' ? tag : tag?.name;
+
 export default function NewBroadcastPage() {
   const { activeClient } = useClient();
   const router = useRouter();
@@ -22,7 +24,7 @@ export default function NewBroadcastPage() {
   useEffect(() => {
     if (!activeClient) { setTemplates([]); setTags([]); return; }
     api.get(`/templates?clientId=${activeClient._id}`).then(r => setTemplates(r.data)).catch(() => setTemplates([]));
-    api.get(`/contacts/tags?clientId=${activeClient._id}`).then(r => setTags(r.data)).catch(() => setTags([]));
+    api.get(`/contacts/tags?clientId=${activeClient._id}`).then(r => setTags((r.data || []).map(tagName).filter(Boolean))).catch(() => setTags([]));
   }, [activeClient]);
 
   useEffect(() => {

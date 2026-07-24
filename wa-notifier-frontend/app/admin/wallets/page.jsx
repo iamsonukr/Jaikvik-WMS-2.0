@@ -1,18 +1,24 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Spinner, Empty } from '@/components/ui';
-import { Wallet as WalletIcon } from 'lucide-react';
+import { PageHeader, Card, Spinner, Empty, Input, Select, Badge } from '@/components/ui';
+import { ArrowRight, Wallet as WalletIcon } from 'lucide-react';
 import api from '@/lib/api';
+
+const STATUS_COLOR = { active: 'green', suspended: 'yellow', disabled: 'red' };
+const text = (value) => String(value || '').toLowerCase();
+const fmtMoney = (value) => value === null || value === undefined ? '-' : `Rs. ${Number(value).toLocaleString('en-IN')}`;
 
 export default function WalletsOverviewPage() {
   const [rows, setRows] = useState(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [balanceFilter, setBalanceFilter] = useState('all');
 
   useEffect(() => {
-    // No single "list all wallets" endpoint exists yet — this fetches each
-    // tenant's balance individually. Fine at today's tenant counts; worth
-    // a dedicated aggregate endpoint if the client list grows large.
+    // No single "list all wallets" endpoint exists yet; this fetches each
+    // tenant's balance individually.
     api.get('/tenants').then(async ({ data: tenants }) => {
       const withBalances = await Promise.all(
         tenants.map(async (t) => {
@@ -28,6 +34,25 @@ export default function WalletsOverviewPage() {
     });
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const query = text(search.trim());
+    return (rows || []).filter(({ tenant, balance }) => {
+      const walletBalance = Number(balance?.balance || 0);
+      const matchesSearch = !query
+        || text(tenant.name).includes(query)
+        || text(tenant.contactEmail).includes(query)
+        || text(tenant.contactPhone).includes(query)
+        || text(tenant.planId?.name).includes(query);
+      const matchesStatus = statusFilter === 'all' || tenant.status === statusFilter;
+      const matchesBalance = balanceFilter === 'all'
+        || (balanceFilter === 'positive' && walletBalance > 0)
+        || (balanceFilter === 'zero' && walletBalance === 0)
+        || (balanceFilter === 'negative' && walletBalance < 0)
+        || (balanceFilter === 'missing' && !balance);
+      return matchesSearch && matchesStatus && matchesBalance;
+    });
+  }, [rows, search, statusFilter, balanceFilter]);
+
   return (
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader title="Wallets" subtitle="Balance across every client." />
@@ -38,30 +63,64 @@ export default function WalletsOverviewPage() {
         <Empty icon={WalletIcon} title="No clients yet" />
       ) : (
         <Card className="p-0 overflow-hidden">
-          <div className="divide-y divide-border">
-            {rows.map(({ tenant, balance }) => (
-              <Link key={tenant._id} href={`/admin/tenants/${tenant._id}`}
-                className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-accent">
-                <div>
-                  <p className="text-sm font-medium">{tenant.name}</p>
-                  <p className="text-xs text-muted-foreground">{tenant.contactEmail}</p>
-                </div>
-                <div className="flex gap-6 text-sm shrink-0">
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Balance</p>
-                    <p className="font-semibold">₹{balance?.balance?.toLocaleString('en-IN') ?? '—'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Recharged</p>
-                    <p className="font-semibold">₹{balance?.totalRecharged?.toLocaleString('en-IN') ?? '—'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Spent</p>
-                    <p className="font-semibold">₹{balance?.totalSpent?.toLocaleString('en-IN') ?? '—'}</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
+          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_170px_170px]">
+            <Input placeholder="Search client, email, phone, plan..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All client statuses</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="disabled">Disabled</option>
+            </Select>
+            <Select value={balanceFilter} onChange={(e) => setBalanceFilter(e.target.value)}>
+              <option value="all">All balances</option>
+              <option value="positive">Positive</option>
+              <option value="zero">Zero</option>
+              <option value="negative">Negative</option>
+              <option value="missing">Unavailable</option>
+            </Select>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Client</th>
+                  <th className="px-4 py-3 font-semibold">Contact</th>
+                  <th className="px-4 py-3 font-semibold">Plan</th>
+                  <th className="px-4 py-3 text-right font-semibold">Balance</th>
+                  <th className="px-4 py-3 text-right font-semibold">Recharged</th>
+                  <th className="px-4 py-3 text-right font-semibold">Spent</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Open</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {!filteredRows.length && (
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No wallets match these filters.</td></tr>
+                )}
+                {filteredRows.map(({ tenant, balance }) => (
+                  <tr key={tenant._id} className="table-row-hover">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{tenant.name}</p>
+                      <p className="text-xs text-muted-foreground">{tenant._id}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p>{tenant.contactEmail || '-'}</p>
+                      <p className="text-xs text-muted-foreground">{tenant.contactPhone || '-'}</p>
+                    </td>
+                    <td className="px-4 py-3">{tenant.planId?.name ? <Badge label={tenant.planId.name} color="blue" /> : '-'}</td>
+                    <td className="px-4 py-3 text-right font-semibold">{fmtMoney(balance?.balance)}</td>
+                    <td className="px-4 py-3 text-right">{fmtMoney(balance?.totalRecharged)}</td>
+                    <td className="px-4 py-3 text-right">{fmtMoney(balance?.totalSpent)}</td>
+                    <td className="px-4 py-3"><Badge label={tenant.status || 'unknown'} color={STATUS_COLOR[tenant.status] || 'gray'} /></td>
+                    <td className="px-4 py-3 text-right">
+                      <Link href={`/admin/tenants/${tenant._id}`} className="inline-flex items-center justify-end text-primary hover:underline">
+                        Details <ArrowRight size={14} className="ml-1" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}

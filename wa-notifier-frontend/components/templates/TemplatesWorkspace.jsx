@@ -52,8 +52,30 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
   const [pageError, setPageError] = useState('');
   const [formError, setFormError] = useState('');
   const [libraryError, setLibraryError] = useState('');
+  const [templateFilters, setTemplateFilters] = useState({ search: '', status: 'all', category: 'all', language: 'all' });
 
   const placeholderCount = useMemo(() => bodyPlaceholderCount(form.body), [form.body]);
+  const templateFilterOptions = useMemo(() => ({
+    statuses: Array.from(new Set(templates.map((template) => template.status).filter(Boolean))).sort(),
+    categories: Array.from(new Set(templates.map((template) => template.category).filter(Boolean))).sort(),
+    languages: Array.from(new Set(templates.map((template) => template.language).filter(Boolean))).sort(),
+  }), [templates]);
+  const filteredTemplates = useMemo(() => {
+    const query = templateFilters.search.trim().toLowerCase();
+    return templates.filter((template) => {
+      const body = templateBody(template);
+      const matchesSearch = !query
+        || String(template.name || '').toLowerCase().includes(query)
+        || String(template.category || '').toLowerCase().includes(query)
+        || String(template.language || '').toLowerCase().includes(query)
+        || String(template.status || '').toLowerCase().includes(query)
+        || String(body || '').toLowerCase().includes(query);
+      const matchesStatus = templateFilters.status === 'all' || template.status === templateFilters.status;
+      const matchesCategory = templateFilters.category === 'all' || template.category === templateFilters.category;
+      const matchesLanguage = templateFilters.language === 'all' || template.language === templateFilters.language;
+      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage;
+    });
+  }, [templates, templateFilters]);
 
   const loadTemplates = () => {
     if (!activeClient) {
@@ -364,27 +386,61 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
       )}
 
       {!loading && templates.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {templates.map((template) => (
-            <Card key={template._id} className="p-5">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{template.name}</p>
-                  <p className="mt-0.5 text-xs text-[var(--muted-text)]">{template.category} - {template.language}</p>
-                </div>
-                <StatusBadge status={template.status?.toLowerCase()} />
-              </div>
-              <p className="mt-2 line-clamp-3 rounded-lg bg-muted/70 p-2 text-xs leading-relaxed text-muted-foreground">
-                {templateBody(template) || 'No body text'}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-1">
-                {template.components?.map((component) => (
-                  <Badge key={component.type} label={component.type} color="gray" />
+        <Card className="p-0 overflow-hidden">
+          <div className="grid gap-3 border-b border-border p-4 lg:grid-cols-[1fr_170px_170px_170px]">
+            <Input placeholder="Search template name, body, status..." value={templateFilters.search}
+              onChange={(e) => setTemplateFilters((prev) => ({ ...prev, search: e.target.value }))} />
+            <Select value={templateFilters.status} onChange={(e) => setTemplateFilters((prev) => ({ ...prev, status: e.target.value }))}>
+              <option value="all">All statuses</option>
+              {templateFilterOptions.statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+            </Select>
+            <Select value={templateFilters.category} onChange={(e) => setTemplateFilters((prev) => ({ ...prev, category: e.target.value }))}>
+              <option value="all">All categories</option>
+              {templateFilterOptions.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+            </Select>
+            <Select value={templateFilters.language} onChange={(e) => setTemplateFilters((prev) => ({ ...prev, language: e.target.value }))}>
+              <option value="all">All languages</option>
+              {templateFilterOptions.languages.map((language) => <option key={language} value={language}>{language}</option>)}
+            </Select>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  {['Template', 'Category', 'Language', 'Status', 'Components', 'Body preview'].map((header) => (
+                    <th key={header} className="px-4 py-3 font-semibold">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {!filteredTemplates.length && (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No templates match these filters.</td></tr>
+                )}
+                {filteredTemplates.map((template) => (
+                  <tr key={template._id} className="table-row-hover">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{template.name}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{template._id}</p>
+                    </td>
+                    <td className="px-4 py-3">{template.category || '-'}</td>
+                    <td className="px-4 py-3">{template.language || '-'}</td>
+                    <td className="px-4 py-3"><StatusBadge status={template.status?.toLowerCase()} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {template.components?.length
+                          ? template.components.map((component) => <Badge key={component.type} label={component.type} color="gray" />)
+                          : <span className="text-muted-foreground">-</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="max-w-md truncate text-muted-foreground">{templateBody(template) || 'No body text'}</p>
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </Card>
-          ))}
-        </div>
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <Modal

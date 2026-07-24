@@ -1,8 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import { Card, Button, Input, Modal, PageHeader, StatCard, Badge, Empty, Spinner } from '@/components/ui';
-import { useAuth } from '@/lib/auth-context';
+import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatCard } from '@/components/ui';
 import { Wallet as WalletIcon, TrendingUp, TrendingDown, Plus, Receipt } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -26,15 +25,20 @@ const TYPE_LABELS = {
   manual_debit: 'Manual debit',
   reversal: 'Reversal',
 };
+const text = (value) => String(value || '').toLowerCase();
+const fmtMoney = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+const fmtDateTime = (value) => value ? new Date(value).toLocaleString('en-IN') : '-';
 
 function WalletPage() {
-  const { user } = useAuth();
   const [balance, setBalance] = useState(null);
   const [transactions, setTransactions] = useState(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [amount, setAmount] = useState('500');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [directionFilter, setDirectionFilter] = useState('all');
 
   const load = async () => {
     const [balRes, txnRes] = await Promise.all([
@@ -47,6 +51,28 @@ function WalletPage() {
 
   useEffect(() => { load(); }, []);
 
+  const typeOptions = useMemo(() => {
+    const values = (transactions || []).map((transaction) => transaction.type).filter(Boolean);
+    return Array.from(new Set(values)).sort();
+  }, [transactions]);
+
+  const filteredTransactions = useMemo(() => {
+    const query = text(search.trim());
+    return (transactions || []).filter((transaction) => {
+      const isCredit = Number(transaction.creditAmount || 0) > 0;
+      const matchesSearch = !query
+        || text(TYPE_LABELS[transaction.type] || transaction.type).includes(query)
+        || text(transaction.description).includes(query)
+        || text(transaction.messageCategory).includes(query)
+        || text(transaction._id).includes(query);
+      const matchesType = typeFilter === 'all' || transaction.type === typeFilter;
+      const matchesDirection = directionFilter === 'all'
+        || (directionFilter === 'credit' && isCredit)
+        || (directionFilter === 'debit' && !isCredit);
+      return matchesSearch && matchesType && matchesDirection;
+    });
+  }, [transactions, search, typeFilter, directionFilter]);
+
   const recharge = async () => {
     setError('');
     const amt = Number(amount);
@@ -55,7 +81,7 @@ function WalletPage() {
     setProcessing(true);
     try {
       const ready = await loadRazorpayScript();
-      if (!ready) throw new Error('Could not load Razorpay checkout — check your connection');
+      if (!ready) throw new Error('Could not load Razorpay checkout; check your connection');
 
       const { data: order } = await api.post('/payments/wallet-recharge/order', { amount: amt });
 
@@ -82,7 +108,7 @@ function WalletPage() {
         },
         modal: { ondismiss: () => setProcessing(false) },
       });
-      rzp.on('payment.failed', () => setError('Payment failed — please try again'));
+      rzp.on('payment.failed', () => setError('Payment failed; please try again'));
       rzp.open();
     } catch (err) {
       setError(err?.response?.data?.message || err.message || 'Could not start checkout');
@@ -103,39 +129,56 @@ function WalletPage() {
         <div className="flex justify-center py-16"><Spinner /></div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3 mb-6">
-            <StatCard label="Available balance" value={`₹${balance.balance.toLocaleString('en-IN')}`} icon={WalletIcon} color="#25D366" />
-            <StatCard label="Total recharged" value={`₹${balance.totalRecharged.toLocaleString('en-IN')}`} icon={TrendingUp} color="#3b82f6" />
-            <StatCard label="Total spent" value={`₹${balance.totalSpent.toLocaleString('en-IN')}`} icon={TrendingDown} color="#f59e0b" />
+          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+            <StatCard label="Available balance" value={fmtMoney(balance.balance)} icon={WalletIcon} color="#25D366" />
+            <StatCard label="Total recharged" value={fmtMoney(balance.totalRecharged)} icon={TrendingUp} color="#3b82f6" />
+            <StatCard label="Total spent" value={fmtMoney(balance.totalSpent)} icon={TrendingDown} color="#f59e0b" />
           </div>
 
           <Card className="p-0 overflow-hidden">
-            <div className="border-b border-border px-5 py-4">
-              <h3 className="font-semibold text-sm">Recent transactions</h3>
+            <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_200px_160px]">
+              <Input placeholder="Search description, type, category..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="all">All transaction types</option>
+                {typeOptions.map((type) => <option key={type} value={type}>{TYPE_LABELS[type] || type}</option>)}
+              </Select>
+              <Select value={directionFilter} onChange={(e) => setDirectionFilter(e.target.value)}>
+                <option value="all">All directions</option>
+                <option value="credit">Credits</option>
+                <option value="debit">Debits</option>
+              </Select>
             </div>
             {!transactions?.length ? (
               <Empty icon={Receipt} title="No transactions yet" description="Recharge your wallet to get started." />
             ) : (
-              <div className="divide-y divide-border">
-                {transactions.map((t) => {
-                  const isCredit = t.creditAmount > 0;
-                  return (
-                    <div key={t._id} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {TYPE_LABELS[t.type] || t.type}
-                          {t.messageCategory && <Badge label={t.messageCategory} className="ml-2" />}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {t.description || '—'} · {new Date(t.createdAt).toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                      <p className={`shrink-0 text-sm font-semibold ${isCredit ? 'text-emerald-500' : 'text-red-500'}`}>
-                        {isCredit ? '+' : '-'}₹{(isCredit ? t.creditAmount : t.debitAmount).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      {['Transaction', 'Category', 'Credit', 'Debit', 'Balance After', 'Created'].map((header) => (
+                        <th key={header} className="px-4 py-3 font-semibold">{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {!filteredTransactions.length && (
+                      <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No transactions match these filters.</td></tr>
+                    )}
+                    {filteredTransactions.map((transaction) => (
+                      <tr key={transaction._id} className="table-row-hover">
+                        <td className="px-4 py-3">
+                          <p className="font-medium">{TYPE_LABELS[transaction.type] || transaction.type}</p>
+                          <p className="max-w-xs truncate text-xs text-muted-foreground">{transaction.description || '-'}</p>
+                        </td>
+                        <td className="px-4 py-3">{transaction.messageCategory ? <Badge label={transaction.messageCategory} color="blue" /> : '-'}</td>
+                        <td className="px-4 py-3 font-semibold text-emerald-500">{transaction.creditAmount ? fmtMoney(transaction.creditAmount) : '-'}</td>
+                        <td className="px-4 py-3 font-semibold text-red-500">{transaction.debitAmount ? fmtMoney(transaction.debitAmount) : '-'}</td>
+                        <td className="px-4 py-3">{transaction.balanceAfter !== undefined ? fmtMoney(transaction.balanceAfter) : '-'}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{fmtDateTime(transaction.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </Card>
@@ -146,7 +189,7 @@ function WalletPage() {
         footer={
           <>
             <Button variant="outline" onClick={() => setRechargeOpen(false)} disabled={processing}>Cancel</Button>
-            <Button onClick={recharge} disabled={processing}>{processing ? 'Processing…' : 'Proceed to pay'}</Button>
+            <Button onClick={recharge} disabled={processing}>{processing ? 'Processing...' : 'Proceed to pay'}</Button>
           </>
         }
       >
@@ -154,10 +197,10 @@ function WalletPage() {
           <label className="text-sm font-medium">Amount (INR)</label>
           <Input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
           <div className="flex gap-2">
-            {[500, 1000, 2500, 5000].map((v) => (
-              <button key={v} type="button" onClick={() => setAmount(String(v))}
+            {[500, 1000, 2500, 5000].map((value) => (
+              <button key={value} type="button" onClick={() => setAmount(String(value))}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent">
-                ₹{v}
+                Rs. {value}
               </button>
             ))}
           </div>

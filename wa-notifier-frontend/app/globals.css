@@ -36,6 +36,7 @@
   --sidebar-bg:       #111827;
   --sidebar-text:     #d1d5db;
   --sidebar-active:   #25D366;
+  --menu-text:        #002DB3;
   --danger:           #ef4444;
   --warning:          #f59e0b;
   --info:             #3b82f6;
@@ -69,6 +70,7 @@
   --surface-muted:    #07111f;
   --sidebar-bg:       #07111f;
   --sidebar-text:     #cbd5e1;
+  --menu-text:        #94AFFF;
 }
 
 @layer base {

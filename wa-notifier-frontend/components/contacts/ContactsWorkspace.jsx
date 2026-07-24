@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
-import { Plus, Search, Send, Trash2, Upload } from 'lucide-react';
+import { Pencil, Plus, Search, Send, Tag, Trash2, Upload, X } from 'lucide-react';
 
-const blank = { name: '', phone: '', tags: '' };
+const blank = { name: '', phone: '', tags: [] };
+const blankTag = { name: '', color: '#3b82f6', description: '' };
 
 function parseCSVLine(line) {
   const result = [];
@@ -44,6 +45,17 @@ function normalizeContact(contact) {
   };
 }
 
+function normalizeTag(tag) {
+  if (typeof tag === 'string') return { _id: tag, name: tag, color: '#3b82f6', description: '' };
+  return {
+    ...tag,
+    _id: tag?._id || tag?.id,
+    name: String(tag?.name || '').trim(),
+    color: tag?.color || '#3b82f6',
+    description: tag?.description || '',
+  };
+}
+
 function bodyText(template) {
   return template?.components?.find((component) => component?.type === 'BODY')?.text || '';
 }
@@ -60,8 +72,14 @@ export default function ContactsWorkspace() {
   const [tags, setTags] = useState([]);
   const [tag, setTag] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(blank);
+  const [tagModal, setTagModal] = useState(false);
+  const [tagForm, setTagForm] = useState(blankTag);
+  const [editingTagId, setEditingTagId] = useState(null);
+  const [tagSaving, setTagSaving] = useState(false);
+  const [tagError, setTagError] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -95,7 +113,7 @@ export default function ContactsWorkspace() {
       api.get(`/templates?clientId=${activeClient._id}`),
     ]).then(([contactsRes, tagsRes, templatesRes]) => {
       setContacts(asArray(contactsRes.data).map(normalizeContact));
-      setTags(asArray(tagsRes.data).filter(Boolean));
+      setTags(asArray(tagsRes.data).map(normalizeTag).filter((tagItem) => tagItem.name));
       setTemplates(asArray(templatesRes.data));
     })
       .catch((err) => {
@@ -124,11 +142,10 @@ export default function ContactsWorkspace() {
     }
     setSaving(true);
     try {
-      const dto = { ...form, phone, clientId: activeClient._id, tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [] };
+      const dto = { ...form, phone, clientId: activeClient._id, tags: form.tags };
       const { data } = await api.post('/contacts', dto);
       const saved = normalizeContact(data);
       setContacts((prev) => [saved, ...prev.filter((contact) => contact._id !== saved._id)]);
-      setTags((prev) => Array.from(new Set([...prev, ...saved.tags])).filter(Boolean));
       setModal(false);
       setForm(blank);
       load();
@@ -146,6 +163,49 @@ export default function ContactsWorkspace() {
       setContacts((prev) => prev.filter((contact) => contact._id !== id));
     } catch {
       alert('Could not delete contact. Please try again.');
+    }
+  };
+
+  const openTags = () => {
+    setTagForm(blankTag);
+    setEditingTagId(null);
+    setTagError('');
+    setTagModal(true);
+  };
+
+  const editTag = (tagItem) => {
+    setTagForm({ name: tagItem.name, color: tagItem.color || '#3b82f6', description: tagItem.description || '' });
+    setEditingTagId(tagItem._id);
+    setTagError('');
+  };
+
+  const saveTag = async () => {
+    if (!activeClient) return;
+    setTagError('');
+    if (!tagForm.name.trim()) { setTagError('Tag name is required'); return; }
+    setTagSaving(true);
+    try {
+      if (editingTagId) await api.patch(`/contacts/tags/${editingTagId}`, tagForm);
+      else await api.post('/contacts/tags', { ...tagForm, clientId: activeClient._id });
+      setTagForm(blankTag);
+      setEditingTagId(null);
+      load();
+    } catch (err) {
+      setTagError(err?.response?.data?.message || 'Could not save tag.');
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const deleteTag = async (tagItem) => {
+    if (!confirm(`Delete tag "${tagItem.name}"? It will be removed from matching contacts.`)) return;
+    try {
+      await api.delete(`/contacts/tags/${tagItem._id}`);
+      if (tag === tagItem.name) setTag('');
+      setForm((prev) => ({ ...prev, tags: prev.tags.filter((name) => name !== tagItem.name) }));
+      load();
+    } catch (err) {
+      setTagError(err?.response?.data?.message || 'Could not delete tag.');
     }
   };
 
@@ -253,7 +313,16 @@ export default function ContactsWorkspace() {
 
   const rows = asArray(contacts).map(normalizeContact);
   const query = search.trim().toLowerCase();
-  const filtered = rows.filter((contact) => !query || contact.name.toLowerCase().includes(query) || contact.phone.includes(query));
+  const filtered = rows.filter((contact) => {
+    const matchesSearch = !query
+      || contact.name.toLowerCase().includes(query)
+      || contact.phone.includes(query)
+      || contact.tags?.some((tagItem) => tagItem.toLowerCase().includes(query));
+    const matchesStatus = statusFilter === 'all'
+      || (statusFilter === 'active' && !contact.isOptedOut)
+      || (statusFilter === 'opted_out' && contact.isOptedOut);
+    return matchesSearch && matchesStatus;
+  });
   const canSend = messageMode === 'template'
     ? Boolean(selectedTemplate) && templateParams.slice(0, requiredParams).every((value) => value.trim())
     : Boolean(messageText.trim());
@@ -268,6 +337,9 @@ export default function ContactsWorkspace() {
             <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSV} disabled={importing} />
             <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing || !activeClient}>
               <Upload size={15} />{importing ? 'Importing...' : 'Import CSV'}
+            </Button>
+            <Button variant="outline" onClick={openTags} disabled={!activeClient}>
+              <Tag size={15} />Manage Tags
             </Button>
             <Button onClick={() => { setForm(blank); setFormError(''); setModal(true); }} disabled={!activeClient}>
               <Plus size={15} />Add Contact
@@ -291,38 +363,41 @@ export default function ContactsWorkspace() {
         </div>
       )}
 
-      <div className="flex gap-3 mb-5 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="mb-5 grid gap-3 md:grid-cols-[1fr_180px_180px]">
+        <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name or phone..."
-            className="w-full pl-8 pr-3 py-2 text-sm border border-input bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="Search name, phone, tag..."
+            className="pl-8"
           />
         </div>
-        <div className="flex gap-1 flex-wrap">
-          <button onClick={() => setTag('')} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!tag ? 'bg-brand text-white border-brand' : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}>All</button>
-          {tags.map((tagItem) => (
-            <button key={tagItem} onClick={() => setTag(tagItem)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${tag === tagItem ? 'bg-brand text-white border-brand' : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}>{tagItem}</button>
-          ))}
-        </div>
+        <Select value={tag} onChange={(e) => setTag(e.target.value)}>
+          <option value="">All tags</option>
+          {tags.map((tagItem) => <option key={tagItem._id} value={tagItem.name}>{tagItem.name}</option>)}
+        </Select>
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="opted_out">Opted out</option>
+        </Select>
       </div>
 
       {loading && <div className="flex justify-center py-20"><Spinner size={32} /></div>}
 
       {!loading && (
-        <Card>
+        <Card className="p-0 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--dark-border)]">
-                  {['Name', 'Phone', 'Tags', 'Opted Out', ''].map((header) => (
-                    <th key={header} className="text-left px-4 py-3 text-xs font-medium text-[var(--muted-text)]">{header}</th>
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  {['Name', 'Phone', 'Tags', 'Status', 'Actions'].map((header) => (
+                    <th key={header} className="px-4 py-3 font-semibold">{header}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--dark-border)]">
+              <tbody className="divide-y divide-border">
                 {filtered.length === 0 && (
                   <tr><td colSpan={5} className="text-center py-12 text-[var(--muted-text)]">No contacts found</td></tr>
                 )}
@@ -373,7 +448,94 @@ export default function ContactsWorkspace() {
           {formError && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{formError}</div>}
           <Input label="Phone (E.164) *" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="+919876543210" />
           <Input label="Name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="John Doe" />
-          <Input label="Tags (comma separated)" value={form.tags} onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))} placeholder="vip, newsletter" />
+          <div className="space-y-2">
+            <Select label="Tags" value="" onChange={(e) => {
+              const selected = e.target.value;
+              if (!selected) return;
+              setForm((prev) => ({ ...prev, tags: Array.from(new Set([...prev.tags, selected])) }));
+            }}>
+              <option value="">Add an existing tag...</option>
+              {tags.filter((tagItem) => !form.tags.includes(tagItem.name)).map((tagItem) => (
+                <option key={tagItem._id} value={tagItem.name}>{tagItem.name}</option>
+              ))}
+            </Select>
+            <div className="flex min-h-8 flex-wrap gap-1.5">
+              {form.tags.length === 0 && <span className="text-xs text-muted-foreground">No tags selected</span>}
+              {form.tags.map((tagName) => (
+                <span key={tagName} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs">
+                  {tagName}
+                  <button type="button" onClick={() => setForm((prev) => ({ ...prev, tags: prev.tags.filter((name) => name !== tagName) }))} aria-label={`Remove ${tagName}`}>
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Create or edit tag options from Manage Tags.</p>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={tagModal}
+        onClose={() => setTagModal(false)}
+        title="Manage Tags"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setTagModal(false)}>Close</Button>
+            <Button onClick={saveTag} disabled={tagSaving}>{tagSaving ? 'Saving...' : editingTagId ? 'Update tag' : 'Create tag'}</Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          {tagError && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{tagError}</div>}
+          <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
+            <Input label="Tag name" value={tagForm.name} onChange={(e) => setTagForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="VIP customers" />
+            <Input label="Color" type="color" value={tagForm.color} onChange={(e) => setTagForm((prev) => ({ ...prev, color: e.target.value }))} />
+          </div>
+          <Input label="Description" value={tagForm.description} onChange={(e) => setTagForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Optional internal note" />
+          {editingTagId && (
+            <Button variant="outline" size="sm" onClick={() => { setEditingTagId(null); setTagForm(blankTag); }}>
+              Cancel edit
+            </Button>
+          )}
+
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Tag</th>
+                  <th className="px-3 py-2 font-semibold">Description</th>
+                  <th className="px-3 py-2 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {tags.length === 0 && (
+                  <tr><td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">No tags created yet.</td></tr>
+                )}
+                {tags.map((tagItem) => (
+                  <tr key={tagItem._id}>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tagItem.color }} />
+                        <span className="font-medium">{tagItem.name}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{tagItem.description || '-'}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => editTag(tagItem)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground" aria-label={`Edit ${tagItem.name}`}>
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => deleteTag(tagItem)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-500" aria-label={`Delete ${tagItem.name}`}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </Modal>
 

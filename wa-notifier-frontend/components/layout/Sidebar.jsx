@@ -65,7 +65,7 @@ const ROLE_LABEL = { admin: 'Admin', master: 'Master', client_owner: 'Client', c
 function NavGroup({ title, items, pathname, onClose }) {
   return (
     <div className="mb-4">
-      {title && <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{title}</p>}
+      {title && <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--menu-text)]/70">{title}</p>}
       <div className="space-y-0.5">
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/');
@@ -73,7 +73,7 @@ function NavGroup({ title, items, pathname, onClose }) {
             <Link key={href} href={href}
               onClick={onClose}
               className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
-                ${active ? 'bg-brand-gradient text-white shadow-lg shadow-brand/20' : 'text-slate-400 hover:bg-white/[0.07] hover:text-white'}`}>
+                ${active ? 'bg-brand-gradient text-white shadow-lg shadow-brand/20' : 'text-[var(--menu-text)] hover:bg-white/[0.07] hover:text-[var(--menu-text)]'}`}>
               <Icon size={17} className={active ? '' : 'transition-transform duration-150 group-hover:scale-110'} />
               {label}
               {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/80" />}
@@ -190,7 +190,8 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         {(isAdmin || isMaster) && (
           <>
             <NavGroup title="Control panel" items={controlPanelForRole} pathname={pathname} onClose={onClose} />
-            <NavGroup title="Messaging tools" items={messagingNav} pathname={pathname} onClose={onClose} />
+            {/* Temporarily hidden from admin panel sidebar: Messaging tools */}
+            {/* <NavGroup title="Messaging tools" items={messagingNav} pathname={pathname} onClose={onClose} /> */}
           </>
         )}
       </nav>

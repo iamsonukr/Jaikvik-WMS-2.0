@@ -1,7 +1,7 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import { Button, Card, Modal, Input, PageHeader, Empty } from '@/components/ui';
+import { Badge, Button, Card, Modal, Input, PageHeader, Empty, Select } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 import {
@@ -17,6 +17,7 @@ const blank = { name: '', wabaId: '', phoneNumberId: '', accessToken: '', phone:
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
+const text = (value) => String(value || '').toLowerCase();
 
 export default function ClientsPage() {
   const { clients, setClients, activeClient, selectClient } = useClient();
@@ -28,6 +29,8 @@ export default function ClientsPage() {
   const [listError, setListError] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connectStatus, setConnectStatus] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '' });
   const waitTimerRef = useRef(null);
 
@@ -272,6 +275,23 @@ export default function ClientsPage() {
     </>
   );
 
+  const filteredClients = useMemo(() => {
+    const query = text(search.trim());
+    return clients.filter((client) => {
+      const matchesSearch = !query
+        || text(client.name).includes(query)
+        || text(client.phone).includes(query)
+        || text(client.phoneNumberId).includes(query)
+        || text(client.wabaId).includes(query)
+        || text(client.industry).includes(query)
+        || text(client.timezone).includes(query);
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'active' && client.isActive)
+        || (statusFilter === 'inactive' && !client.isActive);
+      return matchesSearch && matchesStatus;
+    });
+  }, [clients, search, statusFilter]);
+
   return (
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader
@@ -291,33 +311,61 @@ export default function ClientsPage() {
       {clients.length === 0
         ? <Empty icon={Building2} title="No clients yet" description="Add your first WhatsApp Business client to start sending messages." action={<div className="flex flex-wrap justify-center gap-2">{renderClientActions()}</div>} />
         : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {clients.map(c => (
-              <Card key={c._id} className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-brand/10 flex items-center justify-center">
-                    <Building2 size={20} className="text-brand" />
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(c)} className="p-1.5 hover:bg-accent rounded-lg transition-colors text-muted-foreground hover:text-accent-foreground"><Pencil size={14} /></button>
-                    <button onClick={() => remove(c._id)} className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors text-muted-foreground hover:text-red-500"><Trash2 size={14} /></button>
-                  </div>
-                </div>
-                <p className="font-semibold">{c.name}</p>
-                <p className="text-xs text-[var(--muted-text)] mt-0.5">{c.phone || c.phoneNumberId}</p>
-                {c.industry && <p className="text-xs text-[var(--muted-text)]">{c.industry}</p>}
-                <div className="mt-3 flex items-center justify-between">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {c.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <Link href={`/clients/${c._id}`} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"><ExternalLink size={11}/>Details</Link>
-                    <button onClick={() => selectClient(c)} className="text-xs text-brand font-medium hover:underline">Select</button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+          <Card className="p-0 overflow-hidden">
+            <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_170px]">
+              <Input placeholder="Search business, phone, WABA, industry..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    {['Business', 'Display Phone', 'WABA ID', 'Phone Number ID', 'Industry', 'Timezone', 'Status', 'Actions'].map((header) => (
+                      <th key={header} className="px-4 py-3 font-semibold">{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {!filteredClients.length && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No WhatsApp accounts match these filters.</td></tr>
+                  )}
+                  {filteredClients.map(c => (
+                    <tr key={c._id} className="table-row-hover">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+                            <Building2 size={17} className="text-brand" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium">{c.name}</p>
+                            <p className="font-mono text-xs text-muted-foreground">{c._id}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{c.phone || '-'}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{c.wabaId || '-'}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{c.phoneNumberId || '-'}</td>
+                      <td className="px-4 py-3">{c.industry || '-'}</td>
+                      <td className="px-4 py-3">{c.timezone || '-'}</td>
+                      <td className="px-4 py-3"><Badge label={c.isActive ? 'Active' : 'Inactive'} color={c.isActive ? 'green' : 'gray'} /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => selectClient(c)} className="text-xs font-medium text-brand hover:underline">Select</button>
+                          <Link href={`/master/clients/${c._id}`} className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"><ExternalLink size={11} />Details</Link>
+                          <button onClick={() => openEdit(c)} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground" aria-label="Edit account"><Pencil size={14} /></button>
+                          <button onClick={() => remove(c._id)} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500" aria-label="Delete account"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )
       }
 

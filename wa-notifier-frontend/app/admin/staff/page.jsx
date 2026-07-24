@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner } from '@/components/ui';
 import { UsersRound, Plus } from 'lucide-react';
@@ -7,6 +7,8 @@ import api from '@/lib/api';
 
 const PERMISSION_OPTIONS = ['clients:read', 'clients:write', 'wallet:credit', 'plans:write', 'pricing:write'];
 const BLANK = { name: '', email: '', password: '', role: 'master', permissions: [] };
+const text = (value) => String(value || '').toLowerCase();
+const fmtDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
 
 export default function StaffPage() {
   const [staff, setStaff] = useState(null);
@@ -14,6 +16,9 @@ export default function StaffPage() {
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const load = () => api.get('/auth/staff').then((r) => setStaff(r.data));
   useEffect(() => { load(); }, []);
@@ -48,6 +53,23 @@ export default function StaffPage() {
     await load();
   };
 
+  const filteredStaff = useMemo(() => {
+    const query = text(search.trim());
+    return (staff || []).filter((s) => {
+      const permissions = (s.permissions || []).join(' ');
+      const matchesSearch = !query
+        || text(s.name).includes(query)
+        || text(s.email).includes(query)
+        || text(s.role).includes(query)
+        || text(permissions).includes(query);
+      const matchesRole = roleFilter === 'all' || s.role === roleFilter;
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'active' && s.isActive)
+        || (statusFilter === 'disabled' && !s.isActive);
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [staff, search, roleFilter, statusFilter]);
+
   return (
     <AppShell allowedRoles={['admin']}>
       <PageHeader
@@ -62,22 +84,68 @@ export default function StaffPage() {
         <Empty icon={UsersRound} title="No staff accounts yet" />
       ) : (
         <Card className="p-0 overflow-hidden">
-          <div className="divide-y divide-border">
-            {staff.map((s) => (
-              <div key={s._id} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{s.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{s.email}</p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <Badge label={s.role === 'admin' ? 'Admin' : 'Master'} color={s.role === 'admin' ? 'blue' : 'gray'} />
-                  <Badge label={s.isActive ? 'Active' : 'Disabled'} color={s.isActive ? 'green' : 'red'} />
-                  <Button size="sm" variant="outline" onClick={() => toggleActive(s)}>
-                    {s.isActive ? 'Disable' : 'Enable'}
-                  </Button>
-                </div>
-              </div>
-            ))}
+          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_160px_160px]">
+            <Input placeholder="Search name, email, role, permission..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+              <option value="all">All roles</option>
+              <option value="admin">Admin</option>
+              <option value="master">Master</option>
+            </Select>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+            </Select>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Staff member</th>
+                  <th className="px-4 py-3 font-semibold">Role</th>
+                  <th className="px-4 py-3 font-semibold">Permissions</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Created</th>
+                  <th className="px-4 py-3 text-right font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {!filteredStaff.length && (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No staff match these filters.</td></tr>
+                )}
+                {filteredStaff.map((s) => (
+                  <tr key={s._id} className="table-row-hover">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">{s.email}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge label={s.role === 'admin' ? 'Admin' : 'Master'} color={s.role === 'admin' ? 'blue' : 'gray'} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex max-w-md flex-wrap gap-1.5">
+                        {s.role === 'admin' ? (
+                          <Badge label="Full access" color="green" />
+                        ) : (s.permissions || []).length ? (
+                          s.permissions.map((permission) => <Badge key={permission} label={permission} color="gray" />)
+                        ) : (
+                          <span className="text-muted-foreground">No extra permissions</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge label={s.isActive ? 'Active' : 'Disabled'} color={s.isActive ? 'green' : 'red'} />
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(s.createdAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button size="sm" variant="outline" onClick={() => toggleActive(s)}>
+                        {s.isActive ? 'Disable' : 'Enable'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}
@@ -86,7 +154,7 @@ export default function StaffPage() {
         footer={
           <>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={create} disabled={saving}>{saving ? 'Creating…' : 'Create account'}</Button>
+            <Button onClick={create} disabled={saving}>{saving ? 'Creating...' : 'Create account'}</Button>
           </>
         }
       >
@@ -100,7 +168,7 @@ export default function StaffPage() {
           </Select>
           {form.role === 'master' && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Permissions</label>
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Permissions</label>
               <div className="flex flex-wrap gap-2">
                 {PERMISSION_OPTIONS.map((perm) => (
                   <button key={perm} type="button" onClick={() => togglePermission(perm)}
