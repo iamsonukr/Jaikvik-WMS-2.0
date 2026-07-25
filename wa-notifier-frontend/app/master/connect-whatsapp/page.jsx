@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Card } from '@/components/ui';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import AppShell from '@/components/layout/AppShell';
+import { Button, Card, Spinner } from '@/components/ui';
+import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 import {
   isFacebookOrigin,
@@ -9,13 +13,15 @@ import {
   normalizeEmbeddedSignupData,
   parseEmbeddedSignupMessage,
 } from '@/lib/meta-embedded-signup';
-import { CheckCircle2, MessageCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, MessageCircle } from 'lucide-react';
 
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 
 export default function ConnectWhatsAppPage() {
+  const router = useRouter();
+  const { clients, loading: clientsLoading, refreshClients } = useClient();
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -98,16 +104,18 @@ export default function ConnectWhatsAppPage() {
     setStatus('Finalizing WhatsApp connection...');
 
     try {
-      await api.post('/clients/embedded-signup', {
+      const { data: account } = await api.post('/clients/embedded-signup', {
         code: current.code,
         wabaId,
         phoneNumberId,
         redirectUri: current.redirectUri,
         name: current.setup?.business_name || current.setup?.businessName || '',
       });
+      await refreshClients(account?._id);
       resetSignupState();
       setConnected(true);
-      setStatus('WhatsApp account connected successfully.');
+      setStatus('WhatsApp account connected successfully. Redirecting to dashboard...');
+      window.setTimeout(() => router.replace('/master/dashboard'), 900);
     } catch (err) {
       signupRef.current.submitting = false;
       setError(err?.response?.data?.message || 'Could not complete the WhatsApp connection. Please try again.');
@@ -115,7 +123,7 @@ export default function ConnectWhatsAppPage() {
     } finally {
       setConnecting(false);
     }
-  }, []);
+  }, [refreshClients, router]);
 
   useEffect(() => {
     if (!metaAppId) return;
@@ -205,7 +213,7 @@ export default function ConnectWhatsAppPage() {
     setStatus('Opening Facebook Embedded Signup...');
     addDebugEvent('Opening Meta Embedded Signup');
 
-    const redirectUri = `${window.location.origin}/meta-embedded-signup`;
+    const redirectUri = `${window.location.origin}/client/meta-embedded-signup`;
     signupRef.current.redirectUri = redirectUri;
 
     window.FB.login((response) => {
@@ -238,16 +246,30 @@ export default function ConnectWhatsAppPage() {
     });
   };
 
+  if (clientsLoading) {
+    return (
+      <AppShell allowedRoles={['admin', 'master']}>
+        <div className="flex justify-center py-20">
+          <Spinner size={32} />
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-background px-4 py-12 text-foreground">
+    <AppShell allowedRoles={['admin', 'master']}>
       <Card className="mx-auto max-w-md p-6">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-brand/10 text-brand">
           {connected ? <CheckCircle2 size={24} /> : <MessageCircle size={24} />}
         </div>
         <h1 className="text-2xl font-bold tracking-tight">Connect WhatsApp</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Connect your WhatsApp Business account securely through Meta. You do not need dashboard access for this step.
+          Link a Meta Business account and WhatsApp number to your workspace.
         </p>
+
+        <div className="mt-5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+          {clients.length} WhatsApp number{clients.length === 1 ? '' : 's'} connected across the workspace.
+        </div>
 
         {status && (
           <div className="mt-5 rounded-lg border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
@@ -264,6 +286,14 @@ export default function ConnectWhatsAppPage() {
           <MessageCircle size={16} />
           {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect WhatsApp'}
         </Button>
+
+        {connected && (
+          <Link href="/master/dashboard">
+            <Button variant="outline" className="mt-3 w-full">
+              Open dashboard <ArrowRight size={15} />
+            </Button>
+          </Link>
+        )}
 
         {debugEvents.length > 0 && (
           <div className="mt-5 rounded-lg border border-border bg-muted/60 px-3 py-2">
@@ -283,6 +313,6 @@ export default function ConnectWhatsAppPage() {
           </div>
         )}
       </Card>
-    </main>
+    </AppShell>
   );
 }

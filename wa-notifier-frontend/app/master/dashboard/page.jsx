@@ -1,14 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { StatCard, Card, CardHeader, StatusBadge, Spinner, PageHeader } from '@/components/ui';
+import { StatCard, Card, CardHeader, StatusBadge, Spinner, PageHeader, Empty, Button } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
-import { Users, Send, CheckCheck, Eye, AlertCircle, Megaphone, AlertTriangle } from 'lucide-react';
+import { Users, Send, CheckCheck, Eye, AlertCircle, Megaphone, AlertTriangle, MessageCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function DashboardPage() {
-  const { activeClient } = useClient();
+  const { activeClient, loading: clientsLoading } = useClient();
   const [stats,  setStats]  = useState(null);
   const [daily,  setDaily]  = useState([]);
   const [recent, setRecent] = useState([]);
@@ -41,18 +42,25 @@ export default function DashboardPage() {
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader
         title="Dashboard"
-        subtitle={activeClient ? `Overview for ${activeClient.name}` : 'Select a client to begin'}
+        subtitle={activeClient ? `Overview for ${activeClient.name}` : 'Connect WhatsApp Business to finish setup'}
       />
 
-      {!activeClient && (
-        <div className="soft-alert border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-          No client selected. Add a client from the Clients page to get started.
-        </div>
+      {clientsLoading && (
+        <div className="flex justify-center py-20"><Spinner size={32} /></div>
       )}
 
-      {loading && <div className="flex justify-center py-20"><Spinner size={32} /></div>}
+      {!clientsLoading && !activeClient && (
+        <Empty
+          icon={MessageCircle}
+          title="Connect your WhatsApp Business account"
+          description="Use Meta Embedded Signup to link your business number before viewing campaign analytics."
+          action={<Link href="/master/connect-whatsapp"><Button><MessageCircle size={15} />Connect WhatsApp</Button></Link>}
+        />
+      )}
 
-      {stats && !loading && (
+      {activeClient && loading && <div className="flex justify-center py-20"><Spinner size={32} /></div>}
+
+      {activeClient && stats && !loading && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <StatCard label="Contacts"  value={stats.totalContacts}  icon={Users}      color="#25D366" />

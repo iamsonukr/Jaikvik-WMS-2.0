@@ -1,11 +1,15 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Message, MessageDocument } from './message.schema';
 import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
 import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
 import { TemplatesService } from '../templates/templates.service';
+import { WalletService } from '../wallet/wallet.service';
+import { Tenant, TenantDocument } from '../tenants/tenant.schema';
+import { Plan, PlanDocument } from '../plans/plan.schema';
+import { MessageCategory } from '../common/enums/message-category.enum';
 
 @Injectable()
 export class InboxService {
@@ -14,6 +18,9 @@ export class InboxService {
     private meta: MetaService,
     private clients: WhatsAppAccountsService,
     private templates: TemplatesService,
+    private wallet: WalletService,
+    @InjectModel(Tenant.name) private tenantModel: Model<TenantDocument>,
+    @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
   ) {}
 
   /** All unique threads (latest message per phone) */
@@ -38,15 +45,42 @@ export class InboxService {
 
   async reply(clientId: string, phone: string, text: string) {
     const client = await this.clients.findOne(clientId);
-    const res = await this.meta.sendText(client.phoneNumberId, client.accessToken, phone, text);
+    if (!client) throw new NotFoundException('WhatsApp account not found.');
+
+    const tenantId = this.resolveTenantId(client);
+    const price = await this.resolvePlanPrice(String(tenantId), MessageCategory.SERVICE);
+    const charge = this.totalForOneMessage(price);
+    const txn = charge > 0
+      ? await this.wallet.debitForMessage(tenantId, charge, {
+          description: `Service message sent to ${phone}`,
+          referenceId: phone,
+          messageCategory: MessageCategory.SERVICE,
+          appliedUnitPrice: price.sellingPrice,
+          tax: price.taxPercent,
+        })
+      : null;
+
+    let res: any;
+    try {
+      res = await this.meta.sendText(client.phoneNumberId, client.accessToken, phone, text);
+    } catch (err) {
+      await this.refundFailedSend(tenantId, charge, phone, MessageCategory.SERVICE, 'text reply');
+      throw err;
+    }
+
     return this.model.create({
       clientId: toObjectId(clientId, 'clientId'),
-      tenantId: client?.tenantId,
+      tenantId,
       phone,
       direction: 'outbound',
       type: 'text',
       text,
       waMessageId: res?.messages?.[0]?.id,
+      messageCategory: MessageCategory.SERVICE,
+      appliedUnitPrice: price.sellingPrice,
+      appliedTaxPercent: price.taxPercent,
+      chargedAmount: charge,
+      walletTransactionId: txn?._id,
       timestamp: new Date(),
     });
   }
@@ -59,27 +93,48 @@ export class InboxService {
     bodyParameters: string[] = [],
   ) {
     const client = await this.clients.findOne(clientId);
+    if (!client) throw new NotFoundException('WhatsApp account not found.');
     const template = await this.templates.findByName(clientId, templateName);
     if (!template) throw new BadRequestException('Template not found for this WhatsApp account.');
     if (String(template.status || '').toLowerCase() !== 'approved') {
       throw new BadRequestException('Only approved templates can be sent.');
     }
 
+    const category = this.normalizeCategory(template.category);
+    const tenantId = this.resolveTenantId(client);
+    const price = await this.resolvePlanPrice(String(tenantId), category);
+    const charge = this.totalForOneMessage(price);
+    const txn = charge > 0
+      ? await this.wallet.debitForMessage(tenantId, charge, {
+          description: `${category} template "${template.name}" sent to ${phone}`,
+          referenceId: phone,
+          messageCategory: category,
+          appliedUnitPrice: price.sellingPrice,
+          tax: price.taxPercent,
+        })
+      : null;
+
     const language = languageCode || template.language || 'en';
     const components = this.buildSendComponents(template.components || [], bodyParameters);
-    const res = await this.meta.sendTemplate(
-      client.phoneNumberId,
-      client.accessToken,
-      phone,
-      template.name,
-      language,
-      components,
-    );
+    let res: any;
+    try {
+      res = await this.meta.sendTemplate(
+        client.phoneNumberId,
+        client.accessToken,
+        phone,
+        template.name,
+        language,
+        components,
+      );
+    } catch (err) {
+      await this.refundFailedSend(tenantId, charge, phone, category, `template "${template.name}"`);
+      throw err;
+    }
 
     const body = template.components?.find((component: any) => component?.type === 'BODY')?.text || template.name;
     return this.model.create({
       clientId: toObjectId(clientId, 'clientId'),
-      tenantId: client?.tenantId,
+      tenantId,
       phone,
       direction: 'outbound',
       type: 'template',
@@ -90,6 +145,11 @@ export class InboxService {
         bodyParameters,
       },
       waMessageId: res?.messages?.[0]?.id,
+      messageCategory: category,
+      appliedUnitPrice: price.sellingPrice,
+      appliedTaxPercent: price.taxPercent,
+      chargedAmount: charge,
+      walletTransactionId: txn?._id,
       timestamp: new Date(),
     });
   }
@@ -104,6 +164,55 @@ export class InboxService {
 
   private clientIdQuery(clientId: string) {
     return legacyObjectIdFilter('clientId', clientId);
+  }
+
+  private resolveTenantId(client: any): Types.ObjectId {
+    if (!client?.tenantId) {
+      throw new BadRequestException('This WhatsApp account is not linked to a client tenant, so wallet billing cannot be applied.');
+    }
+    return toObjectId(client.tenantId, 'tenantId');
+  }
+
+  private normalizeCategory(category: unknown): MessageCategory {
+    const raw = String(category || '').toLowerCase();
+    if (raw === 'marketing') return MessageCategory.MARKETING;
+    if (raw === 'authentication') return MessageCategory.AUTHENTICATION;
+    if (raw === 'service') return MessageCategory.SERVICE;
+    return MessageCategory.UTILITY;
+  }
+
+  private async resolvePlanPrice(tenantId: string, category: MessageCategory) {
+    const tenant = await this.tenantModel.findById(toObjectId(tenantId, 'tenantId'));
+    if (!tenant?.planId) {
+      throw new NotFoundException('No active plan is assigned to this client.');
+    }
+
+    const plan = await this.planModel.findById(tenant.planId);
+    if (!plan) throw new NotFoundException('Client plan not found.');
+
+    const rawRate = plan.messageRates?.[category] ?? 0;
+    const sellingPrice = Number(rawRate);
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      throw new NotFoundException(`No valid ${category} message rate is configured for plan "${plan.name}".`);
+    }
+
+    return {
+      sellingPrice,
+      taxPercent: plan.taxPercent || 0,
+    };
+  }
+
+  private totalForOneMessage(price: { sellingPrice: number; taxPercent: number }) {
+    return Number((price.sellingPrice * (1 + price.taxPercent / 100)).toFixed(4));
+  }
+
+  private async refundFailedSend(tenantId: Types.ObjectId, charge: number, phone: string, category: MessageCategory, label: string) {
+    if (charge <= 0) return;
+    await this.wallet.refund(tenantId, charge, {
+      description: `Refund for failed ${label} to ${phone}`,
+      referenceId: phone,
+      messageCategory: category,
+    });
   }
 
   private buildSendComponents(templateComponents: any[], bodyParameters: string[]) {

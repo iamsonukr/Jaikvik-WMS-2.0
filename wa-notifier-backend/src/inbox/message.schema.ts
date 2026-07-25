@@ -14,6 +14,11 @@ export class Message {
   @Prop() text: string;
   @Prop({ type: Object }) media: Record<string, any>;
   @Prop() waMessageId: string;
+  @Prop() messageCategory: string;
+  @Prop() appliedUnitPrice: number;
+  @Prop() appliedTaxPercent: number;
+  @Prop() chargedAmount: number;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WalletTransaction' }) walletTransactionId: Types.ObjectId;
   @Prop({ default: 'open' }) threadStatus: string; // open | assigned | resolved
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' }) assignedTo: Types.ObjectId;
   @Prop() timestamp: Date;

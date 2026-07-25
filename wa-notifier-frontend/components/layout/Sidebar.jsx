@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Users, UserCircle, FileText, Megaphone,
+  LayoutDashboard, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, ChevronDown, X, Check,
   Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound,
 } from 'lucide-react';
@@ -23,7 +23,9 @@ const messagingNav = [
   { href: '/master/templates',   label: 'Templates',   icon: FileText },
   { href: '/master/chatbot',     label: 'Chatbot',     icon: Bot },
   { href: '/master/analytics',   label: 'Analytics',   icon: BarChart2 },
-  { href: '/master/clients',     label: 'WhatsApp Accounts', icon: Users },
+  { href: '/master/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle },
+  { href: '/master/plans',       label: 'Plans',       icon: CreditCard },
+  { href: '/master/wallet',      label: 'Wallet',      icon: Wallet },
   { href: '/master/settings',    label: 'Settings',    icon: Settings },
 ];
 
@@ -96,10 +98,9 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
   const isMaster = role === 'master';
   const isClient = role === 'client_owner' || role === 'client_user';
 
-  // Admin (supreme) sees everything. Master sees the same, minus the
-  // handful of admin-exclusive control-panel actions. Client sees only its
-  // own scoped nav.
-  const controlPanelForRole = isAdmin ? controlPanelNav : controlPanelNav.filter((i) => !i.adminOnly);
+  // Admin sees platform controls. Master sees the client-style operating
+  // workspace and uses the account switcher above to work across clients.
+  const controlPanelForRole = controlPanelNav;
   const clientNavForRole = clientNav.filter((item) => {
     if (item.ownerOnly && role !== 'client_owner') return false;
     return true;
@@ -184,13 +185,8 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
         {isClient && <NavGroup items={clientNavForRole} pathname={pathname} onClose={onClose} />}
-        {(isAdmin || isMaster) && (
-          <>
-            <NavGroup title="Control panel" items={controlPanelForRole} pathname={pathname} onClose={onClose} />
-            {/* Temporarily hidden from admin panel sidebar: Messaging tools */}
-            {/* <NavGroup title="Messaging tools" items={messagingNav} pathname={pathname} onClose={onClose} /> */}
-          </>
-        )}
+        {isMaster && <NavGroup items={messagingNav} pathname={pathname} onClose={onClose} />}
+        {isAdmin && <NavGroup title="Control panel" items={controlPanelForRole} pathname={pathname} onClose={onClose} />}
       </nav>
 
       {/* User */}
