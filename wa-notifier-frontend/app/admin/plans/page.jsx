@@ -2,16 +2,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea } from '@/components/ui';
-import { Tags, Plus, Pencil, EyeOff, Eye } from 'lucide-react';
+import { Tags, Plus, Pencil, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 
 const BLANK = {
-  name: '', description: '', price: '', billingCycle: 'quarterly', currency: 'INR',
-  taxPercent: 18, trialDays: 7, buttonText: 'Choose plan', isPopular: false, showOnWebsite: true,
+  name: '', description: '', monthlyPrice: '', quarterlyPrice: '', yearlyPrice: '', currency: 'INR',
+  taxPercent: 18, trialDays: 7, buttonText: 'Choose plan', isPopular: false,
+  contactsLimit: '', teamMembersLimit: '', whatsappNumbersLimit: '', customFieldsLimit: '', tagsLimit: '',
+  marketingRate: '', authenticationRate: '', utilityRate: '', serviceRate: '0',
   featuresText: '',
 };
 const text = (value) => String(value || '').toLowerCase();
 const fmtMoney = (value, currency = 'INR') => `${currency === 'INR' ? 'Rs. ' : `${currency} `}${Number(value || 0).toLocaleString('en-IN')}`;
+const fmtLimit = (value) => {
+  if (value === undefined || value === null || value === '') return '-';
+  return Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-IN') : String(value);
+};
 const featureLines = (features) => {
   if (Array.isArray(features)) return features.filter(Boolean);
   return Object.entries(features || {})
@@ -19,6 +25,68 @@ const featureLines = (features) => {
     .map(([key, value]) => value === true ? key.replace(/([A-Z])/g, ' $1').toLowerCase() : `${key}: ${value}`);
 };
 const toFeatureArray = (value) => String(value || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+const fromLimit = (value) => value === undefined || value === null ? '' : String(value);
+const fromRate = (value) => value === undefined || value === null ? '' : String(value);
+const fromPrice = (price, cycle) => {
+  if (typeof price === 'number') return cycle === 'quarterly' ? String(price) : '';
+  return price?.[cycle] === undefined || price?.[cycle] === null ? '' : String(price[cycle]);
+};
+const toLimit = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+const toRate = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return 0;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+};
+const buildLimits = (form) => {
+  const limits = {
+    contacts: toLimit(form.contactsLimit),
+    teamMembers: toLimit(form.teamMembersLimit),
+    whatsappNumbers: toLimit(form.whatsappNumbersLimit),
+    customFields: toLimit(form.customFieldsLimit),
+    tags: toLimit(form.tagsLimit),
+  };
+  return Object.fromEntries(Object.entries(limits).filter(([, value]) => value !== undefined));
+};
+const buildMessageRates = (form) => ({
+  marketing: toRate(form.marketingRate),
+  authentication: toRate(form.authenticationRate),
+  utility: toRate(form.utilityRate),
+  service: toRate(form.serviceRate),
+});
+const buildPrice = (form) => {
+  const price = {
+    monthly: toLimit(form.monthlyPrice),
+    quarterly: toLimit(form.quarterlyPrice),
+    yearly: toLimit(form.yearlyPrice),
+  };
+  return Object.values(price).some((value) => value !== null && value !== undefined) ? price : null;
+};
+const rateSummary = (plan) => {
+  const rates = plan.messageRates || {};
+  return [
+    ['Marketing', rates.marketing],
+    ['Auth', rates.authentication],
+    ['Utility', rates.utility],
+    ['Service', rates.service],
+  ];
+};
+const priceSummary = (plan) => {
+  if (!plan.price) return 'On request';
+  const price = typeof plan.price === 'number' ? { quarterly: plan.price } : plan.price;
+  return [
+    ['M', price.monthly],
+    ['Q', price.quarterly],
+    ['Y', price.yearly],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([label, value]) => `${label}: ${fmtMoney(value, plan.currency)}`)
+    .join(' / ') || 'Not set';
+};
 
 export default function PlansPage() {
   const [plans, setPlans] = useState(null);
@@ -27,10 +95,10 @@ export default function PlansPage() {
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deletingId, setDeletingId] = useState('');
   const [search, setSearch] = useState('');
-  const [cycleFilter, setCycleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [visibilityFilter, setVisibilityFilter] = useState('all');
 
   const load = () => api.get('/plans').then((r) => setPlans(r.data));
   useEffect(() => { load(); }, []);
@@ -40,9 +108,21 @@ export default function PlansPage() {
     setEditingId(plan._id);
     setForm({
       name: plan.name, description: plan.description || '',
-      price: plan.price ?? '', billingCycle: plan.billingCycle, currency: plan.currency,
+      monthlyPrice: fromPrice(plan.price, 'monthly'),
+      quarterlyPrice: fromPrice(plan.price, 'quarterly'),
+      yearlyPrice: fromPrice(plan.price, 'yearly'),
+      currency: plan.currency,
       taxPercent: plan.taxPercent, trialDays: plan.trialDays,
-      buttonText: plan.buttonText, isPopular: plan.isPopular, showOnWebsite: plan.showOnWebsite,
+      buttonText: plan.buttonText, isPopular: plan.isPopular,
+      contactsLimit: fromLimit(plan.contacts ?? plan.limits?.contacts),
+      teamMembersLimit: fromLimit(plan.teamMembers ?? plan.limits?.teamMembers),
+      whatsappNumbersLimit: fromLimit(plan.whatsappNumbers ?? plan.limits?.whatsappNumbers),
+      customFieldsLimit: fromLimit(plan.customFields ?? plan.limits?.customFields),
+      tagsLimit: fromLimit(plan.tags ?? plan.limits?.tags),
+      marketingRate: fromRate(plan.messageRates?.marketing),
+      authenticationRate: fromRate(plan.messageRates?.authentication),
+      utilityRate: fromRate(plan.messageRates?.utility),
+      serviceRate: fromRate(plan.messageRates?.service ?? 0),
       featuresText: featureLines(plan.features).join('\n'),
     });
     setModalOpen(true);
@@ -53,8 +133,30 @@ export default function PlansPage() {
     if (!form.name) { setError('Name is required'); return; }
     setSaving(true);
     try {
-      const { featuresText, ...rest } = form;
-      const payload = { ...rest, features: toFeatureArray(featuresText), price: form.billingCycle === 'on_request' ? null : Number(form.price) };
+      const {
+        featuresText,
+        contactsLimit,
+        teamMembersLimit,
+        whatsappNumbersLimit,
+        customFieldsLimit,
+        tagsLimit,
+        monthlyPrice,
+        quarterlyPrice,
+        yearlyPrice,
+        ...rest
+      } = form;
+      const payload = {
+        ...rest,
+        contacts: toLimit(contactsLimit),
+        teamMembers: toLimit(teamMembersLimit),
+        whatsappNumbers: toLimit(whatsappNumbersLimit),
+        customFields: toLimit(customFieldsLimit),
+        tags: toLimit(tagsLimit),
+        limits: buildLimits(form),
+        messageRates: buildMessageRates(form),
+        features: toFeatureArray(featuresText),
+        price: buildPrice(form),
+      };
       if (editingId) await api.patch(`/plans/${editingId}`, payload);
       else await api.post('/plans', payload);
       setModalOpen(false);
@@ -66,9 +168,25 @@ export default function PlansPage() {
     }
   };
 
-  const toggleWebsite = async (plan) => {
-    await api.patch(`/plans/${plan._id}`, { showOnWebsite: !plan.showOnWebsite });
+  const toggleStatus = async (plan) => {
+    const current = plan.status || 'active';
+    const nextStatus = current === 'active' ? 'inactive' : 'active';
+    await api.patch(`/plans/${plan._id}`, { status: nextStatus });
     await load();
+  };
+
+  const deletePlan = async (plan) => {
+    setDeleteError('');
+    if (!confirm(`Delete "${plan.name}"? This is permanent and only works for plans with no subscription history.`)) return;
+    setDeletingId(plan._id);
+    try {
+      await api.delete(`/plans/${plan._id}`);
+      await load();
+    } catch (err) {
+      setDeleteError(err?.response?.data?.message || 'Could not delete plan');
+    } finally {
+      setDeletingId('');
+    }
   };
 
   const filteredPlans = useMemo(() => {
@@ -78,17 +196,11 @@ export default function PlansPage() {
         || text(plan.name).includes(query)
         || text(plan.description).includes(query)
         || text(plan.buttonText).includes(query)
-        || text(plan.billingCycle).includes(query)
         || featureLines(plan.features).some((feature) => text(feature).includes(query));
-      const matchesCycle = cycleFilter === 'all' || plan.billingCycle === cycleFilter;
       const matchesStatus = statusFilter === 'all' || (plan.status || 'active') === statusFilter;
-      const matchesVisibility = visibilityFilter === 'all'
-        || (visibilityFilter === 'website' && plan.showOnWebsite)
-        || (visibilityFilter === 'hidden' && !plan.showOnWebsite)
-        || (visibilityFilter === 'popular' && plan.isPopular);
-      return matchesSearch && matchesCycle && matchesStatus && matchesVisibility;
+      return matchesSearch && matchesStatus;
     });
-  }, [plans, search, cycleFilter, statusFilter, visibilityFilter]);
+  }, [plans, search, statusFilter]);
 
   return (
     <AppShell allowedRoles={['admin', 'master']}>
@@ -104,25 +216,17 @@ export default function PlansPage() {
         <Empty icon={Tags} title="No plans yet" description="Create your first plan to publish pricing." />
       ) : (
         <Card className="p-0 overflow-hidden">
-          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_160px_150px_170px]">
+          {deleteError && (
+            <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+              {deleteError}
+            </div>
+          )}
+          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_150px]">
             <Input placeholder="Search plans, descriptions, CTA..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            <Select value={cycleFilter} onChange={(e) => setCycleFilter(e.target.value)}>
-              <option value="all">All cycles</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
-              <option value="on_request">On request</option>
-            </Select>
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">All statuses</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
-            </Select>
-            <Select value={visibilityFilter} onChange={(e) => setVisibilityFilter(e.target.value)}>
-              <option value="all">All visibility</option>
-              <option value="website">On website</option>
-              <option value="hidden">Hidden</option>
-              <option value="popular">Popular</option>
             </Select>
           </div>
           <div className="overflow-x-auto">
@@ -131,9 +235,13 @@ export default function PlansPage() {
                 <tr>
                   <th className="px-4 py-3 font-semibold">Plan</th>
                   <th className="px-4 py-3 font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Cycle</th>
+                  <th className="px-4 py-3 font-semibold">Contacts</th>
+                  <th className="px-4 py-3 font-semibold">Team</th>
+                  <th className="px-4 py-3 font-semibold">WhatsApp</th>
+                  <th className="px-4 py-3 font-semibold">Custom Fields</th>
+                  <th className="px-4 py-3 font-semibold">Tags</th>
+                  <th className="px-4 py-3 font-semibold">Message Rates</th>
                   <th className="px-4 py-3 font-semibold">Tax / Trial</th>
-                  <th className="px-4 py-3 font-semibold">Website</th>
                   <th className="px-4 py-3 font-semibold">Features</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Button</th>
@@ -142,7 +250,7 @@ export default function PlansPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredPlans.length && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No plans match these filters.</td></tr>
+                  <tr><td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">No plans match these filters.</td></tr>
                 )}
                 {filteredPlans.map((plan) => (
                   <tr key={plan._id} className="table-row-hover">
@@ -156,15 +264,23 @@ export default function PlansPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-semibold">
-                      {plan.billingCycle === 'on_request' ? 'On request' : fmtMoney(plan.price, plan.currency)}
+                      {priceSummary(plan)}
                     </td>
-                    <td className="px-4 py-3 capitalize">{String(plan.billingCycle || '-').replace('_', ' ')}</td>
+                    <td className="px-4 py-3">{fmtLimit(plan.contacts ?? plan.limits?.contacts)}</td>
+                    <td className="px-4 py-3">{fmtLimit(plan.teamMembers ?? plan.limits?.teamMembers)}</td>
+                    <td className="px-4 py-3">{fmtLimit(plan.whatsappNumbers ?? plan.limits?.whatsappNumbers)}</td>
+                    <td className="px-4 py-3">{fmtLimit(plan.customFields ?? plan.limits?.customFields)}</td>
+                    <td className="px-4 py-3">{fmtLimit(plan.tags ?? plan.limits?.tags)}</td>
+                    <td className="px-4 py-3">
+                      <div className="grid min-w-40 grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        {rateSummary(plan).map(([label, value]) => (
+                          <p key={label}><span className="text-muted-foreground">{label}:</span> {fmtMoney(value || 0)}</p>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <p>{plan.taxPercent ?? 0}% tax</p>
                       <p className="text-xs text-muted-foreground">{plan.trialDays ?? 0} trial days</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge label={plan.showOnWebsite ? 'On website' : 'Hidden'} color={plan.showOnWebsite ? 'blue' : 'gray'} />
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-muted-foreground">{featureLines(plan.features).length} feature(s)</p>
@@ -179,8 +295,24 @@ export default function PlansPage() {
                         <Button variant="outline" size="sm" onClick={() => openEdit(plan)}>
                           <Pencil size={13} /> Edit
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => toggleWebsite(plan)} title="Toggle website visibility">
-                          {plan.showOnWebsite ? <EyeOff size={13} /> : <Eye size={13} />}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleStatus(plan)}
+                          title={(plan.status || 'active') === 'active' ? 'Disable plan' : 'Activate plan'}
+                        >
+                          {(plan.status || 'active') === 'active' ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+                          {(plan.status || 'active') === 'active' ? 'Disable' : 'Activate'}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => deletePlan(plan)}
+                          disabled={deletingId === plan._id}
+                          title="Delete plan"
+                        >
+                          <Trash2 size={13} />
+                          {deletingId === plan._id ? 'Deleting...' : 'Delete'}
                         </Button>
                       </div>
                     </td>
@@ -203,20 +335,33 @@ export default function PlansPage() {
         <div className="space-y-3">
           <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <div className="grid grid-cols-2 gap-3">
-            <Select label="Billing cycle" value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })}>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
-              <option value="on_request">On request (Enterprise)</option>
-            </Select>
-            <Input label="Price (INR)" type="number" disabled={form.billingCycle === 'on_request'}
-              value={form.billingCycle === 'on_request' ? '' : form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })} />
+          <Input label="Default currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Monthly price" type="number" min="0" value={form.monthlyPrice} onChange={(e) => setForm({ ...form, monthlyPrice: e.target.value })} />
+            <Input label="Quarterly price" type="number" min="0" value={form.quarterlyPrice} onChange={(e) => setForm({ ...form, quarterlyPrice: e.target.value })} />
+            <Input label="Yearly price" type="number" min="0" value={form.yearlyPrice} onChange={(e) => setForm({ ...form, yearlyPrice: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Tax %" type="number" value={form.taxPercent} onChange={(e) => setForm({ ...form, taxPercent: Number(e.target.value) })} />
             <Input label="Trial days" type="number" value={form.trialDays} onChange={(e) => setForm({ ...form, trialDays: Number(e.target.value) })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Contacts" type="number" min="0" value={form.contactsLimit} onChange={(e) => setForm({ ...form, contactsLimit: e.target.value })} />
+            <Input label="Team members" type="number" min="0" value={form.teamMembersLimit} onChange={(e) => setForm({ ...form, teamMembersLimit: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="WhatsApp numbers" type="number" min="0" value={form.whatsappNumbersLimit} onChange={(e) => setForm({ ...form, whatsappNumbersLimit: e.target.value })} />
+            <Input label="Custom fields" type="number" min="0" value={form.customFieldsLimit} onChange={(e) => setForm({ ...form, customFieldsLimit: e.target.value })} />
+          </div>
+          <Input label="Custom tags" type="number" min="0" value={form.tagsLimit} onChange={(e) => setForm({ ...form, tagsLimit: e.target.value })} />
+          <div className="rounded-lg border border-border p-3">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Message rates by template category</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Marketing (INR)" type="number" min="0" step="0.001" value={form.marketingRate} onChange={(e) => setForm({ ...form, marketingRate: e.target.value })} />
+              <Input label="Authentication (INR)" type="number" min="0" step="0.001" value={form.authenticationRate} onChange={(e) => setForm({ ...form, authenticationRate: e.target.value })} />
+              <Input label="Utility (INR)" type="number" min="0" step="0.001" value={form.utilityRate} onChange={(e) => setForm({ ...form, utilityRate: e.target.value })} />
+              <Input label="Service (INR)" type="number" min="0" step="0.001" value={form.serviceRate} onChange={(e) => setForm({ ...form, serviceRate: e.target.value })} />
+            </div>
           </div>
           <Input label="Button text" value={form.buttonText} onChange={(e) => setForm({ ...form, buttonText: e.target.value })} />
           <Textarea
@@ -229,10 +374,6 @@ export default function PlansPage() {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.isPopular} onChange={(e) => setForm({ ...form, isPopular: e.target.checked })} />
             Mark as popular
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.showOnWebsite} onChange={(e) => setForm({ ...form, showOnWebsite: e.target.checked })} />
-            Show on public pricing page
           </label>
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>

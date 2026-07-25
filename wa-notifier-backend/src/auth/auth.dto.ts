@@ -26,3 +26,7 @@ export class UpdateStaffDto {
   @IsOptional() @IsArray() @IsString({ each: true }) permissions?: string[];
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
+
+export class ResetTenantUserPasswordDto {
+  @IsString() @MinLength(6) newPassword: string;
+}

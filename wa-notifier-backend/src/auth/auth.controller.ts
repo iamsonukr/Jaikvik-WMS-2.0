@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateStaffDto, LoginDto, RegisterDto, UpdateStaffDto } from './auth.dto';
+import { CreateStaffDto, LoginDto, RegisterDto, ResetTenantUserPasswordDto, UpdateStaffDto } from './auth.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -41,4 +41,16 @@ export class AuthController {
   @Patch('staff/:id')
   @Roles(UserRole.ADMIN)
   updateStaff(@Param('id') id: string, @Body() dto: UpdateStaffDto) { return this.authService.updateStaff(id, dto); }
+
+  @Get('tenant-users/:tenantId')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  listTenantUsers(@Param('tenantId') tenantId: string) {
+    return this.authService.listTenantUsers(tenantId);
+  }
+
+  @Patch('tenant-users/:id/password')
+  @Roles(UserRole.ADMIN)
+  resetTenantUserPassword(@Param('id') id: string, @Body() dto: ResetTenantUserPasswordDto) {
+    return this.authService.resetTenantUserPassword(id, dto.newPassword);
+  }
 }

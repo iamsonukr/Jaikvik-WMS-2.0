@@ -4,7 +4,7 @@
 //                including staff management, tenant suspension, plan
 //                deletion, and subscription revocation. No tenantId.
 // MASTER       — day-to-day platform staff: runs campaigns/messaging for any
-//                onboarded client and manages tenants/plans/pricing/wallets,
+//                onboarded client and manages tenants/plans/wallets,
 //                but without ADMIN's exclusive supreme actions. No tenantId.
 // CLIENT_OWNER — owner of a tenant (paying customer account), scoped to their tenantId.
 // CLIENT_USER  — team member invited into a tenant, scoped to their tenantId.

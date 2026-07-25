@@ -1,13 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   MessageCircle, Megaphone, Send, Users2, FileText, BarChart2, ShieldCheck,
   Zap, Check, ChevronDown, Moon, Sun, ArrowRight,
 } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
 import { useTheme } from '@/components/theme-provider';
+import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
+import { roleHomePath } from '@/hooks/useBasePath';
 
 const features = [
   { icon: Megaphone, title: 'Bulk campaigns', text: 'Send approved WhatsApp templates to thousands of contacts in segmented batches, with live delivery tracking.' },
@@ -136,9 +139,22 @@ function DashboardPreview() {
   );
 }
 
-function formatPrice(plan) {
-  if (plan.billingCycle === 'on_request' || plan.price == null) return 'Price on request';
-  return `₹${plan.price.toLocaleString('en-IN')}`;
+const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly'];
+const CYCLE_LABELS = { monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly' };
+
+function priceForCycle(plan, cycle) {
+  if (plan.price == null) return 'Price on request';
+  const price = typeof plan.price === 'number' ? { quarterly: plan.price } : plan.price;
+  const value = price?.[cycle];
+  if (value === undefined || value === null || value === '') return null;
+  return Number(value);
+}
+
+function formatPrice(plan, cycle) {
+  const price = priceForCycle(plan, cycle);
+  if (price === 'Price on request') return price;
+  if (price === null) return 'Not available';
+  return `₹${price.toLocaleString('en-IN')}`;
 }
 
 function cycleLabel(cycle) {
@@ -155,6 +171,7 @@ function featureLines(features) {
 function Pricing() {
   const [plans, setPlans] = useState(null);
   const [error, setError] = useState(false);
+  const [billingCycle, setBillingCycle] = useState('quarterly');
 
   useEffect(() => {
     api.get('/plans/public').then(r => setPlans(r.data)).catch(() => setError(true));
@@ -166,6 +183,18 @@ function Pricing() {
         <div className="mx-auto mb-12 max-w-xl text-center">
           <h2 className="text-3xl font-bold tracking-tight">Simple, transparent pricing</h2>
           <p className="mt-3 text-sm text-muted-foreground">Plus applicable taxes. Change or cancel anytime.</p>
+          <div className="mt-5 inline-flex rounded-lg border border-border bg-muted/40 p-1">
+            {BILLING_CYCLES.map((cycle) => (
+              <button
+                key={cycle}
+                type="button"
+                onClick={() => setBillingCycle(cycle)}
+                className={`h-9 rounded-md px-4 text-xs font-medium transition-colors ${billingCycle === cycle ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {CYCLE_LABELS[cycle]}
+              </button>
+            ))}
+          </div>
         </div>
 
         {error && (
@@ -192,9 +221,9 @@ function Pricing() {
                 <h3 className="font-semibold">{plan.name}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">{plan.description}</p>
                 <div className="mt-4">
-                  <span className="text-3xl font-bold">{formatPrice(plan)}</span>
-                  {plan.billingCycle !== 'on_request' && (
-                    <span className="text-sm text-muted-foreground">{cycleLabel(plan.billingCycle)}</span>
+                  <span className="text-3xl font-bold">{formatPrice(plan, billingCycle)}</span>
+                  {typeof priceForCycle(plan, billingCycle) === 'number' && (
+                    <span className="text-sm text-muted-foreground">{cycleLabel(billingCycle)}</span>
                   )}
                 </div>
                 <ul className="mt-5 flex-1 space-y-2.5 text-sm">
@@ -289,6 +318,27 @@ function Footer() {
 
 export default function PublicHomePage() {
   const { theme, toggleTheme } = useTheme();
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace(roleHomePath(user.role));
+    }
+  }, [loading, router, user]);
+
+  if (loading || user) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-3 bg-background">
+        <div className="relative w-10 h-10">
+          <div className="absolute inset-0 rounded-full border-4 border-primary/15" />
+          <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+        </div>
+        <p className="text-sm text-muted-foreground animate-pulse">Loading workspace...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header theme={theme} toggleTheme={toggleTheme} />

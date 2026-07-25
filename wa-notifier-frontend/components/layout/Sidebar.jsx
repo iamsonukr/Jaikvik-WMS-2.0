@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, ChevronDown, X, Check,
-  Wallet, CreditCard, Building2, Tags, Receipt, ScrollText, UsersRound,
+  Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
@@ -36,7 +36,6 @@ const controlPanelNav = [
   { href: '/admin/dashboard',   label: 'Dashboard',      icon: LayoutDashboard },
   { href: '/admin/tenants',     label: 'Clients',        icon: Building2 },
   { href: '/admin/plans',       label: 'Plans',          icon: Tags },
-  { href: '/admin/pricing',     label: 'Message Pricing', icon: Receipt },
   { href: '/admin/wallets',     label: 'Wallets',        icon: Wallet },
   { href: '/admin/payments',    label: 'Payments',       icon: CreditCard },
   { href: '/admin/staff',       label: 'Staff & Roles',  icon: UsersRound, adminOnly: true },
@@ -55,7 +54,8 @@ const clientNav = [
   { href: '/client/templates',   label: 'Templates',   icon: FileText },
   { href: '/client/chatbot',     label: 'Chatbot',     icon: Bot },
   { href: '/client/analytics',   label: 'Analytics',   icon: BarChart2 },
-  { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true, requiresNoLinkedWhatsApp: true },
+  { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true },
+  { href: '/client/plans',      label: 'Plans',       icon: CreditCard },
   { href: '/client/wallet',      label: 'Wallet',      icon: Wallet },
   { href: '/client/settings',    label: 'Settings',    icon: Settings },
 ];
@@ -88,7 +88,7 @@ function NavGroup({ title, items, pathname, onClose }) {
 export default function Sidebar({ open = false, onClose = () => {} }) {
   const pathname               = usePathname();
   const { user, logout }       = useAuth();
-  const { clients, activeClient, selectClient, loading: clientsLoading } = useClient();
+  const { clients, activeClient, selectClient } = useClient();
   const [clientOpen, setClientOpen] = useState(false);
 
   const role = normalizeRole(user?.role);
@@ -100,23 +100,20 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
   // handful of admin-exclusive control-panel actions. Client sees only its
   // own scoped nav.
   const controlPanelForRole = isAdmin ? controlPanelNav : controlPanelNav.filter((i) => !i.adminOnly);
-  const hasLinkedWhatsApp = clients.length > 0;
   const clientNavForRole = clientNav.filter((item) => {
     if (item.ownerOnly && role !== 'client_owner') return false;
-    if (item.requiresNoLinkedWhatsApp && (clientsLoading || hasLinkedWhatsApp)) return false;
     return true;
   });
 
-  // Admin/Master can switch between WhatsApp accounts. Tenant users operate
-  // inside one company, so they see a fixed workspace identity instead.
-  const showClientSwitcher = (isAdmin || isMaster) && clients.length > 0;
-  const showClientCompany = isClient && activeClient;
+  // Platform users switch across all accounts; tenant users switch across
+  // their own WhatsApp numbers when their plan allows more than one.
+  const showClientSwitcher = ((isAdmin || isMaster) && clients.length > 0) || (isClient && clients.length > 1);
+  const showClientCompany = isClient && activeClient && !showClientSwitcher;
 
   return (
     <aside
       className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/10 bg-[#07111f] text-slate-300 shadow-2xl transition-transform duration-200 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
     >
-
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
         <div className="relative w-9 h-9 shrink-0 rounded-xl flex items-center justify-center bg-brand-gradient shadow-lg shadow-brand/25">

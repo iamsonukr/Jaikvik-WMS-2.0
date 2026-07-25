@@ -34,6 +34,9 @@ export class RazorpayPayment {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WalletTransaction', default: null })
   walletTransactionId: Types.ObjectId | null;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Subscription', default: null })
+  subscriptionId: Types.ObjectId | null;
+
   @Prop({ type: Object }) notes: Record<string, any>;
 }
 

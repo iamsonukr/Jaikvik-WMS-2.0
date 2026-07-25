@@ -44,7 +44,7 @@ export default function AdminSettingsPage() {
           <Input label="Company name" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
           <Input label="Support email" type="email" value={form.supportEmail} onChange={(e) => setForm({ ...form, supportEmail: e.target.value })} />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Default tax % (new plans/pricing)" type="number" value={form.defaultTaxPercent}
+            <Input label="Default tax % (new plans)" type="number" value={form.defaultTaxPercent}
               onChange={(e) => setForm({ ...form, defaultTaxPercent: e.target.value })} />
             <Input label="Default trial days (new plans)" type="number" value={form.defaultTrialDays}
               onChange={(e) => setForm({ ...form, defaultTrialDays: e.target.value })} />

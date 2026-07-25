@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Subscription, SubscriptionDocument, SubscriptionStatus } from './subscription.schema';
 import { Plan, PlanDocument } from '../plans/plan.schema';
+import { BillingCycle } from '../common/enums/billing-cycle.enum';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import {
   AssignSubscriptionDto,
@@ -60,8 +61,10 @@ export class SubscriptionsService {
       { status: SubscriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: 'Superseded by new plan assignment' },
     );
 
+    const billingCycle = dto.billingCycle || this.defaultBillingCycle(plan);
+    const priceSnapshot = this.priceForCycle(plan, billingCycle);
     const startDate = dto.startDate ? new Date(dto.startDate) : new Date();
-    const endDate = this.computeEndDate(startDate, plan.billingCycle);
+    const endDate = this.computeEndDate(startDate, billingCycle);
 
     const subscription = await this.subModel.create({
       tenantId,
@@ -69,8 +72,8 @@ export class SubscriptionsService {
       startDate,
       endDate,
       status: SubscriptionStatus.ACTIVE,
-      priceSnapshot: plan.price ?? 0,
-      billingCycleSnapshot: plan.billingCycle,
+      priceSnapshot,
+      billingCycleSnapshot: billingCycle,
       currency: plan.currency,
     });
 
@@ -81,7 +84,7 @@ export class SubscriptionsService {
   async changePlan(subscriptionId: string, dto: ChangeSubscriptionPlanDto) {
     const current = await this.subModel.findById(subscriptionId);
     if (!current) throw new NotFoundException('Subscription not found');
-    return this.assign({ tenantId: String(current.tenantId), planId: dto.planId });
+    return this.assign({ tenantId: String(current.tenantId), planId: dto.planId, billingCycle: dto.billingCycle });
   }
 
   async extend(subscriptionId: string, dto: ExtendSubscriptionDto) {
@@ -135,6 +138,27 @@ export class SubscriptionsService {
     const end = new Date(startDate);
     end.setDate(end.getDate() + days);
     return end;
+  }
+
+  private priceForCycle(plan: PlanDocument, billingCycle: string): number {
+    if (billingCycle === BillingCycle.ON_REQUEST) return 0;
+    const price = plan.price as any;
+    const value = typeof price === 'number' ? price : price?.[billingCycle];
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new BadRequestException(`Price is not configured for ${billingCycle} billing on this plan`);
+    }
+    return amount;
+  }
+
+  private defaultBillingCycle(plan: PlanDocument): BillingCycle {
+    const price = plan.price as any;
+    if (!price) return BillingCycle.ON_REQUEST;
+    if (typeof price === 'number') return BillingCycle.QUARTERLY;
+    if (price.quarterly !== null && price.quarterly !== undefined) return BillingCycle.QUARTERLY;
+    if (price.monthly !== null && price.monthly !== undefined) return BillingCycle.MONTHLY;
+    if (price.yearly !== null && price.yearly !== undefined) return BillingCycle.YEARLY;
+    return BillingCycle.ON_REQUEST;
   }
 
   private async syncTenant(tenant: TenantDocument, subscription: SubscriptionDocument, plan: PlanDocument) {

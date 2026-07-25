@@ -15,7 +15,6 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { PlansModule } from './plans/plans.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { PricingModule } from './pricing/pricing.module';
 import { WalletModule } from './wallet/wallet.module';
 import { PaymentsModule } from './payments/payments.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
@@ -43,7 +42,6 @@ import { RolesGuard } from './common/guards/roles.guard';
     WebhooksModule,
     PlansModule,
     SubscriptionsModule,
-    PricingModule,
     WalletModule,
     PaymentsModule,
     AuditLogModule,

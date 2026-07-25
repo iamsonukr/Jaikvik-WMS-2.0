@@ -23,6 +23,12 @@ export class WhatsAppAccountsController {
     return this.svc.findAllByTenant(user.tenantId);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  @Get('tenant/:tenantId')
+  findByTenant(@Param('tenantId') tenantId: string) {
+    return this.svc.findAllByTenant(tenantId);
+  }
+
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Get(':id')
   findOne(@Param('id') id: string) { return this.svc.findOnePublic(id); }

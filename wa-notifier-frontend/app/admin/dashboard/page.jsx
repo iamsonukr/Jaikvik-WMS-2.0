@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, StatCard, Card, CardHeader, Spinner, Badge } from '@/components/ui';
-import { Building2, Tags, Receipt, ScrollText, ArrowRight, Wallet as WalletIcon, TrendingUp, IndianRupee } from 'lucide-react';
+import { Building2, Tags, ScrollText, ArrowRight, TrendingUp, IndianRupee } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
@@ -12,8 +12,7 @@ import api from '@/lib/api';
 
 const quickLinks = [
   { href: '/tenants', label: 'Manage clients', icon: Building2, desc: 'Onboard, activate, suspend, and assign plans.' },
-  { href: '/plans', label: 'Manage plans', icon: Tags, desc: 'Edit pricing, features, and limits per plan.' },
-  { href: '/pricing', label: 'Message pricing', icon: Receipt, desc: 'Configure per-category, per-country pricing.' },
+  { href: '/plans', label: 'Manage plans', icon: Tags, desc: 'Edit pricing, message rates, features, and limits per plan.' },
   { href: '/audit-logs', label: 'Audit logs', icon: ScrollText, desc: 'Review staff actions across the platform.' },
 ];
 

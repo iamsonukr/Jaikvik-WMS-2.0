@@ -5,9 +5,13 @@ import { WhatsAppAccountsService } from './whatsapp-accounts.service';
 import { WhatsAppAccountsController } from './whatsapp-accounts.controller';
 import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountOwnershipGuard } from './whatsapp-account-ownership.guard';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [MongooseModule.forFeature([{ name: WhatsAppAccount.name, schema: WhatsAppAccountSchema }])],
+  imports: [
+    MongooseModule.forFeature([{ name: WhatsAppAccount.name, schema: WhatsAppAccountSchema }]),
+    SubscriptionsModule,
+  ],
   providers: [WhatsAppAccountsService, MetaService, WhatsAppAccountOwnershipGuard],
   controllers: [WhatsAppAccountsController],
   exports: [WhatsAppAccountsService, MongooseModule],

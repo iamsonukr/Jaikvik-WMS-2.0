@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatCard } from '@/components/ui';
-import { Wallet as WalletIcon, TrendingUp, TrendingDown, Plus, Receipt } from 'lucide-react';
+import { Wallet as WalletIcon, TrendingUp, TrendingDown, Plus, Receipt, CreditCard } from 'lucide-react';
 import api from '@/lib/api';
 
 function loadRazorpayScript() {
@@ -122,7 +123,14 @@ function WalletPage() {
       <PageHeader
         title="Wallet"
         subtitle="Recharge and track spend on messages and campaigns."
-        action={<Button onClick={() => setRechargeOpen(true)}><Plus size={16} /> Add money</Button>}
+        action={
+          <>
+            <Link href="/client/plans">
+              <Button variant="outline"><CreditCard size={16} /> Plans</Button>
+            </Link>
+            <Button onClick={() => setRechargeOpen(true)}><Plus size={16} /> Add money</Button>
+          </>
+        }
       />
 
       {!balance ? (

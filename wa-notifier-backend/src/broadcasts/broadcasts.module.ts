@@ -7,9 +7,10 @@ import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountsModule } from '../whatsapp-accounts/whatsapp-accounts.module';
 import { ContactsModule } from '../contacts/contacts.module';
 import { TemplatesModule } from '../templates/templates.module';
-import { PricingModule } from '../pricing/pricing.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
+import { PlansModule } from '../plans/plans.module';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
   imports: [
@@ -20,7 +21,8 @@ import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
     WhatsAppAccountsModule,
     ContactsModule,
     TemplatesModule,
-    PricingModule,
+    PlansModule,
+    TenantsModule,
     WalletModule,
   ],
   providers: [BroadcastsService, MetaService, TenantOwnershipGuard],

@@ -53,7 +53,7 @@ export class PlansController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
   remove(@Param('id') id: string) {
     return this.svc.remove(id);
   }

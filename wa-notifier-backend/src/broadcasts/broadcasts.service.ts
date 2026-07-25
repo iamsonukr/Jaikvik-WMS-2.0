@@ -6,10 +6,11 @@ import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
 import { ContactsService } from '../contacts/contacts.service';
 import { TemplatesService } from '../templates/templates.service';
-import { PricingService } from '../pricing/pricing.service';
 import { WalletService } from '../wallet/wallet.service';
-import { MessageCategory } from '../pricing/message-pricing.schema';
+import { MessageCategory } from '../common/enums/message-category.enum';
 import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
+import { Tenant, TenantDocument } from '../tenants/tenant.schema';
+import { Plan, PlanDocument } from '../plans/plan.schema';
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -24,8 +25,9 @@ export class BroadcastsService {
     private clients: WhatsAppAccountsService,
     private contacts: ContactsService,
     private templates: TemplatesService,
-    private pricing: PricingService,
     private wallet: WalletService,
+    @InjectModel(Tenant.name) private tenantModel: Model<TenantDocument>,
+    @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
   ) {}
 
   findAll(clientId: string) {
@@ -73,7 +75,7 @@ export class BroadcastsService {
     const tenantId = toObjectId(broadcast.tenantId || client.tenantId, 'tenantId');
     const contacts = await this.contacts.findBySegment(String(broadcast.clientId), broadcast.targetTags);
     const category = await this.resolveCategory(broadcast);
-    const price = await this.pricing.resolvePrice(String(tenantId), category, 'default');
+    const price = await this.resolvePlanPrice(String(tenantId), category);
     const walletBalance = await this.wallet.getBalance(tenantId);
 
     const recipients = contacts.length;
@@ -113,7 +115,7 @@ export class BroadcastsService {
     const tenantId = toObjectId(broadcast.tenantId || client.tenantId, 'tenantId');
     const contacts = await this.contacts.findBySegment(String(broadcast.clientId), broadcast.targetTags);
     const category = await this.resolveCategory(broadcast);
-    const price = await this.pricing.resolvePrice(String(tenantId), category, 'default');
+    const price = await this.resolvePlanPrice(String(tenantId), category);
 
     const totalCost = Number(
       (price.sellingPrice * contacts.length * (1 + price.taxPercent / 100)).toFixed(4),
@@ -253,6 +255,29 @@ export class BroadcastsService {
     if (raw === 'authentication') return MessageCategory.AUTHENTICATION;
     if (raw === 'service') return MessageCategory.SERVICE;
     return MessageCategory.UTILITY;
+  }
+
+  private async resolvePlanPrice(tenantId: string, category: MessageCategory) {
+    const tenant = await this.tenantModel.findById(toObjectId(tenantId, 'tenantId'));
+    if (!tenant?.planId) {
+      throw new NotFoundException('No active plan is assigned to this client.');
+    }
+
+    const plan = await this.planModel.findById(tenant.planId);
+    if (!plan) throw new NotFoundException('Client plan not found.');
+
+    const rawRate = plan.messageRates?.[category] ?? 0;
+    const sellingPrice = Number(rawRate);
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      throw new NotFoundException(`No valid ${category} message rate is configured for plan "${plan.name}".`);
+    }
+
+    return {
+      sellingPrice,
+      currency: plan.currency || 'INR',
+      taxPercent: plan.taxPercent || 0,
+      planId: String(plan._id),
+    };
   }
 
   /** Replace {{variable}} tokens in component params */

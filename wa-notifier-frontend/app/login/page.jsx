@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -15,13 +15,19 @@ const highlights = [
 ];
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(roleHomePath(user.role));
+    }
+  }, [authLoading, router, user]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -36,6 +42,18 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (authLoading || user) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-3 bg-background">
+        <div className="relative w-10 h-10">
+          <div className="absolute inset-0 rounded-full border-4 border-primary/15" />
+          <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+        </div>
+        <p className="text-sm text-muted-foreground animate-pulse">Loading workspace...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background px-4 py-8 text-foreground">

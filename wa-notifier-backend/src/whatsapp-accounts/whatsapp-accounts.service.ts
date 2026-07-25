@@ -7,6 +7,7 @@ import { EmbeddedSignupDto, PublicEmbeddedSignupDto } from './whatsapp-account.d
 import { WhatsAppAccount, WhatsAppAccountDocument } from './whatsapp-account.schema';
 import { MetaService } from '../common/meta.service';
 import { ObjectIdInput, toObjectId } from '../common/mongo-id';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class WhatsAppAccountsService {
@@ -16,6 +17,7 @@ export class WhatsAppAccountsService {
     @InjectModel(WhatsAppAccount.name) private model: Model<WhatsAppAccountDocument>,
     private cfg: ConfigService,
     private meta: MetaService,
+    private subscriptions: SubscriptionsService,
   ) {}
 
   findAll() { return this.model.find().select('-accessToken'); }
@@ -26,7 +28,10 @@ export class WhatsAppAccountsService {
   findOnePublic(id: string) { return this.model.findById(toObjectId(id, 'clientId')).select('-accessToken'); }
   findByPhoneNumberId(phoneNumberId: string) { return this.model.findOne({ phoneNumberId }); }
   findByMetaEntityId(entityId: string) { return this.model.findOne({ $or: [{ wabaId: entityId }, { phoneNumberId: entityId }] }); }
-  create(dto: Partial<WhatsAppAccount>, tenantId?: ObjectIdInput) {
+  async create(dto: Partial<WhatsAppAccount>, tenantId?: ObjectIdInput) {
+    if (tenantId && dto.phoneNumberId) {
+      await this.assertTenantCanAddPhoneNumber(tenantId, dto.phoneNumberId);
+    }
     return this.model.create(tenantId ? { ...dto, tenantId: toObjectId(tenantId, 'tenantId') } : dto);
   }
 
@@ -47,6 +52,10 @@ export class WhatsAppAccountsService {
 
     if (!phoneNumberId) {
       throw new BadRequestException('Meta did not return a WhatsApp phone number for this account.');
+    }
+
+    if (tenantId) {
+      await this.assertTenantCanAddPhoneNumber(tenantId, phoneNumberId);
     }
 
     await this.meta.subscribeWaba(dto.wabaId, accessToken).catch(err => {
@@ -78,6 +87,39 @@ export class WhatsAppAccountsService {
     ).select('-accessToken');
 
     return doc;
+  }
+
+  private async assertTenantCanAddPhoneNumber(tenantIdInput: ObjectIdInput, phoneNumberId: string) {
+    const tenantId = toObjectId(tenantIdInput, 'tenantId');
+    const existing = await this.model.findOne({ phoneNumberId });
+
+    if (existing) {
+      if (existing.tenantId && String(existing.tenantId) === String(tenantId)) return;
+      throw new BadRequestException('This WhatsApp number is already connected to another client.');
+    }
+
+    const subscription = await this.subscriptions.currentForTenant(String(tenantId));
+    if (!subscription || new Date(subscription.endDate) < new Date()) {
+      throw new BadRequestException('An active plan is required before connecting a WhatsApp number.');
+    }
+
+    const plan = subscription.planId as any;
+    const limit = this.resolveWhatsAppNumberLimit(plan);
+    if (limit === null) return;
+
+    const currentCount = await this.model.countDocuments({ tenantId });
+    if (currentCount >= limit) {
+      throw new BadRequestException(
+        `Your current plan allows ${limit} WhatsApp number${limit === 1 ? '' : 's'}. Upgrade your plan to connect more numbers.`,
+      );
+    }
+  }
+
+  private resolveWhatsAppNumberLimit(plan: any): number | null {
+    const rawLimit = plan?.whatsappNumbers ?? plan?.limits?.whatsappNumbers;
+    if (rawLimit === null || rawLimit === undefined || rawLimit === '') return null;
+    const limit = Number(rawLimit);
+    return Number.isFinite(limit) && limit >= 0 ? limit : null;
   }
 
   async createFromPublicEmbeddedSignup(dto: PublicEmbeddedSignupDto) {

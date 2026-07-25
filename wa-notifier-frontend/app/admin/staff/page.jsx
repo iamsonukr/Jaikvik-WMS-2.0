@@ -5,7 +5,7 @@ import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner }
 import { UsersRound, Plus } from 'lucide-react';
 import api from '@/lib/api';
 
-const PERMISSION_OPTIONS = ['clients:read', 'clients:write', 'wallet:credit', 'plans:write', 'pricing:write'];
+const PERMISSION_OPTIONS = ['clients:read', 'clients:write', 'wallet:credit', 'plans:write'];
 const BLANK = { name: '', email: '', password: '', role: 'master', permissions: [] };
 const text = (value) => String(value || '').toLowerCase();
 const fmtDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';

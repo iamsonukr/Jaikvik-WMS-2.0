@@ -22,6 +22,8 @@ const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 export default function ConnectWhatsAppPage() {
   const router = useRouter();
   const { clients, loading: clientsLoading, refreshClients } = useClient();
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -82,9 +84,21 @@ export default function ConnectWhatsAppPage() {
   };
 
   useEffect(() => {
-    if (clientsLoading || connecting || connected) return;
-    if (clients.length > 0) router.replace('/client/dashboard');
-  }, [clients.length, clientsLoading, connected, connecting, router]);
+    let mounted = true;
+    api.get('/subscriptions/me')
+      .then(({ data }) => { if (mounted) setSubscription(data); })
+      .catch(() => { if (mounted) setSubscription(null); })
+      .finally(() => { if (mounted) setSubscriptionLoading(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  const plan = subscription?.planId;
+  const rawWhatsappLimit = plan?.whatsappNumbers ?? plan?.limits?.whatsappNumbers;
+  const whatsappLimit = rawWhatsappLimit === null || rawWhatsappLimit === undefined || rawWhatsappLimit === ''
+    ? null
+    : Number(rawWhatsappLimit);
+  const hasWhatsappLimit = Number.isFinite(whatsappLimit);
+  const limitReached = hasWhatsappLimit && clients.length >= whatsappLimit;
 
   const finishEmbeddedSignup = useCallback(async () => {
     const current = signupRef.current;
@@ -204,6 +218,10 @@ export default function ConnectWhatsAppPage() {
     setError('');
     setStatus('');
 
+    if (limitReached) {
+      setError(`Your current plan allows ${whatsappLimit} WhatsApp number${whatsappLimit === 1 ? '' : 's'}. Upgrade your plan to connect more numbers.`);
+      return;
+    }
     if (!metaAppId || !metaConfigId) {
       setError('Meta Embedded Signup is not configured yet.');
       return;
@@ -251,7 +269,7 @@ export default function ConnectWhatsAppPage() {
     });
   };
 
-  if (clientsLoading || (clients.length > 0 && !connecting && !connected)) {
+  if (clientsLoading || subscriptionLoading) {
     return (
       <AppShell allowedRoles={['client_owner']}>
         <div className="flex justify-center py-20">
@@ -269,8 +287,14 @@ export default function ConnectWhatsAppPage() {
         </div>
         <h1 className="text-2xl font-bold tracking-tight">Connect WhatsApp</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Link your Meta Business account and WhatsApp number to activate your workspace.
+          Link a Meta Business account and WhatsApp number to your workspace.
         </p>
+
+        <div className="mt-5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+          {hasWhatsappLimit
+            ? `${clients.length} of ${whatsappLimit} WhatsApp numbers connected on your current plan.`
+            : `${clients.length} WhatsApp number${clients.length === 1 ? '' : 's'} connected on your current plan.`}
+        </div>
 
         {status && (
           <div className="mt-5 rounded-lg border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
@@ -283,9 +307,9 @@ export default function ConnectWhatsAppPage() {
           </div>
         )}
 
-        <Button className="mt-6 w-full" onClick={connectWhatsApp} disabled={connecting || connected}>
+        <Button className="mt-6 w-full" onClick={connectWhatsApp} disabled={connecting || connected || limitReached}>
           <MessageCircle size={16} />
-          {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect WhatsApp'}
+          {connected ? 'Connected' : connecting ? 'Connecting...' : limitReached ? 'Plan limit reached' : 'Connect WhatsApp'}
         </Button>
 
         {connected && (

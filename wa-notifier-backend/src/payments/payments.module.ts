@@ -4,11 +4,17 @@ import { RazorpayPayment, RazorpayPaymentSchema } from './razorpay-payment.schem
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { WalletModule } from '../wallet/wallet.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { Plan, PlanSchema } from '../plans/plan.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: RazorpayPayment.name, schema: RazorpayPaymentSchema }]),
+    MongooseModule.forFeature([
+      { name: RazorpayPayment.name, schema: RazorpayPaymentSchema },
+      { name: Plan.name, schema: PlanSchema },
+    ]),
     WalletModule,
+    SubscriptionsModule,
   ],
   providers: [PaymentsService],
   controllers: [PaymentsController],

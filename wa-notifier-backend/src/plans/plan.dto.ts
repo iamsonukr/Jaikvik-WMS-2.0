@@ -1,18 +1,23 @@
 import { IsArray, IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
-import { BillingCycle, PlanStatus } from './plan.schema';
+import { PlanStatus } from './plan.schema';
 
 export class CreatePlanDto {
   @IsString() name: string;
   @IsOptional() @IsString() description?: string;
 
-  @IsOptional() @IsNumber() @Min(0) price?: number | null;
-  @IsEnum(BillingCycle) billingCycle: BillingCycle;
+  @IsOptional() @IsObject() price?: Record<string, any> | null;
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsNumber() @Min(0) taxPercent?: number;
   @IsOptional() @IsNumber() @Min(0) trialDays?: number;
 
   @IsOptional() @IsArray() @IsString({ each: true }) features?: string[];
   @IsOptional() @IsObject() limits?: Record<string, any>;
+  @IsOptional() @IsNumber() @Min(0) contacts?: number | null;
+  @IsOptional() @IsNumber() @Min(0) teamMembers?: number | null;
+  @IsOptional() @IsNumber() @Min(0) whatsappNumbers?: number | null;
+  @IsOptional() @IsNumber() @Min(0) customFields?: number | null;
+  @IsOptional() @IsNumber() @Min(0) tags?: number | null;
+  @IsOptional() @IsObject() messageRates?: Record<string, any>;
 
   @IsOptional() @IsEnum(PlanStatus) status?: PlanStatus;
   @IsOptional() @IsNumber() displayOrder?: number;
@@ -25,14 +30,19 @@ export class UpdatePlanDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() description?: string;
 
-  @IsOptional() @IsNumber() @Min(0) price?: number | null;
-  @IsOptional() @IsEnum(BillingCycle) billingCycle?: BillingCycle;
+  @IsOptional() @IsObject() price?: Record<string, any> | null;
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsNumber() @Min(0) taxPercent?: number;
   @IsOptional() @IsNumber() @Min(0) trialDays?: number;
 
   @IsOptional() @IsArray() @IsString({ each: true }) features?: string[];
   @IsOptional() @IsObject() limits?: Record<string, any>;
+  @IsOptional() @IsNumber() @Min(0) contacts?: number | null;
+  @IsOptional() @IsNumber() @Min(0) teamMembers?: number | null;
+  @IsOptional() @IsNumber() @Min(0) whatsappNumbers?: number | null;
+  @IsOptional() @IsNumber() @Min(0) customFields?: number | null;
+  @IsOptional() @IsNumber() @Min(0) tags?: number | null;
+  @IsOptional() @IsObject() messageRates?: Record<string, any>;
 
   @IsOptional() @IsEnum(PlanStatus) status?: PlanStatus;
   @IsOptional() @IsNumber() displayOrder?: number;
