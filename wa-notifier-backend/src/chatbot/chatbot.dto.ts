@@ -1,7 +1,8 @@
 import { IsBoolean, IsIn, IsMongoId, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateChatbotRuleDto {
-  @IsMongoId() clientId: string;
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
   @IsString() @MinLength(1) keyword: string;
   @IsOptional() @IsIn(['contains', 'exact', 'starts_with']) matchType?: string;
   @IsString() @MinLength(1) replyText: string;

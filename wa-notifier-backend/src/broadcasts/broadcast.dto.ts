@@ -1,7 +1,8 @@
 import { IsArray, IsMongoId, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateBroadcastDto {
-  @IsMongoId() clientId: string;
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
   @IsString() @MinLength(1) name: string;
   @IsString() @MinLength(1) templateName: string;
   @IsString() languageCode: string;

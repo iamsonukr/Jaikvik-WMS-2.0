@@ -4,7 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Message, MessageDocument } from './message.schema';
 import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
-import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
+import { toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
 import { TemplatesService } from '../templates/templates.service';
 import { WalletService } from '../wallet/wallet.service';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
@@ -24,9 +24,9 @@ export class InboxService {
   ) {}
 
   /** All unique threads (latest message per phone) */
-  async threads(clientId: string) {
+  async threads(whatsappAccountId: string) {
     return this.model.aggregate([
-      { $match: this.clientIdQuery(clientId) },
+      { $match: this.whatsappAccountIdQuery(whatsappAccountId) },
       { $sort: { createdAt: -1 } },
       { $group: { _id: '$phone', latest: { $first: '$$ROOT' } } },
       { $replaceRoot: { newRoot: '$latest' } },
@@ -34,20 +34,20 @@ export class InboxService {
     ]);
   }
 
-  messages(clientId: string, phone: string) {
+  messages(whatsappAccountId: string, phone: string) {
     return this.model
-      .find({ ...this.clientIdQuery(clientId), phone })
+      .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone })
       .sort({ createdAt: 1 })
       .limit(200);
   }
 
   save(dto: Partial<Message>) { return this.model.create(dto); }
 
-  async reply(clientId: string, phone: string, text: string) {
-    const client = await this.clients.findOne(clientId);
-    if (!client) throw new NotFoundException('WhatsApp account not found.');
+  async reply(whatsappAccountId: string, phone: string, text: string) {
+    const account = await this.clients.findOne(whatsappAccountId);
+    if (!account) throw new NotFoundException('WhatsApp account not found.');
 
-    const tenantId = this.resolveTenantId(client);
+    const tenantId = this.resolveTenantId(account);
     const price = await this.resolvePlanPrice(String(tenantId), MessageCategory.SERVICE);
     const charge = this.totalForOneMessage(price);
     const txn = charge > 0
@@ -62,14 +62,14 @@ export class InboxService {
 
     let res: any;
     try {
-      res = await this.meta.sendText(client.phoneNumberId, client.accessToken, phone, text);
+      res = await this.meta.sendText(account.phoneNumberId, account.accessToken, phone, text);
     } catch (err) {
       await this.refundFailedSend(tenantId, charge, phone, MessageCategory.SERVICE, 'text reply');
       throw err;
     }
 
     return this.model.create({
-      clientId: toObjectId(clientId, 'clientId'),
+      whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
       tenantId,
       phone,
       direction: 'outbound',
@@ -86,22 +86,22 @@ export class InboxService {
   }
 
   async sendTemplate(
-    clientId: string,
+    whatsappAccountId: string,
     phone: string,
     templateName: string,
     languageCode?: string,
     bodyParameters: string[] = [],
   ) {
-    const client = await this.clients.findOne(clientId);
-    if (!client) throw new NotFoundException('WhatsApp account not found.');
-    const template = await this.templates.findByName(clientId, templateName);
+    const account = await this.clients.findOne(whatsappAccountId);
+    if (!account) throw new NotFoundException('WhatsApp account not found.');
+    const template = await this.templates.findByName(whatsappAccountId, templateName);
     if (!template) throw new BadRequestException('Template not found for this WhatsApp account.');
     if (String(template.status || '').toLowerCase() !== 'approved') {
       throw new BadRequestException('Only approved templates can be sent.');
     }
 
     const category = this.normalizeCategory(template.category);
-    const tenantId = this.resolveTenantId(client);
+    const tenantId = this.resolveTenantId(account);
     const price = await this.resolvePlanPrice(String(tenantId), category);
     const charge = this.totalForOneMessage(price);
     const txn = charge > 0
@@ -119,8 +119,8 @@ export class InboxService {
     let res: any;
     try {
       res = await this.meta.sendTemplate(
-        client.phoneNumberId,
-        client.accessToken,
+        account.phoneNumberId,
+        account.accessToken,
         phone,
         template.name,
         language,
@@ -133,7 +133,7 @@ export class InboxService {
 
     const body = template.components?.find((component: any) => component?.type === 'BODY')?.text || template.name;
     return this.model.create({
-      clientId: toObjectId(clientId, 'clientId'),
+      whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
       tenantId,
       phone,
       direction: 'outbound',
@@ -158,12 +158,12 @@ export class InboxService {
     return this.model.findByIdAndUpdate(id, { assignedTo: toObjectId(userId, 'userId'), threadStatus: 'assigned' }, { new: true });
   }
 
-  resolve(clientId: string, phone: string) {
-    return this.model.updateMany({ ...this.clientIdQuery(clientId), phone }, { threadStatus: 'resolved' });
+  resolve(whatsappAccountId: string, phone: string) {
+    return this.model.updateMany({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone }, { threadStatus: 'resolved' });
   }
 
-  private clientIdQuery(clientId: string) {
-    return legacyObjectIdFilter('clientId', clientId);
+  private whatsappAccountIdQuery(whatsappAccountId: string) {
+    return whatsappAccountIdFilter(whatsappAccountId);
   }
 
   private resolveTenantId(client: any): Types.ObjectId {

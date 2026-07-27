@@ -1,7 +1,8 @@
 import { IsArray, IsBoolean, IsMongoId, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateContactDto {
-  @IsMongoId() clientId: string;
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
   @IsString() @MinLength(1) phone: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsArray() tags?: string[];
@@ -17,12 +18,14 @@ export class UpdateContactDto {
 }
 
 export class BulkContactsDto {
-  @IsMongoId() clientId: string;
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
   @IsArray() contacts: Array<{ phone: string; name?: string; tags?: string[] }>;
 }
 
 export class CreateContactTagDto {
-  @IsMongoId() clientId: string;
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
   @IsString() @MinLength(1) name: string;
   @IsOptional() @IsString() color?: string;
   @IsOptional() @IsString() description?: string;

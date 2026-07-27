@@ -23,13 +23,13 @@ export default function NewBroadcastPage() {
 
   useEffect(() => {
     if (!activeClient) { setTemplates([]); setTags([]); return; }
-    api.get(`/templates?clientId=${activeClient._id}`).then(r => setTemplates(r.data)).catch(() => setTemplates([]));
-    api.get(`/contacts/tags?clientId=${activeClient._id}`).then(r => setTags((r.data || []).map(tagName).filter(Boolean))).catch(() => setTags([]));
+    api.get(`/templates?whatsappAccountId=${activeClient._id}`).then(r => setTemplates(r.data)).catch(() => setTemplates([]));
+    api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`).then(r => setTags((r.data || []).map(tagName).filter(Boolean))).catch(() => setTags([]));
   }, [activeClient]);
 
   useEffect(() => {
     if (!activeClient) { setCount(null); return; }
-    const params = new URLSearchParams({ clientId: activeClient._id });
+    const params = new URLSearchParams({ whatsappAccountId: activeClient._id });
     selectedTags.forEach(t => params.append('tag', t));
     api.get(`/contacts/count?${params.toString()}`)
       .then(r => setCount(r.data.count))
@@ -53,7 +53,7 @@ export default function NewBroadcastPage() {
     try {
       const { data } = await api.post('/broadcasts', {
         ...form,
-        clientId: activeClient._id,
+        whatsappAccountId: activeClient._id,
         targetTags: selectedTags,
         components: [],
         status: 'draft',

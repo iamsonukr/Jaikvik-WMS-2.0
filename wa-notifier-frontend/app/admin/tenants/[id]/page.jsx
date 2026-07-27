@@ -1,16 +1,35 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Select, Input, Modal, Badge, Spinner } from '@/components/ui';
-import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, PhoneCall, Building2 } from 'lucide-react';
+import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, UserPlus, PhoneCall, Building2, MessageCircle, Plus } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { normalizeRole } from '@/lib/roles';
 import Link from 'next/link';
 import api from '@/lib/api';
+import {
+  isFacebookOrigin,
+  isSuccessfulEmbeddedSignupEvent,
+  normalizeEmbeddedSignupData,
+  parseEmbeddedSignupMessage,
+} from '@/lib/meta-embedded-signup';
 
 const STATUS_COLOR = { active: 'green', suspended: 'yellow', disabled: 'red' };
 const ROLE_LABEL = { client_owner: 'Owner', client_user: 'User' };
+const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
+const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
+const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
+const blankAccountForm = {
+  name: '',
+  wabaId: '',
+  phoneNumberId: '',
+  accessToken: '',
+  phone: '',
+  timezone: 'Asia/Kolkata',
+  industry: '',
+  isActive: true,
+};
 const fmtDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString('en-IN') : '-';
 const fmtMoney = (value) => `INR ${Number(value || 0).toLocaleString('en-IN')}`;
@@ -44,7 +63,19 @@ export default function TenantDetailPage() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetting, setResetting] = useState(false);
   const [resetMessage, setResetMessage] = useState('');
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [createUserForm, setCreateUserForm] = useState({ name: '', email: '', password: '', role: 'client_owner' });
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createUserError, setCreateUserError] = useState('');
+  const [manualAccountOpen, setManualAccountOpen] = useState(false);
+  const [manualAccountForm, setManualAccountForm] = useState(blankAccountForm);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [accountStatus, setAccountStatus] = useState('');
+  const [accountError, setAccountError] = useState('');
+  const [connectingAccount, setConnectingAccount] = useState(false);
   const [error, setError] = useState('');
+  const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '' });
+  const waitTimerRef = useRef(null);
 
   const load = async () => {
     const [tenantRes, plansRes, walletRes, subsRes, accountsRes, usersRes] = await Promise.all([
@@ -52,7 +83,7 @@ export default function TenantDetailPage() {
       api.get('/plans'),
       api.get(`/wallet/${id}`),
       api.get(`/subscriptions/tenant/${id}`),
-      api.get(`/clients/tenant/${id}`),
+      api.get(`/whatsapp-accounts/tenant/${id}`),
       api.get(`/auth/tenant-users/${id}`),
     ]);
     setTenant(tenantRes.data);
@@ -64,6 +95,42 @@ export default function TenantDetailPage() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  const clearWaitTimer = () => {
+    if (waitTimerRef.current) {
+      clearTimeout(waitTimerRef.current);
+      waitTimerRef.current = null;
+    }
+  };
+
+  const resetSignupState = () => {
+    clearWaitTimer();
+    signupRef.current = { code: '', setup: null, submitting: false, redirectUri: '' };
+  };
+
+  useEffect(() => {
+    if (!metaAppId) return;
+
+    window.fbAsyncInit = function () {
+      window.FB.init({
+        appId: metaAppId,
+        cookie: true,
+        xfbml: false,
+        version: metaApiVersion,
+      });
+    };
+
+    if (!document.getElementById('facebook-jssdk')) {
+      const js = document.createElement('script');
+      js.id = 'facebook-jssdk';
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      js.async = true;
+      js.defer = true;
+      document.body.appendChild(js);
+    } else if (window.FB) {
+      window.fbAsyncInit();
+    }
+  }, []);
 
   const setStatus = async (status) => {
     await api.patch(`/tenants/${id}/status`, { status });
@@ -105,6 +172,195 @@ export default function TenantDetailPage() {
     setResetMessage('');
     setError('');
     setResetOpen(true);
+  };
+
+  const openCreateUser = () => {
+    setCreateUserForm({ name: '', email: tenant.contactEmail || '', password: '', role: 'client_owner' });
+    setCreateUserError('');
+    setCreateUserOpen(true);
+  };
+
+  const submitCreateUser = async () => {
+    setCreateUserError('');
+    if (!createUserForm.name.trim()) { setCreateUserError('Name is required'); return; }
+    if (!createUserForm.email.trim()) { setCreateUserError('Email is required'); return; }
+    if (createUserForm.password.length < 6) { setCreateUserError('Password must be at least 6 characters'); return; }
+    setCreatingUser(true);
+    try {
+      await api.post(`/auth/tenant-users/${id}`, createUserForm);
+      setCreateUserOpen(false);
+      setCreateUserForm({ name: '', email: '', password: '', role: 'client_owner' });
+      await load();
+    } catch (err) {
+      setCreateUserError(err?.response?.data?.message || 'Could not create login user');
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const openManualAccount = () => {
+    setManualAccountForm({
+      ...blankAccountForm,
+      name: tenant?.name ? `${tenant.name} WhatsApp` : '',
+      industry: tenant?.industry || '',
+      timezone: tenant?.timezone || 'Asia/Kolkata',
+    });
+    setAccountError('');
+    setAccountStatus('');
+    setManualAccountOpen(true);
+  };
+
+  const submitManualAccount = async () => {
+    setAccountError('');
+    setAccountStatus('');
+    if (!manualAccountForm.name.trim()) { setAccountError('Account name is required'); return; }
+    if (!manualAccountForm.wabaId.trim()) { setAccountError('WABA ID is required'); return; }
+    if (!manualAccountForm.phoneNumberId.trim()) { setAccountError('Phone number ID is required'); return; }
+    if (!manualAccountForm.accessToken.trim()) { setAccountError('Access token is required'); return; }
+
+    setSavingAccount(true);
+    try {
+      await api.post('/whatsapp-accounts', {
+        ...manualAccountForm,
+        tenantId: id,
+      });
+      setManualAccountOpen(false);
+      setManualAccountForm(blankAccountForm);
+      setAccountStatus('WhatsApp account connected manually.');
+      await load();
+    } catch (err) {
+      setAccountError(err?.response?.data?.message || 'Could not connect WhatsApp account');
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const finishEmbeddedSignup = useCallback(async () => {
+    const current = signupRef.current;
+    const phoneNumberId = current.setup?.phone_number_id || current.setup?.phoneNumberId;
+    const wabaId = current.setup?.waba_id || current.setup?.wabaId;
+
+    if (!current.code || !current.setup || current.submitting) return;
+    if (!wabaId) {
+      clearWaitTimer();
+      setConnectingAccount(false);
+      setAccountStatus('');
+      setAccountError('Meta granted access, but did not return a WhatsApp Business Account ID.');
+      return;
+    }
+
+    clearWaitTimer();
+    current.submitting = true;
+    setConnectingAccount(true);
+    setAccountError('');
+    setAccountStatus('Finalizing WhatsApp connection...');
+
+    try {
+      await api.post('/whatsapp-accounts/embedded-signup', {
+        tenantId: id,
+        code: current.code,
+        wabaId,
+        phoneNumberId,
+        redirectUri: current.redirectUri,
+        name: current.setup?.business_name || current.setup?.businessName || `${tenant?.name || 'Client'} WhatsApp`,
+      });
+      resetSignupState();
+      setAccountStatus('WhatsApp account connected successfully.');
+      await load();
+    } catch (err) {
+      signupRef.current.submitting = false;
+      setAccountError(err?.response?.data?.message || 'Could not complete the WhatsApp connection.');
+      setAccountStatus('');
+    } finally {
+      setConnectingAccount(false);
+    }
+  }, [id, tenant?.name]);
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (!isFacebookOrigin(event.origin)) return;
+
+      const payload = parseEmbeddedSignupMessage(event.data);
+      if (payload?.type !== 'WA_EMBEDDED_SIGNUP') return;
+      const setupData = normalizeEmbeddedSignupData(payload.data);
+
+      if (isSuccessfulEmbeddedSignupEvent(payload.event)) {
+        signupRef.current.setup = setupData;
+        setAccountStatus('WhatsApp details received. Waiting for authorization...');
+        finishEmbeddedSignup();
+        return;
+      }
+
+      if (payload.event === 'CANCEL') {
+        resetSignupState();
+        setConnectingAccount(false);
+        setAccountStatus('');
+        setAccountError('WhatsApp connection was cancelled before completion.');
+      }
+
+      if (payload.event === 'ERROR') {
+        resetSignupState();
+        setConnectingAccount(false);
+        setAccountStatus('');
+        setAccountError(payload.data?.error_message || 'Meta returned an error during WhatsApp connection.');
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [finishEmbeddedSignup]);
+
+  const startEmbeddedSignup = () => {
+    setAccountError('');
+    setAccountStatus('');
+
+    if (!metaAppId || !metaConfigId) {
+      setAccountError('Meta Embedded Signup is not configured yet.');
+      return;
+    }
+    if (!window.FB) {
+      setAccountError('Facebook SDK is still loading. Try again in a moment.');
+      return;
+    }
+
+    resetSignupState();
+    setConnectingAccount(true);
+    setAccountStatus('Opening Facebook Embedded Signup...');
+
+    const redirectUri = `${window.location.origin}/master/meta-embedded-signup`;
+    signupRef.current.redirectUri = redirectUri;
+
+    window.FB.login((response) => {
+      if (response?.authResponse?.code) {
+        signupRef.current.code = response.authResponse.code;
+        setAccountStatus('Authorization received. Waiting for WhatsApp details...');
+        waitTimerRef.current = setTimeout(() => {
+          if (!signupRef.current.setup) {
+            setConnectingAccount(false);
+            setAccountStatus('');
+            setAccountError('Meta returned authorization, but did not send WhatsApp account details.');
+          }
+        }, 20000);
+        finishEmbeddedSignup();
+        return;
+      }
+
+      resetSignupState();
+      setConnectingAccount(false);
+      setAccountStatus('');
+      setAccountError('Facebook authorization was cancelled or did not complete.');
+    }, {
+      config_id: metaConfigId,
+      response_type: 'code',
+      override_default_response_type: true,
+      redirect_uri: redirectUri,
+      fallback_redirect_uri: redirectUri,
+      extras: {
+        setup: {},
+        featureType: 'whatsapp_embedded_signup',
+        sessionInfoVersion: '3',
+      },
+    });
   };
 
   const submitReset = async () => {
@@ -219,9 +475,16 @@ export default function TenantDetailPage() {
         </Card>
 
         <Card className="p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Users size={16} className="text-primary" />
-            <h3 className="text-sm font-semibold">Login Users</h3>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-primary" />
+              <h3 className="text-sm font-semibold">Login Users</h3>
+            </div>
+            {role === 'admin' && (
+              <Button variant="outline" size="sm" onClick={openCreateUser}>
+                <UserPlus size={14} /> Add login
+              </Button>
+            )}
           </div>
           {!tenantUsers.length ? (
             <p className="text-sm text-muted-foreground">No login users are linked to this client.</p>
@@ -266,10 +529,32 @@ export default function TenantDetailPage() {
       </div>
 
       <Card className="mt-5 p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <PhoneCall size={16} className="text-primary" />
-          <h3 className="text-sm font-semibold">Connected WhatsApp Accounts</h3>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <PhoneCall size={16} className="text-primary" />
+            <h3 className="text-sm font-semibold">Connected WhatsApp Accounts</h3>
+          </div>
+          {role === 'admin' && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={openManualAccount}>
+                <Plus size={14} /> Add manually
+              </Button>
+              <Button size="sm" onClick={startEmbeddedSignup} disabled={connectingAccount}>
+                <MessageCircle size={14} /> {connectingAccount ? 'Connecting...' : 'Embedded signup'}
+              </Button>
+            </div>
+          )}
         </div>
+        {accountStatus && (
+          <div className="mb-4 rounded-lg border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
+            {accountStatus}
+          </div>
+        )}
+        {accountError && (
+          <div className="mb-4 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            {accountError}
+          </div>
+        )}
         {!accounts.length ? (
           <p className="text-sm text-muted-foreground">No WhatsApp accounts are connected to this client.</p>
         ) : (
@@ -356,6 +641,98 @@ export default function TenantDetailPage() {
           />
           {error && <p className="text-sm text-red-500">{error}</p>}
           {resetMessage && <p className="text-sm text-green-600">{resetMessage}</p>}
+        </div>
+      </Modal>
+
+      <Modal open={createUserOpen} onClose={() => setCreateUserOpen(false)} title="Create client login"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCreateUserOpen(false)} disabled={creatingUser}>Cancel</Button>
+            <Button onClick={submitCreateUser} disabled={creatingUser}>
+              {creatingUser ? 'Creating...' : 'Create login'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            label="Name"
+            value={createUserForm.name}
+            onChange={(e) => setCreateUserForm({ ...createUserForm, name: e.target.value })}
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={createUserForm.email}
+            onChange={(e) => setCreateUserForm({ ...createUserForm, email: e.target.value })}
+          />
+          <Select
+            value={createUserForm.role}
+            onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value })}
+          >
+            <option value="client_owner">Owner</option>
+            <option value="client_user">User</option>
+          </Select>
+          <Input
+            label="Initial password"
+            type="password"
+            value={createUserForm.password}
+            onChange={(e) => setCreateUserForm({ ...createUserForm, password: e.target.value })}
+          />
+          {createUserError && <p className="text-sm text-red-500">{createUserError}</p>}
+        </div>
+      </Modal>
+
+      <Modal open={manualAccountOpen} onClose={() => setManualAccountOpen(false)} title="Add WhatsApp account manually"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setManualAccountOpen(false)} disabled={savingAccount}>Cancel</Button>
+            <Button onClick={submitManualAccount} disabled={savingAccount}>
+              {savingAccount ? 'Connecting...' : 'Connect account'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            label="Account name"
+            value={manualAccountForm.name}
+            onChange={(e) => setManualAccountForm({ ...manualAccountForm, name: e.target.value })}
+          />
+          <Input
+            label="WABA ID"
+            value={manualAccountForm.wabaId}
+            onChange={(e) => setManualAccountForm({ ...manualAccountForm, wabaId: e.target.value })}
+          />
+          <Input
+            label="Phone number ID"
+            value={manualAccountForm.phoneNumberId}
+            onChange={(e) => setManualAccountForm({ ...manualAccountForm, phoneNumberId: e.target.value })}
+          />
+          <Input
+            label="Permanent access token"
+            type="password"
+            value={manualAccountForm.accessToken}
+            onChange={(e) => setManualAccountForm({ ...manualAccountForm, accessToken: e.target.value })}
+          />
+          <Input
+            label="Display phone"
+            value={manualAccountForm.phone}
+            onChange={(e) => setManualAccountForm({ ...manualAccountForm, phone: e.target.value })}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="Timezone"
+              value={manualAccountForm.timezone}
+              onChange={(e) => setManualAccountForm({ ...manualAccountForm, timezone: e.target.value })}
+            />
+            <Input
+              label="Industry"
+              value={manualAccountForm.industry}
+              onChange={(e) => setManualAccountForm({ ...manualAccountForm, industry: e.target.value })}
+            />
+          </div>
+          {accountError && <p className="text-sm text-red-500">{accountError}</p>}
         </div>
       </Modal>
     </AppShell>

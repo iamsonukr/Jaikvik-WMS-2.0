@@ -24,7 +24,7 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
   const load = () => {
     if (!activeClient) { setBroadcasts([]); return; }
     setLoading(true);
-    api.get(`/broadcasts?clientId=${activeClient._id}`)
+    api.get(`/broadcasts?whatsappAccountId=${activeClient._id}`)
       .then((r) => setBroadcasts(r.data))
       .catch(() => setBroadcasts([]))
       .finally(() => setLoading(false));

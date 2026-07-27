@@ -6,7 +6,7 @@ export type BroadcastDocument = Broadcast & Document;
 
 @Schema({ timestamps: true })
 export class Broadcast {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) clientId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) whatsappAccountId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true }) name: string;
   @Prop({ required: true }) templateName: string;
@@ -32,7 +32,7 @@ export class Broadcast {
 }
 
 export const BroadcastSchema = SchemaFactory.createForClass(Broadcast);
-BroadcastSchema.index({ clientId: 1, createdAt: -1 });
+BroadcastSchema.index({ whatsappAccountId: 1, createdAt: -1 });
 BroadcastSchema.index({ tenantId: 1 });
 
 // ── Broadcast Log (per-message record) ───────────────────────
@@ -41,7 +41,7 @@ export type BroadcastLogDocument = BroadcastLog & Document;
 @Schema({ timestamps: true })
 export class BroadcastLog {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Broadcast', required: true }) broadcastId: Types.ObjectId;
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) clientId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) whatsappAccountId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true }) phone: string;
   @Prop() contactName: string;
@@ -60,4 +60,5 @@ export class BroadcastLog {
 
 export const BroadcastLogSchema = SchemaFactory.createForClass(BroadcastLog);
 BroadcastLogSchema.index({ broadcastId: 1 });
+BroadcastLogSchema.index({ whatsappAccountId: 1 });
 BroadcastLogSchema.index({ waMessageId: 1 });

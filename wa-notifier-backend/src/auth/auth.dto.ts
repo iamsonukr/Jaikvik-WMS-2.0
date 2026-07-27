@@ -27,6 +27,13 @@ export class UpdateStaffDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
+export class CreateTenantUserDto {
+  @IsEmail() email: string;
+  @IsString() @MinLength(6) password: string;
+  @IsString() name: string;
+  @IsIn(['client_owner', 'client_user']) role: 'client_owner' | 'client_user';
+}
+
 export class ResetTenantUserPasswordDto {
   @IsString() @MinLength(6) newPassword: string;
 }

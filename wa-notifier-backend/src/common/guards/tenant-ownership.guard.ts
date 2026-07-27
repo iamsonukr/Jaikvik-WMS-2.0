@@ -32,14 +32,20 @@ export class TenantOwnershipGuard implements CanActivate {
     if (!user) return false;
     if (user.role === UserRole.ADMIN || user.role === UserRole.MASTER) return true;
 
-    const clientId = req.query?.clientId || req.params?.clientId || req.body?.clientId;
-    if (!clientId) {
-      // Fail closed: no clientId to check ownership against on a route this
+    const whatsappAccountId =
+      req.query?.whatsappAccountId ||
+      req.params?.whatsappAccountId ||
+      req.body?.whatsappAccountId ||
+      req.query?.clientId ||
+      req.params?.clientId ||
+      req.body?.clientId;
+    if (!whatsappAccountId) {
+      // Fail closed: no account id to check ownership against on a route this
       // guard is attached to means we can't safely allow it through.
-      throw new ForbiddenException('A clientId is required for this request.');
+      throw new ForbiddenException('A whatsappAccountId is required for this request.');
     }
 
-    const account = await this.whatsappAccounts.findOne(String(clientId));
+    const account = await this.whatsappAccounts.findOne(String(whatsappAccountId));
     if (!account || String(account.tenantId) !== String(user.tenantId)) {
       throw new ForbiddenException('You do not have access to this WhatsApp account.');
     }

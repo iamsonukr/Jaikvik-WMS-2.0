@@ -24,7 +24,7 @@ export default function InboxWorkspace({ allowedRoles }) {
 
   const loadThreads = () => {
     if (!activeClient) { setThreads([]); return; }
-    api.get(`/inbox/threads?clientId=${activeClient._id}`).then((r) => setThreads(r.data)).catch(() => {});
+    api.get(`/inbox/threads?whatsappAccountId=${activeClient._id}`).then((r) => setThreads(r.data)).catch(() => {});
   };
 
   const loadMessages = (thread, { silent = false } = {}) => {
@@ -33,7 +33,7 @@ export default function InboxWorkspace({ allowedRoles }) {
       setActive(thread);
       setLoading(true);
     }
-    api.get(`/inbox/messages?clientId=${activeClient._id}&phone=${thread.phone}`)
+    api.get(`/inbox/messages?whatsappAccountId=${activeClient._id}&phone=${thread.phone}`)
       .then((r) => setMessages(r.data))
       .catch(() => { if (!silent) setMessages([]); })
       .finally(() => { if (!silent) setLoading(false); });
@@ -77,7 +77,7 @@ export default function InboxWorkspace({ allowedRoles }) {
     setSendError('');
     const messageText = reply;
     try {
-      const { data } = await api.post('/inbox/reply', { clientId: activeClient._id, phone: active.phone, text: messageText });
+      const { data } = await api.post('/inbox/reply', { whatsappAccountId: activeClient._id, phone: active.phone, text: messageText });
       setMessages((prev) => [...prev, data]);
       setReply('');
     } catch (err) {
@@ -90,7 +90,7 @@ export default function InboxWorkspace({ allowedRoles }) {
   const resolve = async () => {
     if (!active) return;
     try {
-      await api.post('/inbox/resolve', { clientId: activeClient._id, phone: active.phone });
+      await api.post('/inbox/resolve', { whatsappAccountId: activeClient._id, phone: active.phone });
       setActive((prev) => prev ? { ...prev, threadStatus: 'resolved' } : prev);
       loadThreads();
     } catch {

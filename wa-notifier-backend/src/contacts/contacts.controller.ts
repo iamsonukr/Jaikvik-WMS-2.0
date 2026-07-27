@@ -13,10 +13,14 @@ export class ContactsController {
   constructor(private svc: ContactsService) { }
 
   @UseGuards(TenantOwnershipGuard)
-  @Get() findAll(@Query('clientId') cid: string, @Query('tag') tag: string) { return this.svc.findAll(cid, tag); }
+  @Get() findAll(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string, @Query('tag') tag: string) {
+    return this.svc.findAll(aid || cid, tag);
+  }
 
   @UseGuards(TenantOwnershipGuard)
-  @Get('tags') getTags(@Query('clientId') cid: string) { return this.svc.getTags(cid); }
+  @Get('tags') getTags(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
+    return this.svc.getTags(aid || cid);
+  }
 
   @UseGuards(TenantOwnershipGuard)
   @Post('tags') createTag(@Body() dto: CreateContactTagDto) { return this.svc.createTag(dto); }
@@ -28,9 +32,9 @@ export class ContactsController {
   @Delete('tags/:id') removeTag(@Param('id') id: string) { return this.svc.removeTag(id); }
 
   @UseGuards(TenantOwnershipGuard)
-  @Get('count') async count(@Query('clientId') cid: string, @Query('tag') tags: string | string[]) {
+  @Get('count') async count(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string, @Query('tag') tags: string | string[]) {
     const tagArr = tags ? (Array.isArray(tags) ? tags : [tags]) : [];
-    const count = await this.svc.countBySegment(cid, tagArr);
+    const count = await this.svc.countBySegment(aid || cid, tagArr);
     return { count };
   }
 
@@ -38,7 +42,9 @@ export class ContactsController {
   @Post() create(@Body() dto: CreateContactDto) { return this.svc.create(dto); }
 
   @UseGuards(TenantOwnershipGuard)
-  @Post('bulk') bulk(@Body() body: BulkContactsDto) { return this.svc.bulkUpsert(body.clientId, body.contacts); }
+  @Post('bulk') bulk(@Body() body: BulkContactsDto) {
+    return this.svc.bulkUpsert(body.whatsappAccountId || body.clientId, body.contacts);
+  }
 
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateContactDto) { return this.svc.update(id, dto); }
   @Delete(':id') remove(@Param('id') id: string) { return this.svc.remove(id); }

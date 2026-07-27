@@ -25,7 +25,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
 
   const load = () => {
     if (!activeClient) { setRules([]); return; }
-    api.get(`/chatbot?clientId=${activeClient._id}`).then((r) => setRules(r.data)).catch(() => setRules([]));
+    api.get(`/chatbot?whatsappAccountId=${activeClient._id}`).then((r) => setRules(r.data)).catch(() => setRules([]));
   };
 
   useEffect(() => { load(); }, [activeClient]);
@@ -47,7 +47,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
     setSaving(true);
     try {
       if (editing) await api.patch(`/chatbot/${editing}`, form);
-      else await api.post('/chatbot', { ...form, clientId: activeClient._id });
+      else await api.post('/chatbot', { ...form, whatsappAccountId: activeClient._id });
       close();
       load();
     } catch (err) {

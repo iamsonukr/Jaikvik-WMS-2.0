@@ -5,7 +5,7 @@ export type AccountAlertDocument = AccountAlert & Document;
 
 @Schema({ timestamps: true })
 export class AccountAlert {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount' }) clientId?: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount' }) whatsappAccountId?: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop() field: string;
   @Prop() entityType: string;
@@ -18,5 +18,5 @@ export class AccountAlert {
 }
 
 export const AccountAlertSchema = SchemaFactory.createForClass(AccountAlert);
-AccountAlertSchema.index({ clientId: 1, createdAt: -1 });
+AccountAlertSchema.index({ whatsappAccountId: 1, createdAt: -1 });
 AccountAlertSchema.index({ entityId: 1, type: 1, createdAt: -1 });

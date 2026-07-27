@@ -123,7 +123,7 @@ export default function ConnectWhatsAppPage() {
     setStatus('Finalizing WhatsApp connection...');
 
     try {
-      const { data: account } = await api.post('/clients/embedded-signup', {
+      const { data: account } = await api.post('/whatsapp-accounts/embedded-signup', {
         code: current.code,
         wabaId,
         phoneNumberId,

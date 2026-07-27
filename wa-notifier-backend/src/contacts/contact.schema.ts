@@ -5,7 +5,7 @@ export type ContactDocument = Contact & Document;
 
 @Schema({ timestamps: true })
 export class Contact {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) clientId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) whatsappAccountId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true }) phone: string;   // E.164 e.g. +919876543210
   @Prop() name: string;
@@ -16,5 +16,5 @@ export class Contact {
 }
 
 export const ContactSchema = SchemaFactory.createForClass(Contact);
-ContactSchema.index({ clientId: 1, phone: 1 }, { unique: true });
+ContactSchema.index({ whatsappAccountId: 1, phone: 1 }, { unique: true });
 ContactSchema.index({ tenantId: 1 });

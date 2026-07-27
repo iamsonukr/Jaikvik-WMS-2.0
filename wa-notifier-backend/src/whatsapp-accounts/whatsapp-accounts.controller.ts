@@ -7,9 +7,8 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/role.enum';
 import { WhatsAppAccountOwnershipGuard } from './whatsapp-account-ownership.guard';
 
-// Kept at '/clients' for backward compatibility with the existing frontend;
-// '/whatsapp-accounts' is the new preferred path and will become the only
-// path once the frontend is migrated in the next phase.
+// '/whatsapp-accounts' is preferred. '/clients' remains as a temporary
+// compatibility alias for old frontend builds and saved API clients.
 @Controller(['clients', 'whatsapp-accounts'])
 export class WhatsAppAccountsController {
   constructor(private svc: WhatsAppAccountsService) {}
@@ -38,14 +37,14 @@ export class WhatsAppAccountsController {
   @Roles(UserRole.ADMIN, UserRole.MASTER)
   @Post()
   create(@Body() dto: CreateWhatsAppAccountDto, @CurrentUser() user: any) {
-    const tenantId = user.role === UserRole.ADMIN || user.role === UserRole.MASTER ? undefined : user.tenantId;
+    const tenantId = user.role === UserRole.ADMIN || user.role === UserRole.MASTER ? dto.tenantId : user.tenantId;
     return this.svc.create(dto, tenantId);
   }
 
   @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @Post('embedded-signup')
   embeddedSignup(@Body() dto: EmbeddedSignupDto, @CurrentUser() user: any) {
-    const tenantId = user.role === UserRole.ADMIN || user.role === UserRole.MASTER ? undefined : user.tenantId;
+    const tenantId = user.role === UserRole.ADMIN || user.role === UserRole.MASTER ? dto.tenantId : user.tenantId;
     return this.svc.createFromEmbeddedSignup(dto, tenantId);
   }
 

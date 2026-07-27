@@ -84,7 +84,7 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
     }
 
     setLoading(true);
-    api.get(`/templates?clientId=${activeClient._id}`)
+    api.get(`/templates?whatsappAccountId=${activeClient._id}`)
       .then((r) => setTemplates(r.data))
       .catch(() => setTemplates([]))
       .finally(() => setLoading(false));
@@ -159,7 +159,7 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
     setFormError('');
     try {
       const { data } = await api.post('/templates', {
-        clientId: activeClient._id,
+        whatsappAccountId: activeClient._id,
         name: form.name,
         category: form.category,
         language: form.language,
@@ -197,7 +197,7 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
     setLibraryError('');
     try {
       await api.post('/templates', {
-        clientId: activeClient._id,
+        whatsappAccountId: activeClient._id,
         name: libraryTemplateName || `${libraryTemplateId}_copy`,
         category: selectedLibraryTemplate.category || libraryFilters.category || 'UTILITY',
         language: selectedLibraryTemplate.language || libraryFilters.language || 'en_US',

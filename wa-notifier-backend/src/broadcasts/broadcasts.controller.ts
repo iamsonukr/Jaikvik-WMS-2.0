@@ -11,7 +11,7 @@ export class BroadcastsController {
   constructor(private svc: BroadcastsService) {}
 
   @UseGuards(TenantOwnershipGuard)
-  @Get()           findAll(@Query('clientId') cid: string) { return this.svc.findAll(cid); }
+  @Get()           findAll(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) { return this.svc.findAll(aid || cid); }
   @Get(':id')      findOne(@Param('id') id: string)        { return this.svc.findOne(id); }
   @Get(':id/logs') logs(@Param('id') id: string)           { return this.svc.logs(id); }
   @Get(':id/estimate') estimate(@Param('id') id: string)   { return this.svc.estimate(id); }

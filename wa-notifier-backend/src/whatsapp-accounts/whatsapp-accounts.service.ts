@@ -24,11 +24,11 @@ export class WhatsAppAccountsService {
   findAllByTenant(tenantId: ObjectIdInput) {
     return this.model.find({ tenantId: toObjectId(tenantId, 'tenantId') }).select('-accessToken');
   }
-  findOne(id: string) { return this.model.findById(toObjectId(id, 'clientId')); }
-  findOnePublic(id: string) { return this.model.findById(toObjectId(id, 'clientId')).select('-accessToken'); }
+  findOne(id: string) { return this.model.findById(toObjectId(id, 'whatsappAccountId')); }
+  findOnePublic(id: string) { return this.model.findById(toObjectId(id, 'whatsappAccountId')).select('-accessToken'); }
   findByPhoneNumberId(phoneNumberId: string) { return this.model.findOne({ phoneNumberId }); }
   findByMetaEntityId(entityId: string) { return this.model.findOne({ $or: [{ wabaId: entityId }, { phoneNumberId: entityId }] }); }
-  async create(dto: Partial<WhatsAppAccount>, tenantId?: ObjectIdInput) {
+  async create(dto: Partial<Omit<WhatsAppAccount, 'tenantId'>> & { tenantId?: ObjectIdInput }, tenantId?: ObjectIdInput) {
     if (tenantId && dto.phoneNumberId) {
       await this.assertTenantCanAddPhoneNumber(tenantId, dto.phoneNumberId);
     }

@@ -9,6 +9,7 @@
     "migrate:foundation": "node migrate-foundation.js",
     "migrate:plan-rates": "node migrate-plan-message-rates.js",
     "migrate:plan-prices": "node migrate-plan-cycle-prices.js",
+    "migrate:whatsapp-accounts": "node migrate-whatsapp-account-naming.js",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

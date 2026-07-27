@@ -5,7 +5,7 @@ import { Broadcast, BroadcastDocument } from '../broadcasts/broadcast.schema';
 import { Message, MessageDocument } from '../inbox/message.schema';
 import { Contact, ContactDocument } from '../contacts/contact.schema';
 import { AccountAlert, AccountAlertDocument } from '../webhooks/account-alert.schema';
-import { legacyObjectIdFilter } from '../common/mongo-id';
+import { whatsappAccountIdFilter } from '../common/mongo-id';
 
 @Injectable()
 export class AnalyticsService {
@@ -16,12 +16,12 @@ export class AnalyticsService {
     @InjectModel(AccountAlert.name) private alertModel: Model<AccountAlertDocument>,
   ) {}
 
-  async overview(clientId: string) {
-    const clientFilter = this.clientIdQuery(clientId);
+  async overview(whatsappAccountId: string) {
+    const accountFilter = this.whatsappAccountIdQuery(whatsappAccountId);
     const [totalContacts, broadcastStats] = await Promise.all([
-      this.contactModel.collection.countDocuments({ ...clientFilter, isActive: true }),
+      this.contactModel.collection.countDocuments({ ...accountFilter, isActive: true }),
       this.broadcastModel.aggregate([
-        { $match: clientFilter },
+        { $match: accountFilter },
         {
           $group: {
             _id: null,
@@ -47,13 +47,13 @@ export class AnalyticsService {
     };
   }
 
-  async dailyStats(clientId: string, days = 30) {
-    const clientFilter = this.clientIdQuery(clientId);
+  async dailyStats(whatsappAccountId: string, days = 30) {
+    const accountFilter = this.whatsappAccountIdQuery(whatsappAccountId);
     const from = new Date();
     from.setDate(from.getDate() - days);
 
     return this.broadcastModel.aggregate([
-      { $match: { ...clientFilter, createdAt: { $gte: from } } },
+      { $match: { ...accountFilter, createdAt: { $gte: from } } },
       { $group: {
         _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
         sent:      { $sum: '$sentCount' },
@@ -65,25 +65,25 @@ export class AnalyticsService {
     ]);
   }
 
-  async inboxStats(clientId: string) {
-    const clientFilter = this.clientIdQuery(clientId);
+  async inboxStats(whatsappAccountId: string) {
+    const accountFilter = this.whatsappAccountIdQuery(whatsappAccountId);
     const [inbound, outbound, open] = await Promise.all([
-      this.messageModel.collection.countDocuments({ ...clientFilter, direction: 'inbound' }),
-      this.messageModel.collection.countDocuments({ ...clientFilter, direction: 'outbound' }),
-      this.messageModel.collection.countDocuments({ ...clientFilter, direction: 'inbound', threadStatus: 'open' }),
+      this.messageModel.collection.countDocuments({ ...accountFilter, direction: 'inbound' }),
+      this.messageModel.collection.countDocuments({ ...accountFilter, direction: 'outbound' }),
+      this.messageModel.collection.countDocuments({ ...accountFilter, direction: 'inbound', threadStatus: 'open' }),
     ]);
     return { inbound, outbound, openThreads: open };
   }
 
-  alerts(clientId: string) {
+  alerts(whatsappAccountId: string) {
     return this.alertModel
-      .collection.find({ $or: [this.clientIdQuery(clientId), { clientId: { $exists: false } }, { clientId: null }] })
+      .collection.find({ $or: [this.whatsappAccountIdQuery(whatsappAccountId), { whatsappAccountId: { $exists: false } }, { whatsappAccountId: null }] })
       .sort({ createdAt: -1 })
       .limit(10)
       .toArray();
   }
 
-  private clientIdQuery(clientId: string) {
-    return legacyObjectIdFilter('clientId', clientId);
+  private whatsappAccountIdQuery(whatsappAccountId: string) {
+    return whatsappAccountIdFilter(whatsappAccountId);
   }
 }

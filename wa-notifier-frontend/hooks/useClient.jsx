@@ -21,7 +21,7 @@ export function ClientProvider({ children }) {
 
     setLoading(true);
     try {
-      const { data } = await api.get('/clients');
+      const { data } = await api.get('/whatsapp-accounts');
       setClients(data);
 
       const stored = localStorage.getItem('wa_active_client');

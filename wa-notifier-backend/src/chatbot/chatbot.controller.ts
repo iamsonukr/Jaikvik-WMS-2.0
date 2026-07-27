@@ -12,7 +12,7 @@ export class ChatbotController {
   constructor(private svc: ChatbotService) {}
 
   @UseGuards(TenantOwnershipGuard)
-  @Get() findAll(@Query('clientId') cid: string) { return this.svc.findAll(cid); }
+  @Get() findAll(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) { return this.svc.findAll(aid || cid); }
 
   @UseGuards(TenantOwnershipGuard)
   @Post() create(@Body() dto: CreateChatbotRuleDto) { return this.svc.create(dto); }

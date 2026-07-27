@@ -24,9 +24,9 @@ export default function AnalyticsPage() {
     setLoading(true);
     setError('');
     Promise.allSettled([
-      api.get(`/analytics/overview?clientId=${cid}`),
-      api.get(`/analytics/daily?clientId=${cid}&days=30`),
-      api.get(`/analytics/inbox?clientId=${cid}`),
+      api.get(`/analytics/overview?whatsappAccountId=${cid}`),
+      api.get(`/analytics/daily?whatsappAccountId=${cid}&days=30`),
+      api.get(`/analytics/inbox?whatsappAccountId=${cid}`),
     ]).then(([o, d, i]) => {
       setOverview(o.status === 'fulfilled' ? o.value.data : null);
       setDaily(d.status === 'fulfilled' ? d.value.data : []);

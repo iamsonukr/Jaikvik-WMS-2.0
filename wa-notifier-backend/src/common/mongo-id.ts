@@ -26,3 +26,24 @@ export function legacyObjectIdFilter(fieldName: string, value: ObjectIdInput) {
     ],
   };
 }
+
+export function whatsappAccountIdFilter(value: ObjectIdInput) {
+  const objectId = toObjectId(value, 'whatsappAccountId');
+  return {
+    $or: [
+      { whatsappAccountId: objectId },
+      { whatsappAccountId: String(objectId) },
+      { clientId: objectId },
+      { clientId: String(objectId) },
+    ],
+  };
+}
+
+export function resolveWhatsAppAccountId(
+  value: { whatsappAccountId?: ObjectIdInput; clientId?: ObjectIdInput } | ObjectIdInput,
+): ObjectIdInput {
+  if (typeof value === 'object' && value !== null && !(value instanceof Types.ObjectId)) {
+    return value.whatsappAccountId || value.clientId;
+  }
+  return value as ObjectIdInput;
+}

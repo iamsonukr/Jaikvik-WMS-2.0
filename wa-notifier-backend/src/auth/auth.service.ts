@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { User, UserDocument } from './user.schema';
-import { LoginDto, RegisterDto } from './auth.dto';
+import { CreateTenantUserDto, LoginDto, RegisterDto } from './auth.dto';
 import { TENANT_SCOPED_ROLES, UserRole, normalizeUserRole } from '../common/enums/role.enum';
 import { TenantsService } from '../tenants/tenants.service';
 import { toObjectId } from '../common/mongo-id';
@@ -89,6 +89,27 @@ export class AuthService {
       })
       .select('-password')
       .sort({ role: 1, createdAt: 1 });
+  }
+
+  async createTenantUser(tenantId: string, dto: CreateTenantUserDto) {
+    const tenant = await this.tenantsService.findOne(tenantId);
+    if (!tenant) throw new NotFoundException('Client tenant not found');
+
+    const exists = await this.userModel.findOne({ email: dto.email });
+    if (exists) throw new ConflictException('Email already in use');
+
+    const user = await this.userModel.create({
+      email: dto.email,
+      password: dto.password,
+      name: dto.name,
+      role: dto.role,
+      tenantId: toObjectId(tenantId, 'tenantId'),
+    });
+
+    const created = user.toObject();
+    delete created.password;
+    created.role = normalizeUserRole(created.role) as any;
+    return created;
   }
 
   async resetTenantUserPassword(userId: string, newPassword: string) {

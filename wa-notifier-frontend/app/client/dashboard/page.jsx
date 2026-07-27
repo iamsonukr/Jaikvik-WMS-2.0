@@ -24,10 +24,10 @@ export default function DashboardPage() {
     const cid = activeClient._id;
     setLoading(true);
     Promise.all([
-      api.get(`/analytics/overview?clientId=${cid}`),
-      api.get(`/analytics/daily?clientId=${cid}&days=14`),
-      api.get(`/broadcasts?clientId=${cid}`),
-      api.get(`/analytics/alerts?clientId=${cid}`),
+      api.get(`/analytics/overview?whatsappAccountId=${cid}`),
+      api.get(`/analytics/daily?whatsappAccountId=${cid}&days=14`),
+      api.get(`/broadcasts?whatsappAccountId=${cid}`),
+      api.get(`/analytics/alerts?whatsappAccountId=${cid}`),
     ]).then(([s, d, b, a]) => {
       setStats(s.data);
       setDaily(d.data);

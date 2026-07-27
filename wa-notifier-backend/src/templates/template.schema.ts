@@ -5,7 +5,7 @@ export type TemplateDocument = Template & Document;
 
 @Schema({ timestamps: true })
 export class Template {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) clientId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) whatsappAccountId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true }) name: string;
   @Prop() category: string;
@@ -16,5 +16,5 @@ export class Template {
 }
 
 export const TemplateSchema = SchemaFactory.createForClass(Template);
-TemplateSchema.index({ clientId: 1, name: 1 }, { unique: true });
+TemplateSchema.index({ whatsappAccountId: 1, name: 1 }, { unique: true });
 TemplateSchema.index({ tenantId: 1 });

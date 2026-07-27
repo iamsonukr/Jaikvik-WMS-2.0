@@ -8,27 +8,27 @@ export class InboxController {
 
   @UseGuards(TenantOwnershipGuard)
   @Get('threads')
-  threads(@Query('clientId') cid: string) {
-    return this.svc.threads(cid);
+  threads(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
+    return this.svc.threads(aid || cid);
   }
 
   @UseGuards(TenantOwnershipGuard)
   @Get('messages')
-  messages(@Query('clientId') cid: string, @Query('phone') phone: string) {
-    return this.svc.messages(cid, phone);
+  messages(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string, @Query('phone') phone: string) {
+    return this.svc.messages(aid || cid, phone);
   }
 
   @UseGuards(TenantOwnershipGuard)
   @Post('reply')
-  reply(@Body() body: { clientId: string; phone: string; text: string }) {
-    return this.svc.reply(body.clientId, body.phone, body.text);
+  reply(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; text: string }) {
+    return this.svc.reply(body.whatsappAccountId || body.clientId, body.phone, body.text);
   }
 
   @UseGuards(TenantOwnershipGuard)
   @Post('template')
-  template(@Body() body: { clientId: string; phone: string; templateName: string; languageCode?: string; bodyParameters?: string[] }) {
+  template(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; templateName: string; languageCode?: string; bodyParameters?: string[] }) {
     return this.svc.sendTemplate(
-      body.clientId,
+      body.whatsappAccountId || body.clientId,
       body.phone,
       body.templateName,
       body.languageCode,
@@ -45,7 +45,7 @@ export class InboxController {
 
   @UseGuards(TenantOwnershipGuard)
   @Post('resolve')
-  resolve(@Body() body: { clientId: string; phone: string }) {
-    return this.svc.resolve(body.clientId, body.phone);
+  resolve(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string }) {
+    return this.svc.resolve(body.whatsappAccountId || body.clientId, body.phone);
   }
 }

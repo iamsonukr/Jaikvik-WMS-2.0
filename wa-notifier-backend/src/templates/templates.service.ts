@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { Template, TemplateDocument } from './template.schema';
 import { MetaService } from '../common/meta.service';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
-import { toObjectId } from '../common/mongo-id';
+import { resolveWhatsAppAccountId, toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
 import { CreateTemplateDto } from './template.dto';
 
 @Injectable()
@@ -15,17 +15,18 @@ export class TemplatesService {
     private clients: WhatsAppAccountsService,
   ) {}
 
-  findAll(clientId: string) {
-    return this.model.find({ clientId: toObjectId(clientId, 'clientId') });
+  findAll(whatsappAccountId: string) {
+    return this.model.find(this.whatsappAccountIdQuery(whatsappAccountId));
   }
 
-  findByName(clientId: string, name: string) {
-    return this.model.findOne({ clientId: toObjectId(clientId, 'clientId'), name });
+  findByName(whatsappAccountId: string, name: string) {
+    return this.model.findOne({ ...this.whatsappAccountIdQuery(whatsappAccountId), name });
   }
 
-  async create(clientId: string, dto: CreateTemplateDto) {
-    const client = await this.clients.findOne(clientId);
-    if (!client) throw new NotFoundException('WhatsApp account not found.');
+  async create(whatsappAccountIdInput: string, dto: CreateTemplateDto) {
+    const whatsappAccountId = String(resolveWhatsAppAccountId(whatsappAccountIdInput || dto));
+    const account = await this.clients.findOne(whatsappAccountId);
+    if (!account) throw new NotFoundException('WhatsApp account not found.');
 
     const name = this.normalizeTemplateName(dto.name);
     const isLibraryTemplate = Boolean(dto.libraryTemplateName?.trim());
@@ -39,15 +40,15 @@ export class TemplatesService {
           components,
         };
 
-    const metaResponse = await this.meta.createTemplate(client.wabaId, client.accessToken, payload);
-    const clientObjectId = toObjectId(clientId, 'clientId');
+    const metaResponse = await this.meta.createTemplate(account.wabaId, account.accessToken, payload);
+    const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
 
     return this.model.findOneAndUpdate(
-      { clientId: clientObjectId, name },
+      { whatsappAccountId: accountObjectId, name },
       {
         $set: {
-          clientId: clientObjectId,
-          tenantId: client.tenantId,
+          whatsappAccountId: accountObjectId,
+          tenantId: account.tenantId,
           name,
           category: metaResponse?.category || dto.category,
           language: dto.language,
@@ -60,11 +61,11 @@ export class TemplatesService {
     );
   }
 
-  async library(clientId: string, filters: Record<string, any>) {
-    const client = await this.clients.findOne(clientId);
-    if (!client) throw new NotFoundException('WhatsApp account not found.');
+  async library(whatsappAccountId: string, filters: Record<string, any>) {
+    const account = await this.clients.findOne(whatsappAccountId);
+    if (!account) throw new NotFoundException('WhatsApp account not found.');
 
-    const response = await this.meta.getTemplateLibrary(client.accessToken, {
+    const response = await this.meta.getTemplateLibrary(account.accessToken, {
       name_or_content: filters.name_or_content || filters.search,
       language: filters.language,
       topic: filters.topic,
@@ -81,17 +82,17 @@ export class TemplatesService {
     };
   }
 
-  async sync(clientId: string) {
-    const client = await this.clients.findOne(clientId);
-    const clientObjectId = toObjectId(clientId, 'clientId');
-    const metaTemplates = await this.meta.getTemplates(client.wabaId, client.accessToken);
+  async sync(whatsappAccountId: string) {
+    const account = await this.clients.findOne(whatsappAccountId);
+    const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
+    const metaTemplates = await this.meta.getTemplates(account.wabaId, account.accessToken);
     const ops = metaTemplates.map((t: any) => ({
       updateOne: {
-        filter: { clientId: clientObjectId, name: t.name },
+        filter: { whatsappAccountId: accountObjectId, name: t.name },
         update: {
           $set: {
-            clientId: clientObjectId,
-            tenantId: client.tenantId,
+            whatsappAccountId: accountObjectId,
+            tenantId: account.tenantId,
             name: t.name, category: t.category, language: t.language, status: t.status, components: t.components, rawMeta: t,
           },
         },
@@ -99,7 +100,11 @@ export class TemplatesService {
       },
     }));
     if (ops.length) await this.model.bulkWrite(ops);
-    return this.findAll(clientId);
+    return this.findAll(whatsappAccountId);
+  }
+
+  private whatsappAccountIdQuery(id: string) {
+    return whatsappAccountIdFilter(id);
   }
 
   private normalizeTemplateName(name: string) {

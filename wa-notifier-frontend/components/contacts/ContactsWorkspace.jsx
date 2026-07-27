@@ -108,9 +108,9 @@ export default function ContactsWorkspace() {
     setLoading(true);
     setLoadError('');
     Promise.all([
-      api.get(`/contacts?clientId=${activeClient._id}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`),
-      api.get(`/contacts/tags?clientId=${activeClient._id}`),
-      api.get(`/templates?clientId=${activeClient._id}`),
+      api.get(`/contacts?whatsappAccountId=${activeClient._id}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`),
+      api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`),
+      api.get(`/templates?whatsappAccountId=${activeClient._id}`),
     ]).then(([contactsRes, tagsRes, templatesRes]) => {
       setContacts(asArray(contactsRes.data).map(normalizeContact));
       setTags(asArray(tagsRes.data).map(normalizeTag).filter((tagItem) => tagItem.name));
@@ -142,7 +142,7 @@ export default function ContactsWorkspace() {
     }
     setSaving(true);
     try {
-      const dto = { ...form, phone, clientId: activeClient._id, tags: form.tags };
+      const dto = { ...form, phone, whatsappAccountId: activeClient._id, tags: form.tags };
       const { data } = await api.post('/contacts', dto);
       const saved = normalizeContact(data);
       setContacts((prev) => [saved, ...prev.filter((contact) => contact._id !== saved._id)]);
@@ -186,7 +186,7 @@ export default function ContactsWorkspace() {
     setTagSaving(true);
     try {
       if (editingTagId) await api.patch(`/contacts/tags/${editingTagId}`, tagForm);
-      else await api.post('/contacts/tags', { ...tagForm, clientId: activeClient._id });
+      else await api.post('/contacts/tags', { ...tagForm, whatsappAccountId: activeClient._id });
       setTagForm(blankTag);
       setEditingTagId(null);
       load();
@@ -251,7 +251,7 @@ export default function ContactsWorkspace() {
     try {
       if (messageMode === 'template') {
         await api.post('/inbox/template', {
-          clientId: activeClient._id,
+          whatsappAccountId: activeClient._id,
           phone: normalizedPhone,
           templateName: selectedTemplate.name,
           languageCode: selectedTemplate.language,
@@ -259,7 +259,7 @@ export default function ContactsWorkspace() {
         });
       } else {
         await api.post('/inbox/reply', {
-          clientId: activeClient._id,
+          whatsappAccountId: activeClient._id,
           phone: normalizedPhone,
           text: messageText.trim(),
         });
@@ -298,7 +298,7 @@ export default function ContactsWorkspace() {
 
       if (parsed.length === 0) throw new Error('No valid rows with a phone number were found.');
 
-      const { data } = await api.post('/contacts/bulk', { clientId: activeClient._id, contacts: parsed });
+      const { data } = await api.post('/contacts/bulk', { whatsappAccountId: activeClient._id, contacts: parsed });
       load();
       if (data?.skipped) {
         setCsvError(`Imported ${parsed.length - data.skipped} contacts. Skipped ${data.skipped} row(s) with missing phone numbers.`);

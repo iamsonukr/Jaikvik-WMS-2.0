@@ -5,7 +5,7 @@ export type ChatbotRuleDocument = ChatbotRule & Document;
 
 @Schema({ timestamps: true })
 export class ChatbotRule {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) clientId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) whatsappAccountId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true }) keyword: string;         // exact or contains
   @Prop({ default: 'contains' }) matchType: string;  // exact | contains | starts_with
@@ -15,5 +15,5 @@ export class ChatbotRule {
 }
 
 export const ChatbotRuleSchema = SchemaFactory.createForClass(ChatbotRule);
-ChatbotRuleSchema.index({ clientId: 1, priority: 1 });
+ChatbotRuleSchema.index({ whatsappAccountId: 1, priority: 1 });
 ChatbotRuleSchema.index({ tenantId: 1 });

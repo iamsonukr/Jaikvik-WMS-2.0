@@ -1,6 +1,7 @@
-import { IsBoolean, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsMongoId, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 export class CreateWhatsAppAccountDto {
+  @IsOptional() @IsMongoId() tenantId?: string;
   @IsString() @MinLength(1) name: string;
   @IsString() @MinLength(1) wabaId: string;
   @IsString() @MinLength(1) phoneNumberId: string;
@@ -23,6 +24,7 @@ export class UpdateWhatsAppAccountDto {
 }
 
 export class EmbeddedSignupDto {
+  @IsOptional() @IsMongoId() tenantId?: string;
   @IsString() @MinLength(1) code: string;
   @IsString() @MinLength(1) wabaId: string;
   @IsOptional() @IsString() phoneNumberId?: string;

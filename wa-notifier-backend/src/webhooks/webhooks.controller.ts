@@ -102,7 +102,7 @@ export class WebhooksController {
 
             const contact = val.contacts?.[0];
             const msgRecord = await this.inbox.save({
-              clientId: client._id,
+              whatsappAccountId: client._id,
               tenantId: client.tenantId,
               phone: msg.from,
               contactName: contact?.profile?.name,
@@ -154,7 +154,7 @@ export class WebhooksController {
     const client = entityId ? await this.clients.findByMetaEntityId(entityId) : null;
 
     await this.alerts.create({
-      clientId: client?._id,
+      whatsappAccountId: client?._id,
       tenantId: client?.tenantId,
       field,
       entityType: val?.entity_type,

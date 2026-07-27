@@ -8,7 +8,7 @@ import { ContactsService } from '../contacts/contacts.service';
 import { TemplatesService } from '../templates/templates.service';
 import { WalletService } from '../wallet/wallet.service';
 import { MessageCategory } from '../common/enums/message-category.enum';
-import { legacyObjectIdFilter, toObjectId } from '../common/mongo-id';
+import { resolveWhatsAppAccountId, toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { Plan, PlanDocument } from '../plans/plan.schema';
 
@@ -30,24 +30,25 @@ export class BroadcastsService {
     @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
   ) {}
 
-  findAll(clientId: string) {
+  findAll(whatsappAccountId: string) {
     return this.broadcastModel.aggregate([
-      { $match: this.clientIdQuery(clientId) },
+      { $match: this.whatsappAccountIdQuery(whatsappAccountId) },
       { $sort: { createdAt: -1 } },
     ]);
   }
 
   findOne(id: string) { return this.broadcastModel.findById(id); }
 
-  async create(dto: Omit<Partial<Broadcast>, 'clientId'> & { clientId: string }) {
+  async create(dto: Omit<Partial<Broadcast>, 'whatsappAccountId'> & { whatsappAccountId?: string; clientId?: string }) {
     // Stamp tenantId at creation time (not just at send time) so the field
     // is always populated for reporting/filtering, matching every other
     // tenant-scoped collection in the schema.
-    const client = await this.clients.findOne(dto.clientId);
+    const whatsappAccountId = String(resolveWhatsAppAccountId(dto));
+    const account = await this.clients.findOne(whatsappAccountId);
     return this.broadcastModel.create({
       ...dto,
-      clientId: toObjectId(dto.clientId, 'clientId'),
-      tenantId: client?.tenantId,
+      whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
+      tenantId: account?.tenantId,
     });
   }
 
@@ -71,9 +72,10 @@ export class BroadcastsService {
     const broadcast = await this.broadcastModel.findById(broadcastId);
     if (!broadcast) throw new NotFoundException();
 
-    const client = await this.clients.findOne(String(broadcast.clientId));
-    const tenantId = toObjectId(broadcast.tenantId || client.tenantId, 'tenantId');
-    const contacts = await this.contacts.findBySegment(String(broadcast.clientId), broadcast.targetTags);
+    const whatsappAccountId = this.accountIdOf(broadcast);
+    const account = await this.clients.findOne(whatsappAccountId);
+    const tenantId = toObjectId(broadcast.tenantId || account.tenantId, 'tenantId');
+    const contacts = await this.contacts.findBySegment(whatsappAccountId, broadcast.targetTags);
     const category = await this.resolveCategory(broadcast);
     const price = await this.resolvePlanPrice(String(tenantId), category);
     const walletBalance = await this.wallet.getBalance(tenantId);
@@ -111,9 +113,10 @@ export class BroadcastsService {
       throw new Error(`Broadcast is already ${broadcast.status}`);
     }
 
-    const client = await this.clients.findOne(String(broadcast.clientId));
-    const tenantId = toObjectId(broadcast.tenantId || client.tenantId, 'tenantId');
-    const contacts = await this.contacts.findBySegment(String(broadcast.clientId), broadcast.targetTags);
+    const whatsappAccountId = this.accountIdOf(broadcast);
+    const account = await this.clients.findOne(whatsappAccountId);
+    const tenantId = toObjectId(broadcast.tenantId || account.tenantId, 'tenantId');
+    const contacts = await this.contacts.findBySegment(whatsappAccountId, broadcast.targetTags);
     const category = await this.resolveCategory(broadcast);
     const price = await this.resolvePlanPrice(String(tenantId), category);
 
@@ -150,7 +153,7 @@ export class BroadcastsService {
     // historical reports stay correct even after pricing changes later.
     const logs = contacts.map(c => ({
       broadcastId: broadcast._id,
-      clientId: toObjectId(broadcast.clientId, 'clientId'),
+      whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
       tenantId,
       phone: c.phone,
       contactName: c.name,
@@ -161,7 +164,7 @@ export class BroadcastsService {
     }));
     await this.logModel.insertMany(logs);
 
-    return { broadcast, client, contacts, category, price, tenantId };
+    return { broadcast, client: account, contacts, category, price, tenantId };
   }
 
   /**
@@ -249,7 +252,7 @@ export class BroadcastsService {
   }
 
   private async resolveCategory(broadcast: BroadcastDocument): Promise<MessageCategory> {
-    const template = await this.templates.findByName(String(broadcast.clientId), broadcast.templateName);
+    const template = await this.templates.findByName(this.accountIdOf(broadcast), broadcast.templateName);
     const raw = (template?.category || 'utility').toLowerCase();
     if (raw === 'marketing') return MessageCategory.MARKETING;
     if (raw === 'authentication') return MessageCategory.AUTHENTICATION;
@@ -292,8 +295,12 @@ export class BroadcastsService {
     }));
   }
 
-  private clientIdQuery(id: string) {
-    return legacyObjectIdFilter('clientId', id);
+  private whatsappAccountIdQuery(id: string) {
+    return whatsappAccountIdFilter(id);
+  }
+
+  private accountIdOf(broadcast: any) {
+    return String(broadcast.whatsappAccountId || broadcast.clientId);
   }
 
   /** Called by webhook when Meta sends status update. */

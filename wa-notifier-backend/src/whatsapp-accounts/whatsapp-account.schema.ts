@@ -5,10 +5,7 @@ export type WhatsAppAccountDocument = WhatsAppAccount & Document;
 
 // NOTE: this schema was previously named `Client`. It represents a connected
 // WhatsApp Business Account (WABA + phone number), NOT a SaaS tenant/customer.
-// Renamed to WhatsAppAccount to free up "Client" for the platform-tenant concept.
-// The underlying Mongo collection name is kept as 'clients' so existing data
-// and indexes carry over with zero migration risk.
-@Schema({ timestamps: true, collection: 'clients' })
+@Schema({ timestamps: true, collection: 'whatsappaccounts' })
 export class WhatsAppAccount {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' })
   tenantId?: Types.ObjectId; // owning SaaS tenant; nullable during transition/backfill

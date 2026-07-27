@@ -1,9 +1,13 @@
-import { ArrayMaxSize, IsArray, IsIn, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsMongoId, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateTemplateDto {
-  @IsString()
-  @MinLength(1)
-  clientId: string;
+  @IsOptional()
+  @IsMongoId()
+  whatsappAccountId?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  clientId?: string;
 
   @IsString()
   @MinLength(1)

@@ -103,8 +103,8 @@ export default function SettingsPage() {
       const usageResults = await Promise.all(
         (accountList || []).map(async (account) => {
           const [countRes, tagsRes] = await Promise.all([
-            api.get(`/contacts/count?clientId=${account._id}`).catch(() => ({ data: { count: 0 } })),
-            api.get(`/contacts/tags?clientId=${account._id}`).catch(() => ({ data: [] })),
+            api.get(`/contacts/count?whatsappAccountId=${account._id}`).catch(() => ({ data: { count: 0 } })),
+            api.get(`/contacts/tags?whatsappAccountId=${account._id}`).catch(() => ({ data: [] })),
           ]);
           return { contacts: Number(countRes.data?.count || 0), tags: tagsRes.data?.length || 0 };
         }),
