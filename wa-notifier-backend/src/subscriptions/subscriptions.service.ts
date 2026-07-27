@@ -64,7 +64,10 @@ export class SubscriptionsService {
     const billingCycle = dto.billingCycle || this.defaultBillingCycle(plan);
     const priceSnapshot = this.priceForCycle(plan, billingCycle);
     const startDate = dto.startDate ? new Date(dto.startDate) : new Date();
-    const endDate = this.computeEndDate(startDate, billingCycle);
+    const endDate = dto.endDate ? new Date(dto.endDate) : this.computeEndDate(startDate, billingCycle);
+    if (endDate <= startDate) {
+      throw new BadRequestException('endDate must be after startDate');
+    }
 
     const subscription = await this.subModel.create({
       tenantId,

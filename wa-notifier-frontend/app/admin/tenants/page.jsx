@@ -2,18 +2,36 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner } from '@/components/ui';
+import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea } from '@/components/ui';
 import { Building2, Plus, ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
 
 const STATUS_COLOR = { active: 'green', suspended: 'yellow', disabled: 'red' };
+const blankForm = {
+  name: '',
+  contactEmail: '',
+  contactPhone: '',
+  contactPerson: '',
+  billingEmail: '',
+  website: '',
+  taxId: '',
+  industry: '',
+  timezone: 'Asia/Kolkata',
+  addressLine1: '',
+  addressLine2: '',
+  city: '',
+  state: '',
+  country: 'India',
+  postalCode: '',
+  notes: '',
+};
 const text = (value) => String(value || '').toLowerCase();
 const fmtDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
 
 export default function TenantsPage() {
   const [tenants, setTenants] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', contactEmail: '', contactPhone: '', industry: '' });
+  const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -30,7 +48,7 @@ export default function TenantsPage() {
     try {
       await api.post('/tenants', form);
       setCreateOpen(false);
-      setForm({ name: '', contactEmail: '', contactPhone: '', industry: '' });
+      setForm(blankForm);
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || 'Could not create client');
@@ -146,10 +164,26 @@ export default function TenantsPage() {
         }
       >
         <div className="space-y-3">
-          <Input label="Client / company name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input label="Contact email" type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
-          <Input label="Contact phone (optional)" value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
-          <Input label="Industry (optional)" value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Client / company name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input label="Contact person" value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} />
+            <Input label="Contact email" type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
+            <Input label="Billing email" type="email" value={form.billingEmail} onChange={(e) => setForm({ ...form, billingEmail: e.target.value })} />
+            <Input label="Contact phone" value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
+            <Input label="Website" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+            <Input label="Industry" value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} />
+            <Input label="Timezone" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+            <Input label="GST / Tax ID" value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
+            <Input label="Postal code" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} />
+          </div>
+          <Input label="Address line 1" value={form.addressLine1} onChange={(e) => setForm({ ...form, addressLine1: e.target.value })} />
+          <Input label="Address line 2" value={form.addressLine2} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Input label="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+            <Input label="State" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+            <Input label="Country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
+          </div>
+          <Textarea label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
       </Modal>

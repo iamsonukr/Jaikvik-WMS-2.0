@@ -20,13 +20,10 @@ export function StatCard({ label, value, icon: Icon, color = '#25D366', sub, tre
   const trendUp = typeof trend === 'number' && trend >= 0;
   return (
     <Card className="group relative overflow-hidden p-4 sm:p-5">
-      <div
-        className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.10] transition-transform duration-300 group-hover:scale-125"
-        style={{ background: color }}
-      />
+      <div className="absolute inset-x-0 top-0 h-0.5" style={{ background: color }} />
       <div className="relative flex items-start gap-4">
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset transition-transform duration-200 group-hover:scale-105"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset transition-transform duration-200 group-hover:scale-105"
           style={{ background: color + '18', color, borderColor: color + '30', boxShadow: `inset 0 0 0 1px ${color}25` }}
         >
           {Icon && <Icon size={20} />}
@@ -51,9 +48,9 @@ export function StatCard({ label, value, icon: Icon, color = '#25D366', sub, tre
 
 export function Empty({ icon: Icon, title, description, action }) {
   return (
-    <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/50 px-4 py-16 text-center animate-fade-in">
+    <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-card/60 px-4 py-16 text-center animate-fade-in">
       {Icon && (
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-gradient/10 text-primary">
+        <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Icon size={28} strokeWidth={1.75} />
         </div>
       )}

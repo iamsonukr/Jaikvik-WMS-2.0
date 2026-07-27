@@ -18,6 +18,11 @@ export default function AppShell({ children, allowedRoles }) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const role = normalizeRole(user?.role);
+  const sectionLabel = role === 'admin'
+    ? 'Control panel'
+    : role === 'master'
+      ? 'Messaging workspace'
+      : 'Client workspace';
 
   useEffect(() => {
     if (loading) return;
@@ -55,7 +60,7 @@ export default function AppShell({ children, allowedRoles }) {
         />
       )}
 
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-lg lg:ml-64 lg:px-6">
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border/80 px-4 backdrop-blur-xl lg:ml-64 lg:px-6" style={{ background: 'var(--topbar-bg)' }}>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -71,16 +76,26 @@ export default function AppShell({ children, allowedRoles }) {
             </div>
             <span className="font-semibold tracking-tight">Jaikvik WMS</span>
           </div>
+          <div className="hidden lg:block">
+            <p className="text-sm font-semibold tracking-tight">{sectionLabel}</p>
+            <p className="text-xs text-muted-foreground">{user?.email}</p>
+          </div>
         </div>
 
-        <button
-          type="button"
-          aria-label="Toggle theme"
-          onClick={toggleTheme}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm transition-all duration-200 hover:bg-accent hover:text-accent-foreground hover:rotate-12"
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="hidden rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground sm:inline-flex">
+            {role || 'user'}
+          </span>
+          <button
+            type="button"
+            aria-label="Toggle theme"
+            onClick={toggleTheme}
+            className="inline-flex h-10 min-w-10 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm transition-all duration-200 hover:bg-accent hover:text-accent-foreground"
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            <span className="hidden text-xs font-medium sm:inline">{theme === 'dark' ? 'Day' : 'Night'}</span>
+          </button>
+        </div>
       </header>
 
       <main className="lg:ml-64">

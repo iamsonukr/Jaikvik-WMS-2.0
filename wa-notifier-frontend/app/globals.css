@@ -5,24 +5,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --background: 150 30% 98%;
-  --foreground: 222 47% 11%;
+  --background: 210 30% 98%;
+  --foreground: 222 47% 10%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --primary: 151 70% 43%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
+  --secondary: 210 38% 95%;
   --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
+  --muted: 210 34% 95%;
   --muted-foreground: 215 16% 47%;
-  --accent: 174 72% 93%;
-  --accent-foreground: 173 80% 24%;
+  --accent: 188 74% 93%;
+  --accent-foreground: 190 82% 24%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
+  --border: 214 28% 88%;
+  --input: 214 28% 88%;
   --ring: 151 70% 43%;
   --radius: 0.75rem;
 
@@ -40,27 +40,30 @@
   --danger:           #ef4444;
   --warning:          #f59e0b;
   --info:             #3b82f6;
+  --chart-grid:       #dbe3ee;
+  --chart-tooltip:    #ffffff;
+  --topbar-bg:        rgba(255,255,255,.82);
 }
 
 .dark {
-  --background: 224 38% 7%;
+  --background: 222 38% 7%;
   --foreground: 210 40% 98%;
-  --card: 224 33% 10%;
+  --card: 222 32% 10%;
   --card-foreground: 210 40% 98%;
   --popover: 224 33% 10%;
   --popover-foreground: 210 40% 98%;
   --primary: 151 70% 43%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 223 28% 16%;
+  --secondary: 222 26% 15%;
   --secondary-foreground: 210 40% 98%;
-  --muted: 223 28% 16%;
-  --muted-foreground: 215 20% 72%;
-  --accent: 174 55% 16%;
-  --accent-foreground: 166 76% 82%;
+  --muted: 222 24% 15%;
+  --muted-foreground: 215 18% 70%;
+  --accent: 188 42% 17%;
+  --accent-foreground: 186 74% 82%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 98%;
-  --border: 223 25% 20%;
-  --input: 223 25% 20%;
+  --border: 222 22% 21%;
+  --input: 222 22% 21%;
   --ring: 151 70% 43%;
 
   --primary-bg:       #0b1120;
@@ -71,6 +74,9 @@
   --sidebar-bg:       #07111f;
   --sidebar-text:     #cbd5e1;
   --menu-text:        #f8fafc;
+  --chart-grid:       #263449;
+  --chart-tooltip:    #0e1726;
+  --topbar-bg:        rgba(8,15,27,.82);
 }
 
 @layer base {
@@ -79,15 +85,24 @@
   body {
     @apply min-h-screen bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, sans-serif;
-    background-image: radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.06), transparent 45%),
-                       radial-gradient(circle at 100% 0%, hsl(var(--primary) / 0.05), transparent 40%);
+    color-scheme: light;
+    background-image: linear-gradient(180deg, hsl(var(--secondary) / .72), hsl(var(--background)) 18rem);
     background-attachment: fixed;
+  }
+
+  .dark body {
+    color-scheme: dark;
+    background-image: linear-gradient(180deg, #0b1424, hsl(var(--background)) 20rem);
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / .22);
   }
 }
 
 @layer components {
   .app-panel {
-    @apply border border-border bg-card text-card-foreground shadow-card;
+    @apply border border-border/80 bg-card text-card-foreground shadow-card;
   }
 
   .glass-panel {
@@ -95,7 +110,7 @@
   }
 
   .table-row-hover {
-    @apply hover:bg-muted/50 transition-colors;
+    @apply hover:bg-muted/55 transition-colors;
   }
 
   .soft-alert {
@@ -108,6 +123,10 @@
   .shimmer::after {
     content: '';
     @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer;
+  }
+
+  .chart-tooltip {
+    @apply rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-card;
   }
 }
 

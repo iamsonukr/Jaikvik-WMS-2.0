@@ -74,7 +74,7 @@ function NavGroup({ title, items, pathname, onClose }) {
           return (
             <Link key={href} href={href}
               onClick={onClose}
-              className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150
                 ${active ? 'bg-brand-gradient text-white shadow-lg shadow-brand/20' : 'text-[var(--menu-text)] hover:bg-white/[0.07] hover:text-[var(--menu-text)]'}`}>
               <Icon size={17} className={active ? '' : 'transition-transform duration-150 group-hover:scale-110'} />
               {label}
@@ -117,7 +117,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     >
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-        <div className="relative w-9 h-9 shrink-0 rounded-xl flex items-center justify-center bg-brand-gradient shadow-lg shadow-brand/25">
+        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-gradient shadow-lg shadow-brand/25">
           <MessageCircle size={18} color="#fff" strokeWidth={2.25} />
           <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-[#07111f]" />
         </div>

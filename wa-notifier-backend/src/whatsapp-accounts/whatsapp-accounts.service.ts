@@ -32,7 +32,8 @@ export class WhatsAppAccountsService {
     if (tenantId && dto.phoneNumberId) {
       await this.assertTenantCanAddPhoneNumber(tenantId, dto.phoneNumberId);
     }
-    return this.model.create(tenantId ? { ...dto, tenantId: toObjectId(tenantId, 'tenantId') } : dto);
+    const { tenantId: _requestTenantId, ...account } = dto;
+    return this.model.create(tenantId ? { ...account, tenantId: toObjectId(tenantId, 'tenantId') } : account);
   }
 
   async createFromEmbeddedSignup(dto: EmbeddedSignupDto, tenantId?: ObjectIdInput) {

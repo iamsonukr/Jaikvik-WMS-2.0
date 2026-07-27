@@ -12,8 +12,18 @@ export class Tenant {
   @Prop({ required: true, unique: true, lowercase: true, trim: true }) slug: string;
   @Prop({ required: true, lowercase: true }) contactEmail: string;
   @Prop() contactPhone: string;
+  @Prop() contactPerson: string;
+  @Prop({ lowercase: true }) billingEmail: string;
+  @Prop() website: string;
+  @Prop() taxId: string;
   @Prop() industry: string;
   @Prop() timezone: string;
+  @Prop() addressLine1: string;
+  @Prop() addressLine2: string;
+  @Prop() city: string;
+  @Prop() state: string;
+  @Prop() country: string;
+  @Prop() postalCode: string;
 
   @Prop({ default: 'active', enum: ['active', 'suspended', 'disabled'] })
   status: string;

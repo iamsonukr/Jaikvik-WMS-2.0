@@ -5,6 +5,7 @@ export class AssignSubscriptionDto {
   @IsMongoId() tenantId: string;
   @IsMongoId() planId: string;
   @IsOptional() @IsDateString() startDate?: string; // defaults to now
+  @IsOptional() @IsDateString() endDate?: string; // optional manual override
   @IsOptional() @IsString() billingCycle?: BillingCycle;
 }
 

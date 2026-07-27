@@ -10,6 +10,26 @@ import {
 } from 'recharts';
 import { Users, Send, CheckCheck, Eye, AlertCircle, MessageSquare } from 'lucide-react';
 
+function ChartTooltip({ active, payload, label, suffix = '' }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tooltip">
+      {label && <p className="mb-1 font-semibold text-foreground">{label}</p>}
+      <div className="space-y-1">
+        {payload.map((item) => (
+          <div key={item.dataKey || item.name} className="flex items-center justify-between gap-4">
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <span className="h-2 w-2 rounded-sm" style={{ background: item.color }} />
+              {item.name}
+            </span>
+            <span className="font-medium text-foreground">{item.value}{suffix}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const { activeClient } = useClient();
   const [overview, setOverview] = useState(null);
@@ -71,15 +91,15 @@ export default function AnalyticsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         {/* Daily trend */}
-        <Card className="lg:col-span-2">
+        <Card className="overflow-hidden lg:col-span-2">
           <CardHeader title="Daily Campaign Performance (30 days)" />
-          <div className="p-4 h-64">
+          <div className="h-72 p-5">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={daily} barSize={10} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="_id" tick={{ fontSize: 9 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
+              <BarChart data={daily} barSize={12} barGap={3}>
+                <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="4 4" vertical={false} opacity={0.75} />
+                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={8} />
                 <Bar dataKey="sent"      fill="#6366f1" name="Sent"      radius={[3,3,0,0]} />
                 <Bar dataKey="delivered" fill="#22c55e" name="Delivered" radius={[3,3,0,0]} />
@@ -92,7 +112,7 @@ export default function AnalyticsPage() {
 
         {/* Inbox stats */}
         {inbox && (
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader title="Inbox Overview" />
             <div className="p-5 space-y-4">
               {[
@@ -117,16 +137,16 @@ export default function AnalyticsPage() {
 
       {/* Delivery rate trend */}
       {daily.length > 0 && (
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader title="Read Rate Trend" />
-          <div className="p-4 h-48">
+          <div className="h-56 p-5">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={daily.map(d => ({ ...d, readRate: d.sent > 0 ? Math.round((d.read / d.sent) * 100) : 0 }))}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="_id" tick={{ fontSize: 9 }} />
-                <YAxis tick={{ fontSize: 10 }} unit="%" domain={[0, 100]} />
-                <Tooltip formatter={v => v + '%'} />
-                <Line type="monotone" dataKey="readRate" stroke="#f59e0b" strokeWidth={2} dot={false} name="Read Rate" />
+                <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="4 4" vertical={false} opacity={0.75} />
+                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} unit="%" domain={[0, 100]} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip suffix="%" />} />
+                <Line type="monotone" dataKey="readRate" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} name="Read Rate" />
               </LineChart>
             </ResponsiveContainer>
           </div>
