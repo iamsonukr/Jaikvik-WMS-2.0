@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Badge, Empty, Spinner, Input, Select } from '@/components/ui';
-import { CreditCard } from 'lucide-react';
+import { PageHeader, Card, Badge, Button, Empty, Spinner, Input, Select } from '@/components/ui';
+import { CreditCard, Download } from 'lucide-react';
 import api from '@/lib/api';
 
 const STATUS_COLOR = { paid: 'green', created: 'yellow', failed: 'red' };
@@ -15,6 +15,7 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [purposeFilter, setPurposeFilter] = useState('all');
+  const [downloadingId, setDownloadingId] = useState(null);
 
   useEffect(() => { api.get('/payments').then((r) => setPayments(r.data)); }, []);
 
@@ -37,6 +38,24 @@ export default function PaymentsPage() {
       return matchesSearch && matchesStatus && matchesPurpose;
     });
   }, [payments, search, statusFilter, purposeFilter]);
+
+  const downloadPdf = async (payment) => {
+    setDownloadingId(payment._id);
+    try {
+      const { data, headers } = await api.get(`/payments/${payment._id}/invoice.pdf`, { responseType: 'blob' });
+      const disposition = headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || `billing-document-${payment._id}.pdf`;
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   return (
     <AppShell allowedRoles={['admin', 'master']}>
@@ -74,11 +93,12 @@ export default function PaymentsPage() {
                   <th className="px-4 py-3 text-right font-semibold">Amount</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
+                  <th className="px-4 py-3 text-right font-semibold">Document</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredPayments.length && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No payments match these filters.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No payments match these filters.</td></tr>
                 )}
                 {filteredPayments.map((p) => (
                   <tr key={p._id} className="table-row-hover">
@@ -92,6 +112,16 @@ export default function PaymentsPage() {
                     <td className="px-4 py-3 text-right font-semibold">{fmtMoney(p.amount)}</td>
                     <td className="px-4 py-3"><Badge label={p.status || 'unknown'} color={STATUS_COLOR[p.status] || 'gray'} /></td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDateTime(p.createdAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={p.status !== 'paid' || downloadingId === p._id}
+                        onClick={() => downloadPdf(p)}
+                      >
+                        <Download size={13} /> {downloadingId === p._id ? 'Downloading...' : 'PDF'}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

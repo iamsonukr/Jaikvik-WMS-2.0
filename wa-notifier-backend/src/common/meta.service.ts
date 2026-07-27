@@ -67,8 +67,14 @@ export class MetaService {
   }
 
   async getTemplates(wabaId: string, accessToken: string) {
-    const url = `https://graph.facebook.com/${this.version}/${wabaId}/message_templates?limit=100`;
-    const { data } = await axios.get(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const url = `https://graph.facebook.com/${this.version}/${wabaId}/message_templates`;
+    const { data } = await axios.get(url, {
+      params: {
+        limit: 100,
+        fields: 'name,category,language,status,components,rejected_reason,quality_score,previous_category,parameter_format',
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
     return data.data;
   }
 

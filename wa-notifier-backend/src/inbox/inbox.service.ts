@@ -41,7 +41,22 @@ export class InboxService {
       .limit(200);
   }
 
-  save(dto: Partial<Message>) { return this.model.create(dto); }
+  async save(dto: Partial<Message>) {
+    const whatsappAccountId = dto.whatsappAccountId ? String(dto.whatsappAccountId) : '';
+    const phone = String(dto.phone || '');
+    if (whatsappAccountId && phone) {
+      const latest = await this.latestThread(whatsappAccountId, phone);
+      if (latest) {
+        dto.threadStatus = dto.threadStatus || latest.threadStatus;
+        dto.assignedTo = dto.assignedTo || latest.assignedTo;
+        dto.threadTags = dto.threadTags || latest.threadTags;
+        dto.priority = dto.priority || latest.priority;
+        dto.slaDueAt = dto.slaDueAt || latest.slaDueAt;
+        dto.internalNotes = dto.internalNotes || latest.internalNotes;
+      }
+    }
+    return this.model.create(dto);
+  }
 
   async reply(whatsappAccountId: string, phone: string, text: string) {
     const account = await this.clients.findOne(whatsappAccountId);
@@ -68,6 +83,7 @@ export class InboxService {
       throw err;
     }
 
+    const threadMeta = await this.threadMetadata(whatsappAccountId, phone);
     return this.model.create({
       whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
       tenantId,
@@ -81,6 +97,7 @@ export class InboxService {
       appliedTaxPercent: price.taxPercent,
       chargedAmount: charge,
       walletTransactionId: txn?._id,
+      ...threadMeta,
       timestamp: new Date(),
     });
   }
@@ -132,6 +149,7 @@ export class InboxService {
     }
 
     const body = template.components?.find((component: any) => component?.type === 'BODY')?.text || template.name;
+    const threadMeta = await this.threadMetadata(whatsappAccountId, phone);
     return this.model.create({
       whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
       tenantId,
@@ -150,6 +168,7 @@ export class InboxService {
       appliedTaxPercent: price.taxPercent,
       chargedAmount: charge,
       walletTransactionId: txn?._id,
+      ...threadMeta,
       timestamp: new Date(),
     });
   }
@@ -158,12 +177,100 @@ export class InboxService {
     return this.model.findByIdAndUpdate(id, { assignedTo: toObjectId(userId, 'userId'), threadStatus: 'assigned' }, { new: true });
   }
 
+  async assignThread(whatsappAccountId: string, phone: string, userId?: string) {
+    const assignedTo = userId ? toObjectId(userId, 'userId') : null;
+    const threadStatus = assignedTo ? 'assigned' : 'open';
+    await this.model.updateMany(
+      { ...this.whatsappAccountIdQuery(whatsappAccountId), phone },
+      { assignedTo, threadStatus },
+    );
+    return this.latestThread(whatsappAccountId, phone);
+  }
+
+  async updateThread(whatsappAccountId: string, phone: string, dto: {
+    threadStatus?: string;
+    priority?: string;
+    slaDueAt?: string | Date | null;
+    threadTags?: string[];
+  }) {
+    const update: any = {};
+    if (dto.threadStatus !== undefined) update.threadStatus = this.normalizeThreadStatus(dto.threadStatus);
+    if (dto.priority !== undefined) update.priority = this.normalizePriority(dto.priority);
+    if (dto.slaDueAt !== undefined) update.slaDueAt = dto.slaDueAt ? new Date(dto.slaDueAt) : null;
+    if (dto.threadTags !== undefined) update.threadTags = this.cleanThreadTags(dto.threadTags);
+
+    if (!Object.keys(update).length) return this.latestThread(whatsappAccountId, phone);
+    await this.model.updateMany({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone }, update);
+    return this.latestThread(whatsappAccountId, phone);
+  }
+
+  async addNote(whatsappAccountId: string, phone: string, text: string, author?: any) {
+    const clean = String(text || '').trim();
+    if (!clean) throw new BadRequestException('Note text is required.');
+
+    const note = {
+      text: clean,
+      authorId: author?._id ? toObjectId(author._id, 'authorId') : undefined,
+      authorName: author?.name || author?.email || 'Team member',
+      createdAt: new Date(),
+    };
+    await this.model.updateMany(
+      { ...this.whatsappAccountIdQuery(whatsappAccountId), phone },
+      { $push: { internalNotes: note } },
+    );
+    return this.latestThread(whatsappAccountId, phone);
+  }
+
   resolve(whatsappAccountId: string, phone: string) {
     return this.model.updateMany({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone }, { threadStatus: 'resolved' });
   }
 
+  private latestThread(whatsappAccountId: string, phone: string) {
+    return this.model
+      .findOne({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone })
+      .sort({ createdAt: -1 });
+  }
+
+  private async threadMetadata(whatsappAccountId: string, phone: string) {
+    const latest = await this.latestThread(whatsappAccountId, phone);
+    if (!latest) return {};
+    return {
+      threadStatus: latest.threadStatus,
+      assignedTo: latest.assignedTo,
+      threadTags: latest.threadTags,
+      priority: latest.priority,
+      slaDueAt: latest.slaDueAt,
+      internalNotes: latest.internalNotes,
+    };
+  }
+
   private whatsappAccountIdQuery(whatsappAccountId: string) {
     return whatsappAccountIdFilter(whatsappAccountId);
+  }
+
+  private normalizeThreadStatus(status: string) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (!['open', 'assigned', 'pending', 'resolved'].includes(normalized)) {
+      throw new BadRequestException('Choose a valid conversation status.');
+    }
+    return normalized;
+  }
+
+  private normalizePriority(priority: string) {
+    const normalized = String(priority || '').trim().toLowerCase();
+    if (!['low', 'normal', 'high', 'urgent'].includes(normalized)) {
+      throw new BadRequestException('Choose a valid priority.');
+    }
+    return normalized;
+  }
+
+  private cleanThreadTags(tags: string[] = []) {
+    return Array.from(new Set(
+      tags
+        .map((tag) => String(tag || '').trim().replace(/\s+/g, ' '))
+        .filter(Boolean)
+        .slice(0, 12),
+    ));
   }
 
   private resolveTenantId(client: any): Types.ObjectId {

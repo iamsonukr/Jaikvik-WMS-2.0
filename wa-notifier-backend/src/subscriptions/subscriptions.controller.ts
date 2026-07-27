@@ -34,6 +34,14 @@ export class SubscriptionsController {
     return this.svc.currentForTenant(tenantId);
   }
 
+  // Client-facing: full subscription history (past plans, renewals,
+  // cancellations) for their own tenant — same tenant-scoping rule as above.
+  @Get('me/history')
+  @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
+  myHistory(@CurrentTenant() tenantId: string) {
+    return this.svc.findByTenant(tenantId);
+  }
+
   @Post('assign')
   @Roles(UserRole.ADMIN, UserRole.MASTER)
   assign(@Body() dto: AssignSubscriptionDto) {

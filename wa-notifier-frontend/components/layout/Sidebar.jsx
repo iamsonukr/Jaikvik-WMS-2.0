@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, ChevronDown, X, Check,
-  Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound,
+  Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound, Users, Receipt, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
@@ -37,6 +37,7 @@ const messagingNav = [
 const controlPanelNav = [
   { href: '/admin/dashboard',   label: 'Dashboard',      icon: LayoutDashboard },
   { href: '/admin/tenants',     label: 'Clients',        icon: Building2 },
+  { href: '/admin/whatsapp-accounts', label: 'WhatsApp Accounts', icon: MessageCircle },
   { href: '/admin/plans',       label: 'Plans',          icon: Tags },
   { href: '/admin/wallets',     label: 'Wallets',        icon: Wallet },
   { href: '/admin/payments',    label: 'Payments',       icon: CreditCard },
@@ -50,6 +51,7 @@ const controlPanelNav = [
 // make sense from a tenant's own point of view.
 const clientNav = [
   { href: '/client/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/client/alerts',      label: 'Alerts',      icon: Bell },
   { href: '/client/broadcasts',  label: 'Broadcasts',  icon: Megaphone },
   { href: '/client/inbox',       label: 'Inbox',       icon: Inbox },
   { href: '/client/contacts',    label: 'Contacts',    icon: UserCircle },
@@ -57,8 +59,10 @@ const clientNav = [
   { href: '/client/chatbot',     label: 'Chatbot',     icon: Bot },
   { href: '/client/analytics',   label: 'Analytics',   icon: BarChart2 },
   { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true },
+  { href: '/client/team',        label: 'Team',        icon: Users },
   { href: '/client/plans',      label: 'Plans',       icon: CreditCard },
   { href: '/client/wallet',      label: 'Wallet',      icon: Wallet },
+  { href: '/client/payments',    label: 'Payments',    icon: Receipt },
   { href: '/client/settings',    label: 'Settings',    icon: Settings },
 ];
 

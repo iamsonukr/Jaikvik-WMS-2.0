@@ -8,6 +8,7 @@ import { CreateTenantUserDto, LoginDto, RegisterDto } from './auth.dto';
 import { TENANT_SCOPED_ROLES, UserRole, normalizeUserRole } from '../common/enums/role.enum';
 import { TenantsService } from '../tenants/tenants.service';
 import { toObjectId } from '../common/mongo-id';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +16,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
     private tenantsService: TenantsService,
+    private subscriptionsService: SubscriptionsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -112,6 +114,81 @@ export class AuthService {
     return created;
   }
 
+  async getTeamLimit(tenantId: string) {
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
+    const used = await this.userModel.countDocuments({
+      tenantId: tenantObjectId,
+      role: { $in: TENANT_SCOPED_ROLES },
+      isActive: true,
+    });
+
+    const subscription = await this.subscriptionsService.currentForTenant(tenantId).catch(() => null);
+    const plan = subscription?.planId as any;
+    const rawLimit = plan?.teamMembers ?? plan?.limits?.teamMembers;
+    const numericLimit = rawLimit === null || rawLimit === undefined || rawLimit === ''
+      ? null
+      : Number(rawLimit);
+    const limit = Number.isFinite(numericLimit as number) && (numericLimit as number) >= 0
+      ? numericLimit
+      : null;
+
+    return {
+      used,
+      limit,
+      remaining: limit === null ? null : Math.max(0, (limit as number) - used),
+    };
+  }
+
+  async createTeamMember(tenantId: string, dto: CreateTenantUserDto) {
+    await this.assertTenantExists(tenantId);
+    const teamLimit = await this.getTeamLimit(tenantId);
+    if (teamLimit.limit !== null && teamLimit.used >= teamLimit.limit) {
+      throw new BadRequestException('Your current plan team member limit has been reached.');
+    }
+
+    return this.createTenantUser(tenantId, dto);
+  }
+
+  async updateTeamMember(tenantId: string, userId: string, dto: { role?: string; isActive?: boolean }, actorUserId: string) {
+    const user = await this.findTenantTeamMember(tenantId, userId);
+    if (String(user._id) === String(actorUserId) && dto.isActive === false) {
+      throw new BadRequestException('You cannot disable your own account.');
+    }
+    if (String(user._id) === String(actorUserId) && dto.role && dto.role !== UserRole.CLIENT_OWNER) {
+      throw new BadRequestException('You cannot change your own owner role.');
+    }
+
+    if (dto.role !== undefined) user.role = dto.role as UserRole;
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    await user.save();
+
+    const updated = user.toObject();
+    delete updated.password;
+    updated.role = normalizeUserRole(updated.role) as any;
+    return updated;
+  }
+
+  async resetTeamMemberPassword(tenantId: string, userId: string, newPassword: string) {
+    const user = await this.findTenantTeamMember(tenantId, userId);
+    user.password = newPassword;
+    await user.save();
+
+    const updated = user.toObject();
+    delete updated.password;
+    updated.role = normalizeUserRole(updated.role) as any;
+    return { message: 'Password reset', user: updated };
+  }
+
+  async removeTeamMember(tenantId: string, userId: string, actorUserId: string) {
+    if (String(userId) === String(actorUserId)) {
+      throw new BadRequestException('You cannot remove your own account.');
+    }
+
+    const user = await this.findTenantTeamMember(tenantId, userId);
+    await user.deleteOne();
+    return { message: 'Team member removed' };
+  }
+
   async resetTenantUserPassword(userId: string, newPassword: string) {
     const user = await this.userModel.findById(userId);
     if (!user || !TENANT_SCOPED_ROLES.includes(normalizeUserRole(user.role) as UserRole)) {
@@ -138,6 +215,22 @@ export class AuthService {
     user.password = newPassword; // pre-save hook hashes it
     await user.save();
     return { message: 'Password updated' };
+  }
+
+  private async assertTenantExists(tenantId: string) {
+    const tenant = await this.tenantsService.findOne(tenantId);
+    if (!tenant) throw new NotFoundException('Client tenant not found');
+    return tenant;
+  }
+
+  private async findTenantTeamMember(tenantId: string, userId: string) {
+    const user = await this.userModel.findOne({
+      _id: toObjectId(userId, 'userId'),
+      tenantId: toObjectId(tenantId, 'tenantId'),
+      role: { $in: TENANT_SCOPED_ROLES },
+    });
+    if (!user) throw new NotFoundException('Team member not found');
+    return user;
   }
 
   private tokenFor(user: UserDocument) {

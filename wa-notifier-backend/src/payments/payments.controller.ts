@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { PaymentsService } from './payments.service';
 import { CreateRechargeOrderDto, CreateSubscriptionOrderDto, VerifyRechargePaymentDto } from './payments.dto';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -14,6 +15,44 @@ export class PaymentsController {
   @Roles(UserRole.ADMIN, UserRole.MASTER)
   findAll(@Query('tenantId') tenantId?: string) {
     return tenantId ? this.svc.findByTenant(tenantId) : this.svc.findAll();
+  }
+
+  // Client-facing: their own payment history (wallet recharges + subscription
+  // payments), resolved from the JWT — never a client-supplied tenantId.
+  @Get('me')
+  @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
+  myPayments(@CurrentTenant() tenantId: string) {
+    return this.svc.findByTenant(tenantId);
+  }
+
+  @Get('me/:id/invoice')
+  @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
+  myInvoice(@CurrentTenant() tenantId: string, @Param('id') id: string) {
+    return this.svc.getInvoiceData(tenantId, id);
+  }
+
+  @Get('me/:id/invoice.pdf')
+  @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
+  async myInvoicePdf(@CurrentTenant() tenantId: string, @Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.svc.getInvoicePdf(tenantId, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  }
+
+  @Get(':id/invoice')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  invoiceForStaff(@Param('id') id: string) {
+    return this.svc.getInvoiceDataForStaff(id);
+  }
+
+  @Get(':id/invoice.pdf')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  async invoicePdfForStaff(@Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.svc.getInvoicePdfForStaff(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
   }
 
   @Post('wallet-recharge/order')

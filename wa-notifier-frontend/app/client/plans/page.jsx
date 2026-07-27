@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import PlanPurchasePanel from '@/components/billing/PlanPurchasePanel';
+import SubscriptionHistory from '@/components/billing/SubscriptionHistory';
 import { Button, PageHeader } from '@/components/ui';
 import { Wallet } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export default function ClientPlansPage() {
       />
 
       <PlanPurchasePanel />
+      <SubscriptionHistory />
     </AppShell>
   );
 }

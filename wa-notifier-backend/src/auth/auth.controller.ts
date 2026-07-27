@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateStaffDto, CreateTenantUserDto, LoginDto, RegisterDto, ResetTenantUserPasswordDto, UpdateStaffDto } from './auth.dto';
+import { CreateStaffDto, CreateTenantUserDto, LoginDto, RegisterDto, ResetTenantUserPasswordDto, UpdateStaffDto, UpdateTenantTeamUserDto } from './auth.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/role.enum';
@@ -26,6 +27,42 @@ export class AuthController {
   @Patch('password')
   updatePassword(@CurrentUser() user: any, @Body() body: { currentPassword: string; newPassword: string }) {
     return this.authService.updatePassword(user._id, body.currentPassword, body.newPassword);
+  }
+
+  @Get('team')
+  @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
+  myTeam(@CurrentTenant() tenantId: string) {
+    return this.authService.listTenantUsers(tenantId);
+  }
+
+  @Get('team/limit')
+  @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
+  myTeamLimit(@CurrentTenant() tenantId: string) {
+    return this.authService.getTeamLimit(tenantId);
+  }
+
+  @Post('team')
+  @Roles(UserRole.CLIENT_OWNER)
+  createTeamMember(@CurrentTenant() tenantId: string, @Body() dto: CreateTenantUserDto) {
+    return this.authService.createTeamMember(tenantId, dto);
+  }
+
+  @Patch('team/:id')
+  @Roles(UserRole.CLIENT_OWNER)
+  updateTeamMember(@CurrentTenant() tenantId: string, @CurrentUser() user: any, @Param('id') id: string, @Body() dto: UpdateTenantTeamUserDto) {
+    return this.authService.updateTeamMember(tenantId, id, dto, user._id);
+  }
+
+  @Patch('team/:id/password')
+  @Roles(UserRole.CLIENT_OWNER)
+  resetTeamMemberPassword(@CurrentTenant() tenantId: string, @Param('id') id: string, @Body() dto: ResetTenantUserPasswordDto) {
+    return this.authService.resetTeamMemberPassword(tenantId, id, dto.newPassword);
+  }
+
+  @Delete('team/:id')
+  @Roles(UserRole.CLIENT_OWNER)
+  removeTeamMember(@CurrentTenant() tenantId: string, @CurrentUser() user: any, @Param('id') id: string) {
+    return this.authService.removeTeamMember(tenantId, id, user._id);
   }
 
   // Platform staff management — creating an admin/master account is a

@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Tenant, TenantDocument } from './tenant.schema';
-import { CreateTenantDto, UpdateTenantDto } from './tenant.dto';
+import { CreateTenantDto, UpdateTenantBillingDto, UpdateTenantDto } from './tenant.dto';
 
 @Injectable()
 export class TenantsService {
@@ -32,6 +32,22 @@ export class TenantsService {
 
   async update(id: string, dto: UpdateTenantDto) {
     const doc = await this.model.findByIdAndUpdate(id, dto, { new: true });
+    if (!doc) throw new NotFoundException();
+    return doc;
+  }
+
+  async findBillingProfile(id: string) {
+    const doc = await this.model.findById(id).select(
+      'name contactEmail billingEmail taxId addressLine1 addressLine2 city state country postalCode',
+    );
+    if (!doc) throw new NotFoundException();
+    return doc;
+  }
+
+  async updateBillingProfile(id: string, dto: UpdateTenantBillingDto) {
+    const doc = await this.model.findByIdAndUpdate(id, dto, { new: true }).select(
+      'name contactEmail billingEmail taxId addressLine1 addressLine2 city state country postalCode',
+    );
     if (!doc) throw new NotFoundException();
     return doc;
   }

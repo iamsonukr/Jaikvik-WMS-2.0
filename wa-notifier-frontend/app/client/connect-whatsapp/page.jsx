@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import { Button, Card, Spinner } from '@/components/ui';
+import WhatsAppAccountsPanel from '@/components/whatsapp/WhatsAppAccountsPanel';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 import {
@@ -281,11 +282,12 @@ export default function ConnectWhatsAppPage() {
 
   return (
     <AppShell allowedRoles={['client_owner']}>
+      <WhatsAppAccountsPanel />
       <Card className="mx-auto max-w-md p-6">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-brand/10 text-brand">
           {connected ? <CheckCircle2 size={24} /> : <MessageCircle size={24} />}
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Connect WhatsApp</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{clients.length ? 'Connect another number' : 'Connect WhatsApp'}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Link a Meta Business account and WhatsApp number to your workspace.
         </p>

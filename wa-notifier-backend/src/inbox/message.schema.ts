@@ -21,6 +21,15 @@ export class Message {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WalletTransaction' }) walletTransactionId: Types.ObjectId;
   @Prop({ default: 'open' }) threadStatus: string; // open | assigned | resolved
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' }) assignedTo: Types.ObjectId;
+  @Prop([String]) threadTags: string[];
+  @Prop({ default: 'normal' }) priority: string; // low | normal | high | urgent
+  @Prop() slaDueAt: Date;
+  @Prop({ type: [Object], default: [] }) internalNotes: Array<{
+    text: string;
+    authorId?: Types.ObjectId;
+    authorName?: string;
+    createdAt: Date;
+  }>;
   @Prop() timestamp: Date;
 }
 

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Eye as EyeIcon, Megaphone, Plus, Send } from 'lucide-react';
+import { Copy, Eye as EyeIcon, Megaphone, Pause, Plus, Send, XCircle } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import { Button, Card, Empty, Input, PageHeader, Select, Spinner, StatusBadge } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
@@ -40,7 +40,7 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
   }, [activeClient]);
 
   const send = async (id) => {
-    if (!confirm('Start sending this broadcast now?')) return;
+    if (!confirm('Start or resume sending this broadcast now?')) return;
     setSendError('');
     setSending((prev) => ({ ...prev, [id]: true }));
     try {
@@ -50,7 +50,7 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
         try {
           const { data } = await api.get(`/broadcasts/${id}`);
           setBroadcasts((prev) => prev.map((b) => b._id === id ? data : b));
-          if (data.status === 'done' || data.status === 'failed') {
+          if (['done', 'failed', 'paused', 'canceled'].includes(data.status)) {
             clearInterval(poll);
             delete pollRefs.current[id];
             setSending((prev) => ({ ...prev, [id]: false }));
@@ -66,6 +66,24 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
       setSendError(err?.response?.data?.message || 'Could not start the broadcast. It may already be running.');
       setSending((prev) => ({ ...prev, [id]: false }));
       load();
+    }
+  };
+
+  const runAction = async (id, action, confirmText) => {
+    if (confirmText && !confirm(confirmText)) return;
+    setSendError('');
+    setSending((prev) => ({ ...prev, [`${id}:${action}`]: true }));
+    try {
+      const { data } = await api.post(`/broadcasts/${id}/${action}`);
+      if (action === 'duplicate') {
+        setBroadcasts((prev) => [data, ...prev]);
+      } else {
+        setBroadcasts((prev) => prev.map((b) => b._id === id ? data : b));
+      }
+    } catch (err) {
+      setSendError(err?.response?.data?.message || `Could not ${action} this campaign.`);
+    } finally {
+      setSending((prev) => ({ ...prev, [`${id}:${action}`]: false }));
     }
   };
 
@@ -115,9 +133,12 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">All statuses</option>
               <option value="draft">Draft</option>
+              <option value="scheduled">Scheduled</option>
               <option value="running">Running</option>
+              <option value="paused">Paused</option>
               <option value="done">Done</option>
               <option value="failed">Failed</option>
+              <option value="canceled">Canceled</option>
             </Select>
             <Select value={templateFilter} onChange={(e) => setTemplateFilter(e.target.value)}>
               <option value="all">All templates</option>
@@ -128,14 +149,14 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {['Campaign', 'Template', 'Status', 'Total', 'Sent', 'Delivered', 'Read', 'Failed', 'Created', 'Actions'].map((h) => (
+                  {['Campaign', 'Template', 'Status', 'Schedule', 'Total', 'Sent', 'Delivered', 'Read', 'Failed', 'Created', 'Actions'].map((h) => (
                     <th key={h} className="whitespace-nowrap px-4 py-3 font-semibold">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredBroadcasts.length && (
-                  <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No campaigns match these filters.</td></tr>
+                  <tr><td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">No campaigns match these filters.</td></tr>
                 )}
                 {filteredBroadcasts.map((b) => (
                   <tr key={b._id} className="table-row-hover">
@@ -145,6 +166,7 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{b.templateName || '-'}</td>
                     <td className="px-4 py-3"><StatusBadge status={b.status} /></td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{b.scheduledAt ? format(new Date(b.scheduledAt), 'dd MMM, HH:mm') : '-'}</td>
                     <td className="px-4 py-3">{b.totalCount ?? 0}</td>
                     <td className="px-4 py-3">{b.sentCount ?? 0}</td>
                     <td className="px-4 py-3 text-green-600">{b.deliveredCount ?? 0} <span className="text-xs text-muted-foreground">({pct(b.deliveredCount, b.sentCount)})</span></td>
@@ -153,11 +175,24 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{b.createdAt ? format(new Date(b.createdAt), 'dd MMM, HH:mm') : '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        {b.status === 'draft' && (
+                        {['draft', 'paused', 'scheduled', 'failed'].includes(b.status) && (
                           <Button size="sm" onClick={() => send(b._id)} disabled={sending[b._id]}>
                             <Send size={12} />{sending[b._id] ? 'Sending...' : 'Send'}
                           </Button>
                         )}
+                        {b.status === 'running' && (
+                          <Button size="sm" variant="outline" onClick={() => runAction(b._id, 'pause')} disabled={sending[`${b._id}:pause`]}>
+                            <Pause size={12} />Pause
+                          </Button>
+                        )}
+                        {['draft', 'scheduled', 'running', 'paused'].includes(b.status) && (
+                          <Button size="sm" variant="outline" onClick={() => runAction(b._id, 'cancel', 'Cancel this campaign? Unsent messages will not be delivered.')}>
+                            <XCircle size={12} />Cancel
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => runAction(b._id, 'duplicate')}>
+                          <Copy size={12} />Duplicate
+                        </Button>
                         <Link href={`${basePath}/broadcasts/${b._id}`}><Button size="sm" variant="ghost"><EyeIcon size={12} />Logs</Button></Link>
                       </div>
                     </td>

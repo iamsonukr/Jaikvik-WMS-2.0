@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Select, Input, Modal, Badge, Spinner, Textarea } from '@/components/ui';
-import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, UserPlus, PhoneCall, Building2, MessageCircle, Plus, Pencil, Receipt, CreditCard, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, UserPlus, PhoneCall, Building2, MessageCircle, Plus, Pencil, Receipt, CreditCard, CalendarDays, Download } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { normalizeRole } from '@/lib/roles';
 import Link from 'next/link';
@@ -96,6 +96,7 @@ export default function TenantDetailPage() {
   const [subscriptionHistory, setSubscriptionHistory] = useState([]);
   const [walletTransactions, setWalletTransactions] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [downloadingPaymentId, setDownloadingPaymentId] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [tenantUsers, setTenantUsers] = useState([]);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
@@ -286,6 +287,26 @@ export default function TenantDetailPage() {
       setCancelError(err?.response?.data?.message || `Could not ${cancelAction} subscription`);
     } finally {
       setCancellingSubscription(false);
+    }
+  };
+
+  const downloadPaymentPdf = async (payment) => {
+    setDownloadingPaymentId(payment._id);
+    try {
+      const { data, headers } = await api.get(`/payments/${payment._id}/invoice.pdf`, { responseType: 'blob' });
+      const disposition = headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || `billing-document-${payment._id}.pdf`;
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not download billing document');
+    } finally {
+      setDownloadingPaymentId(null);
     }
   };
 
@@ -863,6 +884,7 @@ export default function TenantDetailPage() {
                     <th className="px-4 py-3 text-right font-semibold">Amount</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Created</th>
+                    <th className="px-4 py-3 text-right font-semibold">Document</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -880,6 +902,16 @@ export default function TenantDetailPage() {
                         <Badge label={payment.status || 'unknown'} color={PAYMENT_STATUS_COLOR[payment.status] || 'gray'} />
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{fmtDateTime(payment.createdAt)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={payment.status !== 'paid' || downloadingPaymentId === payment._id}
+                          onClick={() => downloadPaymentPdf(payment)}
+                        >
+                          <Download size={13} /> {downloadingPaymentId === payment._id ? 'Downloading...' : 'PDF'}
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

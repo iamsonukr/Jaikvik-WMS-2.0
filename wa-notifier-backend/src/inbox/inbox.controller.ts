@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { InboxService } from './inbox.service';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('inbox')
 export class InboxController {
@@ -41,6 +42,24 @@ export class InboxController {
   @Post('assign/:id')
   assign(@Param('id') id: string, @Body() body: { userId: string }) {
     return this.svc.assign(id, body.userId);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('thread/assign')
+  assignThread(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; userId?: string }) {
+    return this.svc.assignThread(body.whatsappAccountId || body.clientId, body.phone, body.userId);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('thread/update')
+  updateThread(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; threadStatus?: string; priority?: string; slaDueAt?: string | null; threadTags?: string[] }) {
+    return this.svc.updateThread(body.whatsappAccountId || body.clientId, body.phone, body);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('thread/notes')
+  addNote(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; text: string }, @CurrentUser() user: any) {
+    return this.svc.addNote(body.whatsappAccountId || body.clientId, body.phone, body.text, user);
   }
 
   @UseGuards(TenantOwnershipGuard)

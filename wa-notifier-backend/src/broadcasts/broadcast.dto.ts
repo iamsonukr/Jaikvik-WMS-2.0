@@ -1,4 +1,4 @@
-import { IsArray, IsMongoId, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsDateString, IsMongoId, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateBroadcastDto {
   @IsOptional() @IsMongoId() whatsappAccountId?: string;
@@ -9,6 +9,7 @@ export class CreateBroadcastDto {
   @IsOptional() @IsArray() components?: any[];
   @IsOptional() @IsArray() targetTags?: string[];
   @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsDateString() scheduledAt?: string;
 }
 
 export class UpdateBroadcastDto {
@@ -18,4 +19,9 @@ export class UpdateBroadcastDto {
   @IsOptional() @IsArray() components?: any[];
   @IsOptional() @IsArray() targetTags?: string[];
   @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsDateString() scheduledAt?: string;
+}
+
+export class TestBroadcastDto {
+  @IsString() @MinLength(5) phone: string;
 }

@@ -20,7 +20,15 @@ export class UpdateContactDto {
 export class BulkContactsDto {
   @IsOptional() @IsMongoId() whatsappAccountId?: string;
   @IsOptional() @IsMongoId() clientId?: string;
-  @IsArray() contacts: Array<{ phone: string; name?: string; tags?: string[] }>;
+  @IsArray() contacts: Array<{ phone: string; name?: string; tags?: string[]; variables?: Record<string, string>; rowNumber?: number }>;
+  @IsOptional() @IsString() fileName?: string;
+  @IsOptional() @IsObject() mapping?: Record<string, string>;
+}
+
+export class PreviewContactImportDto extends BulkContactsDto {}
+
+export class CommitContactImportDto extends BulkContactsDto {
+  @IsOptional() @IsBoolean() updateExisting?: boolean;
 }
 
 export class CreateContactTagDto {

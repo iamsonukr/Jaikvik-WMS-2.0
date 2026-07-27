@@ -53,6 +53,7 @@ export class TemplatesService {
           category: metaResponse?.category || dto.category,
           language: dto.language,
           status: metaResponse?.status || 'PENDING',
+          rejectionReason: this.extractRejectionReason(metaResponse),
           components: metaResponse?.components || components,
           rawMeta: { request: payload, response: metaResponse },
         },
@@ -93,7 +94,13 @@ export class TemplatesService {
           $set: {
             whatsappAccountId: accountObjectId,
             tenantId: account.tenantId,
-            name: t.name, category: t.category, language: t.language, status: t.status, components: t.components, rawMeta: t,
+            name: t.name,
+            category: t.category,
+            language: t.language,
+            status: t.status,
+            rejectionReason: this.extractRejectionReason(t),
+            components: t.components,
+            rawMeta: t,
           },
         },
         upsert: true,
@@ -236,5 +243,21 @@ export class TemplatesService {
       }
     }
     return max;
+  }
+
+  private extractRejectionReason(template: any) {
+    const candidates = [
+      template?.rejectionReason,
+      template?.rejected_reason,
+      template?.rejectedReason,
+      template?.review_rejection_reason,
+      template?.quality_score?.reason,
+      template?.rawMeta?.rejected_reason,
+      template?.rawMeta?.response?.rejected_reason,
+    ];
+
+    return candidates
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .find(Boolean) || '';
   }
 }

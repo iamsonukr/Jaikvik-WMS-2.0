@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Badge as BadgeIcon, BookOpen, FileText, Plus, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Badge as BadgeIcon, BookOpen, Eye, FileText, Plus, RefreshCw, Search } from 'lucide-react';
 import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Textarea } from '@/components/ui';
 import { useBasePath } from '@/hooks/useBasePath';
 import { useClient } from '@/hooks/useClient';
@@ -25,11 +25,81 @@ function bodyPlaceholderCount(body) {
   return matches.length ? Math.max(...matches) : 0;
 }
 
+function splitCsv(value) {
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 function templateBody(template) {
   return template.components?.find((component) => component.type === 'BODY')?.text
     || template.body
     || template.description
     || 'Meta library template';
+}
+
+function templateRejectionReason(template) {
+  return template?.rejectionReason
+    || template?.rejected_reason
+    || template?.rawMeta?.rejected_reason
+    || template?.rawMeta?.response?.rejected_reason
+    || template?.rawMeta?.quality_score?.reason
+    || '';
+}
+
+function formComponents(form) {
+  const components = [];
+  if (form.headerText?.trim()) components.push({ type: 'HEADER', format: 'TEXT', text: form.headerText.trim() });
+  if (form.body?.trim()) components.push({ type: 'BODY', text: form.body.trim() });
+  if (form.footerText?.trim()) components.push({ type: 'FOOTER', text: form.footerText.trim() });
+  const quickReplies = splitCsv(form.quickReplies);
+  if (quickReplies.length) {
+    components.push({ type: 'BUTTONS', buttons: quickReplies.map((text) => ({ type: 'QUICK_REPLY', text })) });
+  }
+  return components;
+}
+
+function renderWithExamples(text, examples) {
+  return String(text || '').replace(/\{\{(\d+)\}\}/g, (_match, index) => examples[Number(index) - 1] || `{{${index}}}`);
+}
+
+function TemplatePreview({ template, examples = [], compact = false }) {
+  const components = template?.components || [];
+  const header = components.find((component) => component.type === 'HEADER');
+  const body = components.find((component) => component.type === 'BODY');
+  const footer = components.find((component) => component.type === 'FOOTER');
+  const buttons = components.find((component) => component.type === 'BUTTONS')?.buttons || [];
+  const reason = templateRejectionReason(template);
+
+  return (
+    <div className={`rounded-lg border border-border bg-muted/30 p-3 ${compact ? '' : 'space-y-3'}`}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{template?.name || 'template_preview'}</p>
+          <p className="text-xs text-muted-foreground">{template?.category || 'CATEGORY'} - {template?.language || 'language'}</p>
+        </div>
+        {template?.status && <StatusBadge status={String(template.status).toLowerCase()} />}
+      </div>
+      <div className="max-w-sm rounded-lg bg-background p-3 shadow-sm ring-1 ring-border">
+        {header?.text && <p className="mb-2 text-sm font-semibold">{renderWithExamples(header.text, examples)}</p>}
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">{renderWithExamples(body?.text || templateBody(template), examples)}</p>
+        {footer?.text && <p className="mt-3 text-xs text-muted-foreground">{renderWithExamples(footer.text, examples)}</p>}
+        {buttons.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {buttons.map((button, index) => (
+              <div key={`${button.text}-${index}`} className="rounded-md border border-border bg-muted/40 px-3 py-1.5 text-center text-xs font-medium text-primary">
+                {button.text || button.type}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {reason && (
+        <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          <span className="inline-flex items-center gap-1 font-semibold"><AlertTriangle size={13} /> Rejection reason</span>
+          <p className="mt-1">{reason}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function TemplatesWorkspace({ mode = 'list' }) {
@@ -49,12 +119,21 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
   const [libraryTemplateName, setLibraryTemplateName] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(blankForm);
+  const [previewTemplate, setPreviewTemplate] = useState(null);
   const [pageError, setPageError] = useState('');
   const [formError, setFormError] = useState('');
   const [libraryError, setLibraryError] = useState('');
   const [templateFilters, setTemplateFilters] = useState({ search: '', status: 'all', category: 'all', language: 'all' });
 
   const placeholderCount = useMemo(() => bodyPlaceholderCount(form.body), [form.body]);
+  const formExampleValues = useMemo(() => splitCsv(form.bodyExamples), [form.bodyExamples]);
+  const formPreviewTemplate = useMemo(() => ({
+    name: form.name || 'template_preview',
+    category: form.category,
+    language: form.language,
+    status: 'DRAFT',
+    components: formComponents(form),
+  }), [form]);
   const templateFilterOptions = useMemo(() => ({
     statuses: Array.from(new Set(templates.map((template) => template.status).filter(Boolean))).sort(),
     categories: Array.from(new Set(templates.map((template) => template.category).filter(Boolean))).sort(),
@@ -407,36 +486,47 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {['Template', 'Category', 'Language', 'Status', 'Components', 'Body preview'].map((header) => (
+                  {['Template', 'Category', 'Language', 'Status', 'Components', 'Body preview', 'Preview'].map((header) => (
                     <th key={header} className="px-4 py-3 font-semibold">{header}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredTemplates.length && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No templates match these filters.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No templates match these filters.</td></tr>
                 )}
-                {filteredTemplates.map((template) => (
-                  <tr key={template._id} className="table-row-hover">
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{template.name}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{template._id}</p>
-                    </td>
-                    <td className="px-4 py-3">{template.category || '-'}</td>
-                    <td className="px-4 py-3">{template.language || '-'}</td>
-                    <td className="px-4 py-3"><StatusBadge status={template.status?.toLowerCase()} /></td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {template.components?.length
-                          ? template.components.map((component) => <Badge key={component.type} label={component.type} color="gray" />)
-                          : <span className="text-muted-foreground">-</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="max-w-md truncate text-muted-foreground">{templateBody(template) || 'No body text'}</p>
-                    </td>
-                  </tr>
-                ))}
+                {filteredTemplates.map((template) => {
+                  const reason = templateRejectionReason(template);
+                  return (
+                    <tr key={template._id} className="table-row-hover">
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{template.name}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{template._id}</p>
+                      </td>
+                      <td className="px-4 py-3">{template.category || '-'}</td>
+                      <td className="px-4 py-3">{template.language || '-'}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={template.status?.toLowerCase()} />
+                        {reason && <p className="mt-1 max-w-xs text-xs text-red-600 dark:text-red-400">{reason}</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {template.components?.length
+                            ? template.components.map((component) => <Badge key={component.type} label={component.type} color="gray" />)
+                            : <span className="text-muted-foreground">-</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="max-w-md truncate text-muted-foreground">{templateBody(template) || 'No body text'}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="outline" size="sm" onClick={() => setPreviewTemplate(template)}>
+                          <Eye size={13} /> Preview
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -463,30 +553,75 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Input label="Template name *" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="order_update" />
-            <Select label="Category *" value={form.category} onChange={(e) => set('category', e.target.value)}>
-              <option value="MARKETING">Marketing</option>
-              <option value="UTILITY">Utility</option>
-            </Select>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Input label="Template name *" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="order_update" />
+                <Select label="Category *" value={form.category} onChange={(e) => set('category', e.target.value)}>
+                  <option value="MARKETING">Marketing</option>
+                  <option value="UTILITY">Utility</option>
+                  <option value="AUTHENTICATION">Authentication</option>
+                </Select>
+              </div>
+
+              <Input label="Language code *" value={form.language} onChange={(e) => set('language', e.target.value)} placeholder="en_US" />
+              <Input label="Header text" value={form.headerText} onChange={(e) => set('headerText', e.target.value)} placeholder="New offer from Jaikvik" />
+              <Textarea label="Body *" value={form.body} onChange={(e) => set('body', e.target.value)} placeholder="Hi {{1}}, your order {{2}} is ready." rows={5} />
+
+              {placeholderCount > 0 && (
+                <Input
+                  label={`Body examples * (${placeholderCount})`}
+                  value={form.bodyExamples}
+                  onChange={(e) => set('bodyExamples', e.target.value)}
+                  placeholder="Ravi, #12345"
+                />
+              )}
+
+              <Input label="Footer text" value={form.footerText} onChange={(e) => set('footerText', e.target.value)} placeholder="Reply STOP to unsubscribe" />
+              <Input label="Quick replies" value={form.quickReplies} onChange={(e) => set('quickReplies', e.target.value)} placeholder="Yes, No, Call me" />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Template Preview</p>
+              <TemplatePreview template={formPreviewTemplate} examples={formExampleValues} />
+            </div>
           </div>
-
-          <Input label="Language code *" value={form.language} onChange={(e) => set('language', e.target.value)} placeholder="en_US" />
-          <Input label="Header text" value={form.headerText} onChange={(e) => set('headerText', e.target.value)} placeholder="New offer from Jaikvik" />
-          <Textarea label="Body *" value={form.body} onChange={(e) => set('body', e.target.value)} placeholder="Hi {{1}}, your order {{2}} is ready." rows={5} />
-
-          {placeholderCount > 0 && (
-            <Input
-              label={`Body examples * (${placeholderCount})`}
-              value={form.bodyExamples}
-              onChange={(e) => set('bodyExamples', e.target.value)}
-              placeholder="Ravi, #12345"
-            />
-          )}
-
-          <Input label="Footer text" value={form.footerText} onChange={(e) => set('footerText', e.target.value)} placeholder="Reply STOP to unsubscribe" />
-          <Input label="Quick replies" value={form.quickReplies} onChange={(e) => set('quickReplies', e.target.value)} placeholder="Yes, No, Call me" />
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(previewTemplate)}
+        onClose={() => setPreviewTemplate(null)}
+        title={previewTemplate ? `Template preview: ${previewTemplate.name}` : 'Template preview'}
+        footer={<Button variant="outline" onClick={() => setPreviewTemplate(null)}>Close</Button>}
+      >
+        {previewTemplate && (
+          <div className="space-y-4">
+            <TemplatePreview template={previewTemplate} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Category</p>
+                <p className="mt-1 text-sm font-semibold">{previewTemplate.category || '-'}</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Language</p>
+                <p className="mt-1 text-sm font-semibold">{previewTemplate.language || '-'}</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Status</p>
+                <div className="mt-1"><StatusBadge status={previewTemplate.status?.toLowerCase()} /></div>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Components</p>
+              <div className="flex flex-wrap gap-1.5">
+                {previewTemplate.components?.length
+                  ? previewTemplate.components.map((component) => <Badge key={component.type} label={component.type} color="gray" />)
+                  : <span className="text-sm text-muted-foreground">No components returned by Meta yet.</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );

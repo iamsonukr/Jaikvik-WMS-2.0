@@ -100,6 +100,7 @@ export function StatusBadge({ status }) {
   const map = {
     approved: ['green', 'Approved'], pending: ['yellow', 'Pending'], rejected: ['red', 'Rejected'],
     done: ['green', 'Done'], running: ['blue', 'Running'], draft: ['gray', 'Draft'],
+    scheduled: ['yellow', 'Scheduled'], paused: ['yellow', 'Paused'], canceled: ['red', 'Canceled'],
     queued: ['yellow', 'Queued'], failed: ['red', 'Failed'],
     sent: ['blue', 'Sent'], delivered: ['green', 'Delivered'], read: ['green', 'Read'],
     open: ['yellow', 'Open'], resolved: ['green', 'Resolved'], assigned: ['blue', 'Assigned'],

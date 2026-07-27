@@ -11,6 +11,7 @@ export class Template {
   @Prop() category: string;
   @Prop() language: string;
   @Prop() status: string; // APPROVED | PENDING | REJECTED
+  @Prop() rejectionReason: string;
   @Prop({ type: Object }) rawMeta: Record<string, any>;
   @Prop([Object]) components: any[];
 }

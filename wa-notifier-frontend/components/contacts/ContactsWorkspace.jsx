@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
-import { Pencil, Plus, Search, Send, Tag, Trash2, Upload, X } from 'lucide-react';
+import { CheckCircle2, FileText, Pencil, Plus, Search, Send, Tag, Trash2, Upload, X } from 'lucide-react';
 
 const blank = { name: '', phone: '', tags: [] };
 const blankTag = { name: '', color: '#3b82f6', description: '' };
@@ -26,6 +26,31 @@ function parseCSVLine(line) {
   }
   result.push(cur);
   return result.map((s) => s.trim());
+}
+
+function parseCSVText(text) {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.');
+  const headers = parseCSVLine(lines[0]).map((header, index) => header.trim() || `Column ${index + 1}`);
+  const rows = lines.slice(1).map((line, index) => {
+    const values = parseCSVLine(line);
+    const obj = { __rowNumber: index + 2 };
+    headers.forEach((header, headerIndex) => { obj[header] = values[headerIndex] || ''; });
+    return obj;
+  });
+  return { headers, rows };
+}
+
+function guessColumn(headers, options) {
+  const normalized = headers.map((header) => ({ raw: header, value: header.toLowerCase().replace(/[^a-z0-9]/g, '') }));
+  return normalized.find((header) => options.includes(header.value))?.raw || '';
+}
+
+function splitTags(value) {
+  return String(value || '')
+    .split(/[|,;]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 }
 
 function asArray(value) {
@@ -83,6 +108,16 @@ export default function ContactsWorkspace() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [previewingImport, setPreviewingImport] = useState(false);
+  const [committingImport, setCommittingImport] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importHeaders, setImportHeaders] = useState([]);
+  const [importRows, setImportRows] = useState([]);
+  const [importMapping, setImportMapping] = useState({ phone: '', name: '', tags: '' });
+  const [importPreview, setImportPreview] = useState(null);
+  const [importResult, setImportResult] = useState(null);
+  const [importHistory, setImportHistory] = useState([]);
   const [formError, setFormError] = useState('');
   const [csvError, setCsvError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -111,10 +146,12 @@ export default function ContactsWorkspace() {
       api.get(`/contacts?whatsappAccountId=${activeClient._id}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`),
       api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`),
       api.get(`/templates?whatsappAccountId=${activeClient._id}`),
-    ]).then(([contactsRes, tagsRes, templatesRes]) => {
+      api.get(`/contacts/import/history?whatsappAccountId=${activeClient._id}`).catch(() => ({ data: [] })),
+    ]).then(([contactsRes, tagsRes, templatesRes, historyRes]) => {
       setContacts(asArray(contactsRes.data).map(normalizeContact));
       setTags(asArray(tagsRes.data).map(normalizeTag).filter((tagItem) => tagItem.name));
       setTemplates(asArray(templatesRes.data));
+      setImportHistory(asArray(historyRes.data));
     })
       .catch((err) => {
         setLoadError(err?.response?.data?.message || 'Could not load contacts for the selected client.');
@@ -279,36 +316,87 @@ export default function ContactsWorkspace() {
     const file = e.target.files[0];
     if (!file) return;
     setCsvError('');
-    setImporting(true);
+    setImportResult(null);
+    setImportPreview(null);
     try {
       const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-      if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.');
-
-      const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase());
-      const phoneIdx = headers.indexOf('phone');
-      if (phoneIdx === -1) throw new Error('CSV must include a "phone" column.');
-
-      const parsed = lines.slice(1).map((line) => {
-        const vals = parseCSVLine(line);
-        const obj = {};
-        headers.forEach((header, index) => { obj[header] = vals[index]; });
-        return { phone: obj.phone, name: obj.name, tags: obj.tags ? obj.tags.split('|').map((t) => t.trim()).filter(Boolean) : [] };
-      }).filter((contact) => contact.phone);
-
-      if (parsed.length === 0) throw new Error('No valid rows with a phone number were found.');
-
-      const { data } = await api.post('/contacts/bulk', { whatsappAccountId: activeClient._id, contacts: parsed });
-      load();
-      if (data?.skipped) {
-        setCsvError(`Imported ${parsed.length - data.skipped} contacts. Skipped ${data.skipped} row(s) with missing phone numbers.`);
-      }
+      const parsed = parseCSVText(text);
+      setImportFileName(file.name);
+      setImportHeaders(parsed.headers);
+      setImportRows(parsed.rows);
+      setImportMapping({
+        phone: guessColumn(parsed.headers, ['phone', 'phonenumber', 'mobile', 'mobilenumber', 'whatsapp', 'whatsappnumber']),
+        name: guessColumn(parsed.headers, ['name', 'fullname', 'customername', 'contactname']),
+        tags: guessColumn(parsed.headers, ['tags', 'tag', 'segment', 'segments', 'labels']),
+      });
+      setImportOpen(true);
     } catch (err) {
       setCsvError(err?.response?.data?.message || err.message || 'Could not import CSV. Please check the file format.');
     } finally {
-      setImporting(false);
       e.target.value = '';
     }
+  };
+
+  const mappedContacts = useMemo(() => importRows.map((row) => ({
+    rowNumber: row.__rowNumber,
+    phone: importMapping.phone ? row[importMapping.phone] : '',
+    name: importMapping.name ? row[importMapping.name] : '',
+    tags: importMapping.tags ? splitTags(row[importMapping.tags]) : [],
+  })), [importRows, importMapping]);
+
+  const previewImport = async () => {
+    if (!activeClient) return;
+    setCsvError('');
+    setImportResult(null);
+    if (!importMapping.phone) { setCsvError('Map a phone number column before previewing.'); return; }
+    setPreviewingImport(true);
+    try {
+      const { data } = await api.post('/contacts/import/preview', {
+        whatsappAccountId: activeClient._id,
+        contacts: mappedContacts,
+        fileName: importFileName,
+        mapping: importMapping,
+      });
+      setImportPreview(data);
+    } catch (err) {
+      setCsvError(err?.response?.data?.message || 'Could not preview import.');
+    } finally {
+      setPreviewingImport(false);
+    }
+  };
+
+  const commitImport = async () => {
+    if (!activeClient || !importPreview) return;
+    setCsvError('');
+    setCommittingImport(true);
+    setImporting(true);
+    try {
+      const { data } = await api.post('/contacts/import/commit', {
+        whatsappAccountId: activeClient._id,
+        contacts: mappedContacts,
+        fileName: importFileName,
+        mapping: importMapping,
+        updateExisting: true,
+      });
+      setImportResult(data);
+      await load();
+    } catch (err) {
+      setCsvError(err?.response?.data?.message || 'Could not import contacts.');
+    } finally {
+      setCommittingImport(false);
+      setImporting(false);
+    }
+  };
+
+  const closeImport = () => {
+    if (previewingImport || committingImport) return;
+    setImportOpen(false);
+    setImportFileName('');
+    setImportHeaders([]);
+    setImportRows([]);
+    setImportMapping({ phone: '', name: '', tags: '' });
+    setImportPreview(null);
+    setImportResult(null);
   };
 
   const rows = asArray(contacts).map(normalizeContact);
@@ -361,6 +449,47 @@ export default function ContactsWorkspace() {
           Showing contacts for <span className="font-medium text-foreground">{activeClient.name || activeClient._id}</span>
           <span className="ml-2 font-mono">{activeClient._id}</span>
         </div>
+      )}
+
+      {activeClient && importHistory.length > 0 && (
+        <Card className="mb-5 p-0 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <FileText size={15} className="text-primary" />
+              <h2 className="text-sm font-semibold">Import History</h2>
+            </div>
+            <span className="text-xs text-muted-foreground">{importHistory.length} recent imports</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">File</th>
+                  <th className="px-4 py-3 text-right font-semibold">Created</th>
+                  <th className="px-4 py-3 text-right font-semibold">Updated</th>
+                  <th className="px-4 py-3 text-right font-semibold">Invalid</th>
+                  <th className="px-4 py-3 text-right font-semibold">Skipped</th>
+                  <th className="px-4 py-3 font-semibold">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {importHistory.slice(0, 5).map((item) => (
+                  <tr key={item._id}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{item.fileName || 'contacts.csv'}</p>
+                      <p className="text-xs text-muted-foreground">{item.totalRows || 0} rows scanned</p>
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">{item.createdCount || 0}</td>
+                    <td className="px-4 py-3 text-right">{item.updatedCount || 0}</td>
+                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">{item.invalidRows || 0}</td>
+                    <td className="px-4 py-3 text-right">{item.skippedCount || 0}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN') : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <div className="mb-5 grid gap-3 md:grid-cols-[1fr_180px_180px]">
@@ -432,6 +561,148 @@ export default function ContactsWorkspace() {
           </div>
         </Card>
       )}
+
+      <Modal
+        open={importOpen}
+        onClose={closeImport}
+        title="Import Contacts"
+        footer={(
+          <>
+            <Button variant="outline" onClick={closeImport} disabled={previewingImport || committingImport}>Close</Button>
+            <Button variant="outline" onClick={previewImport} disabled={previewingImport || committingImport || !importRows.length}>
+              {previewingImport ? 'Previewing...' : 'Preview import'}
+            </Button>
+            <Button onClick={commitImport} disabled={committingImport || !importPreview || importPreview.importableRows === 0}>
+              {committingImport ? 'Importing...' : 'Import approved rows'}
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-5">
+          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+            <p className="font-medium">{importFileName || 'CSV file'}</p>
+            <p className="text-xs text-muted-foreground">{importRows.length} data rows found</p>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Column Mapping</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Select
+                label="Phone column *"
+                value={importMapping.phone}
+                onChange={(e) => { setImportMapping((prev) => ({ ...prev, phone: e.target.value })); setImportPreview(null); }}
+              >
+                <option value="">Choose column...</option>
+                {importHeaders.map((header) => <option key={header} value={header}>{header}</option>)}
+              </Select>
+              <Select
+                label="Name column"
+                value={importMapping.name}
+                onChange={(e) => { setImportMapping((prev) => ({ ...prev, name: e.target.value })); setImportPreview(null); }}
+              >
+                <option value="">Do not import</option>
+                {importHeaders.map((header) => <option key={header} value={header}>{header}</option>)}
+              </Select>
+              <Select
+                label="Tags column"
+                value={importMapping.tags}
+                onChange={(e) => { setImportMapping((prev) => ({ ...prev, tags: e.target.value })); setImportPreview(null); }}
+              >
+                <option value="">Do not import</option>
+                {importHeaders.map((header) => <option key={header} value={header}>{header}</option>)}
+              </Select>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Tags can be separated with comma, semicolon, or pipe. Only tags already created in Manage Tags will be attached.</p>
+          </div>
+
+          {importPreview && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Ready</p>
+                  <p className="mt-1 text-xl font-semibold">{importPreview.importableRows || 0}</p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">New</p>
+                  <p className="mt-1 text-xl font-semibold text-emerald-600 dark:text-emerald-400">{importPreview.newRows || 0}</p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Existing updates</p>
+                  <p className="mt-1 text-xl font-semibold">{importPreview.existingRows || 0}</p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Invalid / duplicate</p>
+                  <p className="mt-1 text-xl font-semibold text-red-600 dark:text-red-400">{(importPreview.invalidRows || 0) + (importPreview.fileDuplicateRows || 0)}</p>
+                </div>
+              </div>
+
+              <div className="max-h-64 overflow-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Row</th>
+                      <th className="px-3 py-2 font-semibold">Phone</th>
+                      <th className="px-3 py-2 font-semibold">Name</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {importPreview.rows?.slice(0, 50).map((row) => (
+                      <tr key={`${row.rowNumber}-${row.phone || row.originalPhone}`}>
+                        <td className="px-3 py-2">{row.rowNumber}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{row.phone || row.originalPhone || '-'}</td>
+                        <td className="px-3 py-2">{row.name || '-'}</td>
+                        <td className="px-3 py-2">
+                          <Badge
+                            label={row.status === 'new' ? 'New' : row.status === 'existing' ? 'Update' : row.status === 'invalid' ? 'Invalid' : 'Duplicate'}
+                            color={row.status === 'new' ? 'green' : row.status === 'existing' ? 'blue' : 'red'}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {(importPreview.invalidReport?.length > 0 || importPreview.duplicateReport?.length > 0) && (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-lg border border-red-500/25 bg-red-500/5 p-3">
+                    <p className="mb-2 text-sm font-semibold text-red-700 dark:text-red-300">Invalid Number Report</p>
+                    {importPreview.invalidReport?.length ? (
+                      <div className="max-h-32 space-y-1 overflow-auto text-xs">
+                        {importPreview.invalidReport.map((item) => (
+                          <p key={`${item.rowNumber}-${item.phone}`}>Row {item.rowNumber}: {item.phone || '-'} - {item.reason}</p>
+                        ))}
+                      </div>
+                    ) : <p className="text-xs text-muted-foreground">No invalid numbers.</p>}
+                  </div>
+                  <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+                    <p className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-300">Duplicate Report</p>
+                    {importPreview.duplicateReport?.length ? (
+                      <div className="max-h-32 space-y-1 overflow-auto text-xs">
+                        {importPreview.duplicateReport.map((item) => (
+                          <p key={`${item.rowNumber}-${item.phone}`}>Row {item.rowNumber}: {item.phone || '-'} - {item.reason}</p>
+                        ))}
+                      </div>
+                    ) : <p className="text-xs text-muted-foreground">No duplicates detected.</p>}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {importResult && (
+            <div className="rounded-lg border border-green-500/25 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-300">
+              <div className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 size={15} /> Import completed
+              </div>
+              <p className="mt-1">
+                Created {importResult.createdCount || 0}, updated {importResult.updatedCount || 0}, skipped {importResult.skippedCount || 0}.
+              </p>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={modal}

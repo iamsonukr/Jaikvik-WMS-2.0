@@ -1,6 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ContactsService } from './contacts.service';
-import { CreateContactDto, UpdateContactDto, BulkContactsDto, CreateContactTagDto, UpdateContactTagDto } from './contact.dto';
+import {
+  BulkContactsDto,
+  CommitContactImportDto,
+  CreateContactDto,
+  CreateContactTagDto,
+  PreviewContactImportDto,
+  UpdateContactDto,
+  UpdateContactTagDto,
+} from './contact.dto';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
 
 // TenantOwnershipGuard is applied per-route (not at the controller level)
@@ -39,7 +47,29 @@ export class ContactsController {
   }
 
   @UseGuards(TenantOwnershipGuard)
+  @Get('import/history') importHistory(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
+    return this.svc.importHistory(aid || cid);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
   @Post() create(@Body() dto: CreateContactDto) { return this.svc.create(dto); }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('import/preview') previewImport(@Body() body: PreviewContactImportDto) {
+    return this.svc.previewImport(body.whatsappAccountId || body.clientId, body.contacts, {
+      fileName: body.fileName,
+      mapping: body.mapping,
+    });
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('import/commit') commitImport(@Body() body: CommitContactImportDto) {
+    return this.svc.commitImport(body.whatsappAccountId || body.clientId, body.contacts, {
+      fileName: body.fileName,
+      mapping: body.mapping,
+      updateExisting: body.updateExisting,
+    });
+  }
 
   @UseGuards(TenantOwnershipGuard)
   @Post('bulk') bulk(@Body() body: BulkContactsDto) {

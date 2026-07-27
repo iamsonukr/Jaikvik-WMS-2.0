@@ -87,6 +87,9 @@ export default function SettingsPage() {
   const [wallet, setWallet] = useState(null);
   const [usage, setUsage] = useState({ contacts: 0, tags: 0 });
   const [loadingAccount, setLoadingAccount] = useState(true);
+  const [billingProfile, setBillingProfile] = useState(null);
+  const [billingForm, setBillingForm] = useState({});
+  const [savingBilling, setSavingBilling] = useState(false);
 
   useEffect(() => {
     if (user) setProfile({ name: user.name || '', email: user.email || '' });
@@ -95,9 +98,10 @@ export default function SettingsPage() {
   const loadAccount = async () => {
     setLoadingAccount(true);
     try {
-      const [subscriptionRes, walletRes, accountList] = await Promise.all([
+      const [subscriptionRes, walletRes, billingRes, accountList] = await Promise.all([
         api.get('/subscriptions/me').catch(() => ({ data: null })),
         api.get('/wallet/me').catch(() => ({ data: null })),
+        api.get('/tenants/me/billing').catch(() => ({ data: null })),
         refreshClients(),
       ]);
       const usageResults = await Promise.all(
@@ -111,6 +115,8 @@ export default function SettingsPage() {
       );
       setSubscription(subscriptionRes.data);
       setWallet(walletRes.data);
+      setBillingProfile(billingRes.data);
+      setBillingForm(billingRes.data || {});
       setUsage(usageResults.reduce((total, item) => ({
         contacts: total.contacts + item.contacts,
         tags: total.tags + item.tags,
@@ -153,6 +159,31 @@ export default function SettingsPage() {
       setNotice('Error: ' + (err?.response?.data?.message || 'Could not update password'));
     } finally {
       setSavingPw(false);
+    }
+    setTimeout(() => setNotice(''), 4000);
+  };
+
+  const saveBilling = async () => {
+    setSavingBilling(true);
+    try {
+      const payload = {
+        billingEmail: billingForm.billingEmail || '',
+        taxId: billingForm.taxId || '',
+        addressLine1: billingForm.addressLine1 || '',
+        addressLine2: billingForm.addressLine2 || '',
+        city: billingForm.city || '',
+        state: billingForm.state || '',
+        country: billingForm.country || '',
+        postalCode: billingForm.postalCode || '',
+      };
+      const { data } = await api.patch('/tenants/me/billing', payload);
+      setBillingProfile(data);
+      setBillingForm(data || {});
+      setNotice('Billing details updated.');
+    } catch (err) {
+      setNotice('Error: ' + (err?.response?.data?.message || 'Could not update billing details'));
+    } finally {
+      setSavingBilling(false);
     }
     setTimeout(() => setNotice(''), 4000);
   };
@@ -272,6 +303,80 @@ export default function SettingsPage() {
               </Link>
             </Card>
           </div>
+
+          <Card className="p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CreditCard size={16} className="text-primary" />
+                <h2 className="text-sm font-semibold">Billing Address & GST Details</h2>
+              </div>
+              {user?.role !== 'client_owner' && (
+                <span className="text-xs text-muted-foreground">Owner access required to edit</span>
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <DetailItem label="Client" value={billingProfile?.name} />
+              <DetailItem label="Contact email" value={billingProfile?.contactEmail} />
+              <Input
+                label="Billing email"
+                type="email"
+                value={billingForm.billingEmail || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, billingEmail: e.target.value }))}
+              />
+              <Input
+                label="GSTIN / Tax ID"
+                value={billingForm.taxId || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, taxId: e.target.value }))}
+              />
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Address line 1"
+                value={billingForm.addressLine1 || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, addressLine1: e.target.value }))}
+              />
+              <Input
+                label="Address line 2"
+                value={billingForm.addressLine2 || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, addressLine2: e.target.value }))}
+              />
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Input
+                label="City"
+                value={billingForm.city || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, city: e.target.value }))}
+              />
+              <Input
+                label="State"
+                value={billingForm.state || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, state: e.target.value }))}
+              />
+              <Input
+                label="Country"
+                value={billingForm.country || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, country: e.target.value }))}
+              />
+              <Input
+                label="Postal code"
+                value={billingForm.postalCode || ''}
+                disabled={user?.role !== 'client_owner'}
+                onChange={(e) => setBillingForm((form) => ({ ...form, postalCode: e.target.value }))}
+              />
+            </div>
+            {user?.role === 'client_owner' && (
+              <Button className="mt-4" onClick={saveBilling} disabled={savingBilling}>
+                {savingBilling ? 'Saving...' : 'Save billing details'}
+              </Button>
+            )}
+          </Card>
 
           <div className="grid gap-5 xl:grid-cols-2">
             <Card className="p-5 space-y-4">
