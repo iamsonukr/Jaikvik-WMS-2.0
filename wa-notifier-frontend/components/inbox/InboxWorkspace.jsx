@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { AlertTriangle, ArrowLeft, CheckCheck, Clock, FileText, Image as ImageIcon, Paperclip, RefreshCw, Send, StickyNote, Tag, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCheck, Clock, FileText, Image as ImageIcon, Paperclip, RefreshCw, Send, SlidersHorizontal, StickyNote, Tag, UserRound } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import { Badge, Button, Input, Select, Spinner, StatusBadge } from '@/components/ui';
+import { Badge, Button, Input, Select, Spinner, StatusBadge, PaginationControls, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
@@ -72,6 +72,7 @@ export default function InboxWorkspace({ allowedRoles }) {
   const [team, setTeam] = useState([]);
   const [threadForm, setThreadForm] = useState({ threadStatus: 'open', priority: 'normal', slaDueAt: '', threadTags: '' });
   const [noteText, setNoteText] = useState('');
+  const [showThreadTools, setShowThreadTools] = useState(false);
   const bottomRef = useRef();
 
   const loadThreads = () => {
@@ -92,6 +93,7 @@ export default function InboxWorkspace({ allowedRoles }) {
     if (!activeClient) return;
     if (!silent) {
       setActive(thread);
+      setShowThreadTools(false);
       setLoading(true);
     }
     api.get(`/inbox/messages?whatsappAccountId=${activeClient._id}&phone=${thread.phone}`)
@@ -146,6 +148,10 @@ export default function InboxWorkspace({ allowedRoles }) {
       return matchesSearch && matchesStatus && matchesPriority && matchesTag && matchesAssignee;
     });
   }, [threads, search, statusFilter, priorityFilter, tagFilter, assigneeFilter]);
+  const threadsPage = usePagination(filteredThreads, {
+    initialPageSize: 25,
+    resetKey: `${search}|${statusFilter}|${priorityFilter}|${tagFilter}|${assigneeFilter}`,
+  });
 
   const statusOptions = useMemo(() => {
     const values = [...threadStatusOptions, ...threads.map((thread) => thread.threadStatus).filter(Boolean)];
@@ -258,29 +264,29 @@ export default function InboxWorkspace({ allowedRoles }) {
     <AppShell allowedRoles={allowedRoles}>
       <div className="app-panel -m-4 flex h-[calc(100vh-4rem)] flex-col overflow-hidden rounded-none sm:-m-5 lg:-m-6 lg:flex-row lg:rounded-lg">
         <div className={`${active ? 'hidden lg:flex' : 'flex'} w-full flex-col border-b border-border lg:w-80 lg:flex-shrink-0 lg:border-b-0 lg:border-r`}>
-          <div className="border-b border-border px-4 py-3">
-            <div className="mb-3 flex items-center justify-between">
+          <div className="border-b border-border px-3 py-2">
+            <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Inbox</h2>
               <button onClick={loadThreads} className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Refresh threads">
                 <RefreshCw size={14} />
               </button>
             </div>
-            <div className="grid gap-2">
-              <Input placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <div className="grid gap-1.5">
+              <Input className="h-9" placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} />
               <div className="grid grid-cols-2 gap-2">
-                <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <Select className="h-8 text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="all">All statuses</option>
                   {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
                 </Select>
-                <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
+                <Select className="h-8 text-xs" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
                   <option value="all">All priorities</option>
                   {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
                 </Select>
-                <Select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+                <Select className="h-8 text-xs" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
                   <option value="all">All tags</option>
                   {allThreadTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
                 </Select>
-                <Select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
+                <Select className="h-8 text-xs" value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
                   <option value="all">All assignees</option>
                   <option value="unassigned">Unassigned</option>
                   {team.map((member) => <option key={member._id} value={member._id}>{member.name || member.email}</option>)}
@@ -293,7 +299,7 @@ export default function InboxWorkspace({ allowedRoles }) {
             {filteredThreads.length === 0 && (
               <p className="py-10 text-center text-sm text-muted-foreground">No conversations match these filters</p>
             )}
-            {filteredThreads.map((thread) => (
+            {threadsPage.pageItems.map((thread) => (
               <button
                 key={thread._id}
                 onClick={() => loadMessages(thread)}
@@ -328,6 +334,14 @@ export default function InboxWorkspace({ allowedRoles }) {
               </button>
             ))}
           </div>
+          {filteredThreads.length > 0 && (
+            <PaginationControls
+              {...threadsPage}
+              onPageChange={threadsPage.setPage}
+              onPageSizeChange={threadsPage.setPageSize}
+              pageSizeOptions={[10, 25, 50]}
+            />
+          )}
         </div>
 
         <div className={`${active ? 'flex' : 'hidden lg:flex'} min-w-0 flex-1 flex-col`}>
@@ -335,7 +349,7 @@ export default function InboxWorkspace({ allowedRoles }) {
             <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Select a conversation</div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+              <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <button type="button" onClick={() => setActive(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground lg:hidden" aria-label="Back to conversations">
                     <ArrowLeft size={16} />
@@ -346,18 +360,25 @@ export default function InboxWorkspace({ allowedRoles }) {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge label={active.priority || 'normal'} color={PRIORITY_COLOR[active.priority || 'normal'] || 'gray'} />
-                  <StatusBadge status={active.threadStatus} />
+                  <div className="hidden items-center gap-2 sm:flex">
+                    <Badge label={active.priority || 'normal'} color={PRIORITY_COLOR[active.priority || 'normal'] || 'gray'} />
+                    <StatusBadge status={active.threadStatus} />
+                  </div>
+                  <Button size="sm" variant={showThreadTools ? 'secondary' : 'ghost'} onClick={() => setShowThreadTools((current) => !current)}>
+                    <SlidersHorizontal size={13} /> Details
+                  </Button>
                   {active.threadStatus !== 'resolved' && (
                     <Button size="sm" variant="outline" onClick={resolve}><CheckCheck size={13} />Resolve</Button>
                   )}
                 </div>
               </div>
 
-              <div className="border-b border-border bg-card px-4 py-3 sm:px-5">
-                <div className="grid gap-3 xl:grid-cols-[160px_150px_150px_190px_minmax(180px,1fr)_auto]">
+              {showThreadTools && (
+              <div className="border-b border-border bg-card/95 px-3 py-2 sm:px-4">
+                <div className="grid gap-2 xl:grid-cols-[150px_130px_130px_180px_minmax(160px,1fr)_auto]">
                   <Select
                     label="Assigned to"
+                    className="h-8 text-xs"
                     value={active.assignedTo ? String(active.assignedTo) : ''}
                     onChange={(e) => assignThread(e.target.value)}
                     disabled={updatingThread}
@@ -367,6 +388,7 @@ export default function InboxWorkspace({ allowedRoles }) {
                   </Select>
                   <Select
                     label="Status"
+                    className="h-8 text-xs"
                     value={threadForm.threadStatus}
                     onChange={(e) => setThreadForm((prev) => ({ ...prev, threadStatus: e.target.value }))}
                     disabled={updatingThread}
@@ -375,6 +397,7 @@ export default function InboxWorkspace({ allowedRoles }) {
                   </Select>
                   <Select
                     label="Priority"
+                    className="h-8 text-xs"
                     value={threadForm.priority}
                     onChange={(e) => setThreadForm((prev) => ({ ...prev, priority: e.target.value }))}
                     disabled={updatingThread}
@@ -384,26 +407,29 @@ export default function InboxWorkspace({ allowedRoles }) {
                   <Input
                     label="SLA due"
                     type="datetime-local"
+                    className="h-8 text-xs"
                     value={threadForm.slaDueAt}
                     onChange={(e) => setThreadForm((prev) => ({ ...prev, slaDueAt: e.target.value }))}
                     disabled={updatingThread}
                   />
                   <Input
                     label="Tags"
+                    className="h-8 text-xs"
                     value={threadForm.threadTags}
                     onChange={(e) => setThreadForm((prev) => ({ ...prev, threadTags: e.target.value }))}
                     placeholder="billing, vip"
                     disabled={updatingThread}
                   />
                   <div className="flex items-end">
-                    <Button size="sm" onClick={saveThreadMetadata} disabled={updatingThread}>
+                    <Button size="sm" className="h-8" onClick={saveThreadMetadata} disabled={updatingThread}>
                       {updatingThread ? 'Saving...' : 'Save'}
                     </Button>
                   </div>
                 </div>
-                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
+                <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_260px]">
                   <div className="flex gap-2">
                     <Input
+                      className="h-9"
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Add an internal note..."
@@ -427,11 +453,11 @@ export default function InboxWorkspace({ allowedRoles }) {
                   </div>
                 </div>
                 {Array.isArray(active.internalNotes) && active.internalNotes.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="mt-2 rounded-lg border border-border bg-muted/40 p-2.5">
                     <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       <StickyNote size={13} /> Internal Notes
                     </div>
-                    <div className="max-h-28 space-y-2 overflow-y-auto">
+                    <div className="max-h-20 space-y-2 overflow-y-auto">
                       {active.internalNotes.slice().reverse().map((note, index) => (
                         <div key={`${note.createdAt}-${index}`} className="text-xs">
                           <p className="text-foreground">{note.text}</p>
@@ -444,8 +470,9 @@ export default function InboxWorkspace({ allowedRoles }) {
                   </div>
                 )}
               </div>
+              )}
 
-              <div className="flex-1 space-y-3 overflow-y-auto bg-muted/40 px-4 py-4 sm:px-5">
+              <div className="flex-1 space-y-3 overflow-y-auto bg-muted/40 px-3 py-3 sm:px-4">
                 {loading && <div className="flex justify-center py-10"><Spinner /></div>}
                 {messages.map((message) => (
                   <div key={message._id} className={`flex ${message.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
@@ -467,15 +494,15 @@ export default function InboxWorkspace({ allowedRoles }) {
               {sendError && (
                 <div className="border-t border-red-500/25 bg-red-500/10 px-4 py-2 text-xs text-red-700 dark:text-red-300">{sendError}</div>
               )}
-              <div className="flex items-center gap-3 border-t border-border bg-card px-4 py-3">
+              <div className="flex items-center gap-2 border-t border-border bg-card px-3 py-2 sm:px-4">
                 <input
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendReply()}
                   placeholder="Type a reply..."
-                  className="flex-1 rounded-lg border border-input bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
-                <button onClick={sendReply} disabled={sending || !reply.trim()} className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-50" aria-label="Send reply">
+                <button onClick={sendReply} disabled={sending || !reply.trim()} className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-50" aria-label="Send reply">
                   <Send size={16} />
                 </button>
               </div>

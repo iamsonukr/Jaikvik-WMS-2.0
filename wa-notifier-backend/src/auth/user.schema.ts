@@ -25,6 +25,7 @@ export class User {
 
   @Prop({ default: true }) isActive: boolean;
   @Prop() name: string;
+  @Prop() lastLoginAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

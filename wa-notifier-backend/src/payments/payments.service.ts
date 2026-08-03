@@ -15,6 +15,7 @@ import {
 } from './razorpay-payment.schema';
 import { WalletService } from '../wallet/wallet.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { Subscription, SubscriptionDocument } from '../subscriptions/subscription.schema';
 import { toObjectId } from '../common/mongo-id';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class PaymentsService {
     @InjectModel(RazorpayPayment.name) private model: Model<RazorpayPaymentDocument>,
     @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
     @InjectModel(Tenant.name) private tenantModel: Model<TenantDocument>,
+    @InjectModel(Subscription.name) private subModel: Model<SubscriptionDocument>,
     private config: ConfigService,
     private wallet: WalletService,
     private subscriptions: SubscriptionsService,
@@ -108,6 +110,100 @@ export class PaymentsService {
     return this.renderInvoicePdf(invoice);
   }
 
+  async getSubscriptionInvoicePdfForStaff(subscriptionId: string) {
+    const invoice = await this.getSubscriptionInvoiceDataForStaff(subscriptionId);
+    return this.renderInvoicePdf(invoice);
+  }
+
+  async getSubscriptionInvoiceDataForStaff(subscriptionId: string) {
+    const subscription = await this.subModel
+      .findById(toObjectId(subscriptionId, 'subscriptionId'))
+      .populate('planId');
+    if (!subscription) throw new NotFoundException('Subscription not found');
+
+    const tenant = await this.tenantModel.findById(subscription.tenantId);
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    return this.buildSubscriptionBillingDocument(subscription, tenant);
+  }
+
+  async getBillingStatementPdfForStaff(tenantId: string): Promise<{ buffer: Buffer; filename: string }> {
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
+    const [tenant, payments, subscriptions, wallet] = await Promise.all([
+      this.tenantModel.findById(tenantObjectId),
+      this.model.find({ tenantId: tenantObjectId }).sort({ createdAt: -1 }),
+      this.subModel.find({ tenantId: tenantObjectId }).sort({ createdAt: -1 }).populate('planId'),
+      this.wallet.getBalance(tenantObjectId),
+    ]);
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const paid = payments.filter((payment) => payment.status === PaymentStatus.PAID);
+    const paidTotal = paid.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const rechargeTotal = paid
+      .filter((payment) => payment.purpose === PaymentPurpose.WALLET_RECHARGE)
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const subscriptionTotal = paid
+      .filter((payment) => payment.purpose === PaymentPurpose.SUBSCRIPTION)
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 44 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve({ buffer: Buffer.concat(chunks), filename: `${this.fileSlug(tenant.name)}-billing-statement.pdf` }));
+      doc.on('error', reject);
+
+      doc.fillColor('#111827').fontSize(20).text('Client Billing Statement');
+      doc.moveDown(0.4);
+      this.drawSellerBlock(doc);
+      doc.moveDown();
+      this.drawBillToBlock(doc, tenant);
+      doc.moveDown();
+
+      doc.fontSize(11).fillColor('#111827').text(`Generated: ${new Date().toLocaleString('en-IN')}`);
+      doc.text(`Paid total: ${this.amount(paidTotal, 'INR')}`);
+      doc.text(`Wallet recharges: ${this.amount(rechargeTotal, 'INR')}   Subscription payments: ${this.amount(subscriptionTotal, 'INR')}`);
+      doc.text(`Wallet balance: ${this.amount(wallet.balance, wallet.currency || 'INR')}   Total spent: ${this.amount(wallet.totalSpent, wallet.currency || 'INR')}`);
+      doc.moveDown();
+
+      doc.fontSize(13).text('Payments');
+      this.statementRow(doc, ['Date', 'Purpose', 'Status', 'Amount', 'Document'], true);
+      payments.forEach((payment) => {
+        if (doc.y > 760) {
+          doc.addPage();
+          this.statementRow(doc, ['Date', 'Purpose', 'Status', 'Amount', 'Document'], true);
+        }
+        const isSubscription = payment.purpose === PaymentPurpose.SUBSCRIPTION;
+        this.statementRow(doc, [
+          this.date((payment as any).createdAt),
+          String(payment.purpose || '').replace(/_/g, ' '),
+          payment.status,
+          this.amount(payment.amount, payment.currency),
+          payment.status === PaymentStatus.PAID ? `${isSubscription ? 'GST-SUB' : 'WRC'}-${String(payment._id).slice(-8).toUpperCase()}` : '-',
+        ]);
+      });
+
+      doc.moveDown();
+      doc.fontSize(13).fillColor('#111827').text('Subscriptions');
+      this.statementRow(doc, ['Period', 'Plan', 'Billing', 'Status', 'Invoice'], true);
+      subscriptions.forEach((subscription: any) => {
+        if (doc.y > 760) {
+          doc.addPage();
+          this.statementRow(doc, ['Period', 'Plan', 'Billing', 'Status', 'Invoice'], true);
+        }
+        this.statementRow(doc, [
+          `${this.date(subscription.startDate)} - ${this.date(subscription.endDate)}`,
+          subscription.planId?.name || 'Unknown plan',
+          subscription.billingCycleSnapshot || '-',
+          subscription.status,
+          `SUB-${String(subscription._id).slice(-8).toUpperCase()}`,
+        ]);
+      });
+
+      doc.end();
+    });
+  }
+
   private buildBillingDocument(payment: RazorpayPaymentDocument, tenant: TenantDocument) {
     const notes = payment.notes || {};
     const baseAmount = notes.baseAmount ?? payment.amount;
@@ -157,6 +253,39 @@ export class PaymentsService {
     };
   }
 
+  private buildSubscriptionBillingDocument(subscription: SubscriptionDocument, tenant: TenantDocument) {
+    const plan = subscription.planId as any;
+    const baseAmount = Number(subscription.priceSnapshot || 0);
+    const taxPercent = Number((subscription as any).taxPercentSnapshot ?? plan?.taxPercent ?? 0);
+    const taxAmount = Number(((baseAmount * taxPercent) / 100).toFixed(2));
+    const totalAmount = Number((baseAmount + taxAmount).toFixed(2));
+    const invoiceNumber = `SUB-${String(subscription._id).slice(-8).toUpperCase()}`;
+
+    return {
+      invoiceNumber,
+      documentType: 'manual_subscription_invoice',
+      documentTitle: 'GST Subscription Invoice',
+      fileName: `${invoiceNumber}.pdf`,
+      issuedAt: (subscription as any).createdAt || subscription.startDate,
+      status: subscription.status,
+      purpose: PaymentPurpose.SUBSCRIPTION,
+      seller: this.sellerProfile(),
+      billTo: this.billToProfile(tenant),
+      lineItem: {
+        description: `Subscription - ${plan?.name || 'Plan'} (${subscription.billingCycleSnapshot || ''})`,
+        baseAmount,
+        taxPercent,
+        taxAmount,
+        totalAmount,
+      },
+      currency: subscription.currency || plan?.currency || 'INR',
+      subscriptionId: String(subscription._id),
+      subscriptionPeriod: `${this.date(subscription.startDate)} to ${this.date(subscription.endDate)}`,
+      razorpayOrderId: 'Manual assignment',
+      razorpayPaymentId: null,
+    };
+  }
+
   private renderInvoicePdf(invoice: any): Promise<{ buffer: Buffer; filename: string }> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true });
@@ -187,6 +316,7 @@ export class PaymentsService {
       doc.fontSize(10).fillColor('#6b7280').text(`Document No: ${invoice.invoiceNumber}`, 48, 140);
       doc.text(`Issued: ${date(invoice.issuedAt)}`, 48, 156);
       doc.text(`Status: ${String(invoice.status || '').toUpperCase()}`, 48, 172);
+      if (invoice.subscriptionPeriod) doc.text(`Period: ${invoice.subscriptionPeriod}`, 48, 188);
 
       doc.roundedRect(360, 110, 180, 74, 6).strokeColor('#d1d5db').stroke();
       doc.fillColor('#6b7280').fontSize(9).text('RAZORPAY ORDER', 374, 126);
@@ -231,6 +361,80 @@ export class PaymentsService {
 
       doc.end();
     });
+  }
+
+  private sellerProfile() {
+    return {
+      name: this.config.get<string>('BILLING_COMPANY_NAME') || 'Jaikvik WhatsApp Management System',
+      gstin: this.config.get<string>('BILLING_GSTIN') || null,
+      email: this.config.get<string>('BILLING_EMAIL') || null,
+      address: this.config.get<string>('BILLING_ADDRESS') || null,
+    };
+  }
+
+  private billToProfile(tenant: TenantDocument) {
+    return {
+      name: tenant.name,
+      gstin: tenant.taxId || null,
+      email: tenant.billingEmail || tenant.contactEmail,
+      addressLine1: tenant.addressLine1 || null,
+      addressLine2: tenant.addressLine2 || null,
+      city: tenant.city || null,
+      state: tenant.state || null,
+      country: tenant.country || null,
+      postalCode: tenant.postalCode || null,
+    };
+  }
+
+  private drawSellerBlock(doc: PDFKit.PDFDocument) {
+    const seller = this.sellerProfile();
+    doc.fontSize(9).fillColor('#6b7280').text(seller.name);
+    if (seller.gstin) doc.text(`GSTIN: ${seller.gstin}`);
+    if (seller.email) doc.text(seller.email);
+    if (seller.address) doc.text(seller.address);
+  }
+
+  private drawBillToBlock(doc: PDFKit.PDFDocument, tenant: TenantDocument) {
+    const billTo = this.billToProfile(tenant);
+    const address = [
+      billTo.addressLine1,
+      billTo.addressLine2,
+      [billTo.city, billTo.state, billTo.postalCode].filter(Boolean).join(', '),
+      billTo.country,
+    ].filter(Boolean).join('\n');
+    doc.fontSize(9).fillColor('#6b7280').text('BILLED TO');
+    doc.fontSize(11).fillColor('#111827').text(billTo.name || '-');
+    if (billTo.gstin) doc.fontSize(9).text(`GSTIN: ${billTo.gstin}`);
+    if (address) doc.fontSize(9).text(address);
+    if (billTo.email) doc.fontSize(9).text(billTo.email);
+  }
+
+  private statementRow(doc: PDFKit.PDFDocument, cells: string[], header = false) {
+    const y = doc.y;
+    const widths = [102, 135, 80, 90, 90];
+    let x = 44;
+    doc.fontSize(header ? 8 : 7.5).fillColor(header ? '#111827' : '#374151');
+    cells.forEach((cell, index) => {
+      doc.text(String(cell || '-'), x, y, { width: widths[index] });
+      x += widths[index];
+    });
+    doc.moveDown(header ? 0.8 : 0.55);
+    if (header) {
+      doc.moveTo(44, doc.y).lineTo(550, doc.y).strokeColor('#e5e7eb').stroke();
+      doc.moveDown(0.4);
+    }
+  }
+
+  private amount(value: any, currency = 'INR') {
+    return `${currency || 'INR'} ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  private date(value: any) {
+    return value ? new Date(value).toLocaleDateString('en-IN') : '-';
+  }
+
+  private fileSlug(value: string) {
+    return String(value || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'client';
   }
 
   private get keyId() {

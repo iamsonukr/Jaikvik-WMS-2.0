@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatCard } from '@/components/ui';
+import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatCard, PaginationControls, usePagination } from '@/components/ui';
 import { Wallet as WalletIcon, TrendingUp, TrendingDown, Plus, Receipt, CreditCard } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -73,6 +73,10 @@ function WalletPage() {
       return matchesSearch && matchesType && matchesDirection;
     });
   }, [transactions, search, typeFilter, directionFilter]);
+  const transactionsPage = usePagination(filteredTransactions, {
+    initialPageSize: 25,
+    resetKey: `${search}|${typeFilter}|${directionFilter}`,
+  });
 
   const recharge = async () => {
     setError('');
@@ -172,7 +176,7 @@ function WalletPage() {
                     {!filteredTransactions.length && (
                       <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No transactions match these filters.</td></tr>
                     )}
-                    {filteredTransactions.map((transaction) => (
+                    {transactionsPage.pageItems.map((transaction) => (
                       <tr key={transaction._id} className="table-row-hover">
                         <td className="px-4 py-3">
                           <p className="font-medium">{TYPE_LABELS[transaction.type] || transaction.type}</p>
@@ -188,6 +192,9 @@ function WalletPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+            {!!transactions?.length && (
+              <PaginationControls {...transactionsPage} onPageChange={transactionsPage.setPage} onPageSizeChange={transactionsPage.setPageSize} />
             )}
           </Card>
         </>

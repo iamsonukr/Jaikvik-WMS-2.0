@@ -1,6 +1,6 @@
 'use client';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import { Menu, MessageCircle, Moon, Sun } from 'lucide-react';
@@ -16,10 +16,20 @@ export default function AppShell({ children, allowedRoles }) {
   const { user, loading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const role = normalizeRole(user?.role);
+  const isAdminOperations = role === 'admin' && [
+    '/admin/broadcasts',
+    '/admin/inbox',
+    '/admin/contacts',
+    '/admin/templates',
+    '/admin/chatbot',
+    '/admin/analytics',
+  ].some((prefix) => pathname === prefix || pathname?.startsWith(prefix + '/'));
   const sectionLabel = role === 'admin'
-    ? 'Control panel'
+    ? isAdminOperations ? 'Operations' : 'Control panel'
     : role === 'master'
       ? 'Messaging workspace'
       : 'Client workspace';
@@ -32,6 +42,19 @@ export default function AppShell({ children, allowedRoles }) {
       router.replace(roleHomePath(normalizedRole));
     }
   }, [user, loading, allowedRoles, router]);
+
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('wa_sidebar_collapsed') : null;
+    setSidebarCollapsed(stored === 'true');
+  }, []);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem('wa_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   if (loading) {
     return (
@@ -49,7 +72,12 @@ export default function AppShell({ children, allowedRoles }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebarCollapsed}
+      />
 
       {sidebarOpen && (
         <button
@@ -60,7 +88,7 @@ export default function AppShell({ children, allowedRoles }) {
         />
       )}
 
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border/80 px-4 backdrop-blur-xl lg:ml-64 lg:px-6" style={{ background: 'var(--topbar-bg)' }}>
+      <header className={`sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border/80 px-4 backdrop-blur-xl transition-[margin] duration-200 lg:px-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`} style={{ background: 'var(--topbar-bg)' }}>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -98,7 +126,7 @@ export default function AppShell({ children, allowedRoles }) {
         </div>
       </header>
 
-      <main className="lg:ml-64">
+      <main className={`transition-[margin] duration-200 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
         <div className="min-h-[calc(100vh-4rem)] p-4 sm:p-5 lg:p-6 animate-fade-in">{children}</div>
       </main>
     </div>

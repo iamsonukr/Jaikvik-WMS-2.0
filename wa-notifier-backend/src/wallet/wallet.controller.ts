@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { WalletService } from './wallet.service';
-import { ManualAdjustmentDto } from './wallet.dto';
+import { LedgerQueryDto, ManualAdjustmentDto, ReverseWalletTransactionDto } from './wallet.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 import { UserRole } from '../common/enums/role.enum';
@@ -18,8 +19,8 @@ export class WalletController {
 
   @Get('me/transactions')
   @Roles(UserRole.CLIENT_OWNER, UserRole.CLIENT_USER)
-  myLedger(@CurrentTenant() tenantId: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.svc.getLedger(tenantId, page ? parseInt(page, 10) : 1, limit ? parseInt(limit, 10) : 25);
+  myLedger(@CurrentTenant() tenantId: string, @Query() query: LedgerQueryDto) {
+    return this.svc.getLedger(tenantId, query);
   }
 
   // Platform-wide revenue snapshot for the Admin dashboard charts. Placed
@@ -39,8 +40,46 @@ export class WalletController {
 
   @Get(':tenantId/transactions')
   @Roles(UserRole.ADMIN, UserRole.MASTER)
-  ledger(@Param('tenantId') tenantId: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.svc.getLedger(tenantId, page ? parseInt(page, 10) : 1, limit ? parseInt(limit, 10) : 25);
+  ledger(@Param('tenantId') tenantId: string, @Query() query: LedgerQueryDto) {
+    return this.svc.getLedger(tenantId, query);
+  }
+
+  @Get(':tenantId/transactions/export.csv')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  async ledgerCsv(@Param('tenantId') tenantId: string, @Query() query: LedgerQueryDto, @Res() res: Response) {
+    const { filename, csv } = await this.svc.exportLedgerCsv(tenantId, query);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(csv);
+  }
+
+  @Get(':tenantId/transactions/export.pdf')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  async ledgerPdf(@Param('tenantId') tenantId: string, @Query() query: LedgerQueryDto, @Res() res: Response) {
+    const pdf = await this.svc.exportLedgerPdf(tenantId, query, false);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  }
+
+  @Get(':tenantId/statement.pdf')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  async statementPdf(@Param('tenantId') tenantId: string, @Query() query: LedgerQueryDto, @Res() res: Response) {
+    const pdf = await this.svc.exportLedgerPdf(tenantId, query, true);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  }
+
+  @Post(':tenantId/transactions/:transactionId/reverse')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  reverseTransaction(
+    @Param('tenantId') tenantId: string,
+    @Param('transactionId') transactionId: string,
+    @Body() dto: ReverseWalletTransactionDto,
+    @Req() req: any,
+  ) {
+    return this.svc.reverseTransaction(tenantId, transactionId, dto.action, dto.reason, req.user._id, req.user.role);
   }
 
   @Post(':tenantId/adjust')

@@ -4,9 +4,11 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 export { Button, buttonVariants } from './button';
 export { Card, CardHeader, CardContent } from './card';
 export { Input, Select, Textarea } from './input';
+export { SearchableSelect } from './searchable-select';
 export { Badge } from './badge';
 export { Skeleton } from './skeleton';
 export { Avatar, AvatarImage, AvatarFallback } from './avatar';
+export { SortableTh, PaginationControls, sortItems, nextSort, usePagination } from './table-tools';
 export {
   Dialog, DialogTrigger, DialogPortal, DialogOverlay, DialogContent,
   DialogHeader, DialogFooter, DialogTitle, DialogDescription,

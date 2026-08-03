@@ -5,6 +5,7 @@ import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { WalletModule } from '../wallet/wallet.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { Subscription, SubscriptionSchema } from '../subscriptions/subscription.schema';
 import { Plan, PlanSchema } from '../plans/plan.schema';
 import { Tenant, TenantSchema } from '../tenants/tenant.schema';
 
@@ -14,6 +15,7 @@ import { Tenant, TenantSchema } from '../tenants/tenant.schema';
       { name: RazorpayPayment.name, schema: RazorpayPaymentSchema },
       { name: Plan.name, schema: PlanSchema },
       { name: Tenant.name, schema: TenantSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
     ]),
     WalletModule,
     SubscriptionsModule,

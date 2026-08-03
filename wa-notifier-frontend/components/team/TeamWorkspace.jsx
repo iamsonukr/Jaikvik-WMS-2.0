@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner } from '@/components/ui';
+import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, PaginationControls, usePagination } from '@/components/ui';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import {
@@ -174,6 +174,10 @@ export default function TeamWorkspace() {
     () => `${limit.used} / ${fmtLimit(limit.limit)} team member${limit.used === 1 ? '' : 's'} used`,
     [limit],
   );
+  const membersPage = usePagination(members, {
+    initialPageSize: 10,
+    resetKey: String(members.length),
+  });
 
   return (
     <div>
@@ -234,7 +238,7 @@ export default function TeamWorkspace() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {members.map((member) => {
+                {membersPage.pageItems.map((member) => {
                   const isSelf = member._id === user?.id;
                   const busy = rowBusyId === member._id;
                   return (
@@ -304,6 +308,9 @@ export default function TeamWorkspace() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && members.length > 0 && (
+          <PaginationControls {...membersPage} onPageChange={membersPage.setPage} onPageSizeChange={membersPage.setPageSize} />
         )}
       </Card>
 

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea } from '@/components/ui';
+import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { Tags, Plus, Pencil, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -76,17 +76,42 @@ const rateSummary = (plan) => {
     ['Service', rates.service],
   ];
 };
-const priceSummary = (plan) => {
-  if (!plan.price) return 'On request';
+const priceRows = (plan) => {
+  if (!plan.price) return [];
   const price = typeof plan.price === 'number' ? { quarterly: plan.price } : plan.price;
   return [
-    ['M', price.monthly],
-    ['Q', price.quarterly],
-    ['Y', price.yearly],
-  ].filter(([, value]) => value !== undefined && value !== null && value !== '')
-    .map(([label, value]) => `${label}: ${fmtMoney(value, plan.currency)}`)
-    .join(' / ') || 'Not set';
+    ['Monthly', price.monthly],
+    ['Quarterly', price.quarterly],
+    ['Yearly', price.yearly],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== '');
 };
+const primaryPrice = (plan) => {
+  if (typeof plan.price === 'number') return plan.price;
+  return plan.price?.quarterly ?? plan.price?.monthly ?? plan.price?.yearly ?? 0;
+};
+
+function PriceCell({ plan }) {
+  const rows = priceRows(plan);
+
+  if (!plan.price) {
+    return <span className="text-sm font-medium text-muted-foreground">On request</span>;
+  }
+
+  if (!rows.length) {
+    return <span className="text-sm font-medium text-muted-foreground">Not set</span>;
+  }
+
+  return (
+    <div className="min-w-36 space-y-1.5">
+      {rows.map(([cycle, value]) => (
+        <div key={cycle} className="flex items-baseline justify-between gap-3">
+          <span className="text-xs text-muted-foreground">{cycle}</span>
+          <span className="whitespace-nowrap text-sm font-semibold">{fmtMoney(value, plan.currency)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PlansPage() {
   const [plans, setPlans] = useState(null);
@@ -99,6 +124,7 @@ export default function PlansPage() {
   const [deletingId, setDeletingId] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'name', direction: 'asc' });
 
   const load = () => api.get('/plans').then((r) => setPlans(r.data));
   useEffect(() => { load(); }, []);
@@ -202,6 +228,25 @@ export default function PlansPage() {
     });
   }, [plans, search, statusFilter]);
 
+  const sortedPlans = useMemo(() => sortItems(filteredPlans, sort, {
+    name: (plan) => plan.name,
+    price: primaryPrice,
+    contacts: (plan) => plan.contacts ?? plan.limits?.contacts,
+    team: (plan) => plan.teamMembers ?? plan.limits?.teamMembers,
+    whatsapp: (plan) => plan.whatsappNumbers ?? plan.limits?.whatsappNumbers,
+    customFields: (plan) => plan.customFields ?? plan.limits?.customFields,
+    tags: (plan) => plan.tags ?? plan.limits?.tags,
+    rates: (plan) => plan.messageRates?.marketing ?? 0,
+    tax: (plan) => plan.taxPercent ?? 0,
+    features: (plan) => featureLines(plan.features).length,
+    status: (plan) => plan.status || 'active',
+    button: (plan) => plan.buttonText,
+  }), [filteredPlans, sort]);
+  const plansPage = usePagination(sortedPlans, {
+    initialPageSize: 10,
+    resetKey: `${search}|${statusFilter}|${sort.key}|${sort.direction}`,
+  });
+
   return (
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader
@@ -233,18 +278,18 @@ export default function PlansPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Plan</th>
-                  <th className="px-4 py-3 font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Contacts</th>
-                  <th className="px-4 py-3 font-semibold">Team</th>
-                  <th className="px-4 py-3 font-semibold">WhatsApp</th>
-                  <th className="px-4 py-3 font-semibold">Custom Fields</th>
-                  <th className="px-4 py-3 font-semibold">Tags</th>
-                  <th className="px-4 py-3 font-semibold">Message Rates</th>
-                  <th className="px-4 py-3 font-semibold">Tax / Trial</th>
-                  <th className="px-4 py-3 font-semibold">Features</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Button</th>
+                  <SortableTh label="Plan" sortKey="name" sort={sort} onSort={setSort} />
+                  <SortableTh label="Price" sortKey="price" sort={sort} onSort={setSort} />
+                  <SortableTh label="Contacts" sortKey="contacts" sort={sort} onSort={setSort} />
+                  <SortableTh label="Team" sortKey="team" sort={sort} onSort={setSort} />
+                  <SortableTh label="WhatsApp" sortKey="whatsapp" sort={sort} onSort={setSort} />
+                  <SortableTh label="Custom Fields" sortKey="customFields" sort={sort} onSort={setSort} />
+                  <SortableTh label="Tags" sortKey="tags" sort={sort} onSort={setSort} />
+                  <SortableTh label="Message Rates" sortKey="rates" sort={sort} onSort={setSort} />
+                  <SortableTh label="Tax / Trial" sortKey="tax" sort={sort} onSort={setSort} />
+                  <SortableTh label="Features" sortKey="features" sort={sort} onSort={setSort} />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                  <SortableTh label="Button" sortKey="button" sort={sort} onSort={setSort} />
                   <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -252,7 +297,7 @@ export default function PlansPage() {
                 {!filteredPlans.length && (
                   <tr><td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">No plans match these filters.</td></tr>
                 )}
-                {filteredPlans.map((plan) => (
+                {plansPage.pageItems.map((plan) => (
                   <tr key={plan._id} className="table-row-hover">
                     <td className="px-4 py-3">
                       <div className="min-w-0">
@@ -263,8 +308,8 @@ export default function PlansPage() {
                         <p className="max-w-xs truncate text-xs text-muted-foreground">{plan.description || '-'}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-semibold">
-                      {priceSummary(plan)}
+                    <td className="px-4 py-3">
+                      <PriceCell plan={plan} />
                     </td>
                     <td className="px-4 py-3">{fmtLimit(plan.contacts ?? plan.limits?.contacts)}</td>
                     <td className="px-4 py-3">{fmtLimit(plan.teamMembers ?? plan.limits?.teamMembers)}</td>
@@ -321,6 +366,7 @@ export default function PlansPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...plansPage} onPageChange={plansPage.setPage} onPageSizeChange={plansPage.setPageSize} />
         </Card>
       )}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Card, Spinner } from '@/components/ui';
+import { Badge, Card, Spinner, PaginationControls, usePagination } from '@/components/ui';
 import api from '@/lib/api';
 import { History } from 'lucide-react';
 
@@ -24,6 +24,7 @@ export default function SubscriptionHistory() {
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
+  const historyPage = usePagination(history, { initialPageSize: 10 });
 
   return (
     <Card className="mt-6 overflow-hidden p-0">
@@ -52,7 +53,7 @@ export default function SubscriptionHistory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {history.map((sub) => (
+              {historyPage.pageItems.map((sub) => (
                 <tr key={sub._id} className="hover:bg-muted/20">
                   <td className="px-4 py-2.5 font-medium">{sub.planId?.name || 'Plan removed'}</td>
                   <td className="px-4 py-2.5 capitalize">{cycleLabel(sub.billingCycleSnapshot)}</td>
@@ -67,6 +68,9 @@ export default function SubscriptionHistory() {
             </tbody>
           </table>
         </div>
+      )}
+      {!loading && !error && history.length > 0 && (
+        <PaginationControls {...historyPage} onPageChange={historyPage.setPage} onPageSizeChange={historyPage.setPageSize} />
       )}
     </Card>
   );

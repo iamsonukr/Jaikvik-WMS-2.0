@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Badge as BadgeIcon, BookOpen, Eye, FileText, Plus, RefreshCw, Search } from 'lucide-react';
-import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Textarea } from '@/components/ui';
+import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useBasePath } from '@/hooks/useBasePath';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
@@ -124,6 +124,7 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
   const [formError, setFormError] = useState('');
   const [libraryError, setLibraryError] = useState('');
   const [templateFilters, setTemplateFilters] = useState({ search: '', status: 'all', category: 'all', language: 'all' });
+  const [templateSort, setTemplateSort] = useState({ key: 'template', direction: 'asc' });
 
   const placeholderCount = useMemo(() => bodyPlaceholderCount(form.body), [form.body]);
   const formExampleValues = useMemo(() => splitCsv(form.bodyExamples), [form.bodyExamples]);
@@ -155,6 +156,18 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
       return matchesSearch && matchesStatus && matchesCategory && matchesLanguage;
     });
   }, [templates, templateFilters]);
+  const sortedTemplates = useMemo(() => sortItems(filteredTemplates, templateSort, {
+    template: (template) => template.name,
+    category: (template) => template.category,
+    language: (template) => template.language,
+    status: (template) => template.status,
+    components: (template) => template.components?.length || 0,
+    body: templateBody,
+  }), [filteredTemplates, templateSort]);
+  const templatesPage = usePagination(sortedTemplates, {
+    initialPageSize: 10,
+    resetKey: `${templateFilters.search}|${templateFilters.status}|${templateFilters.category}|${templateFilters.language}|${templateSort.key}|${templateSort.direction}`,
+  });
 
   const loadTemplates = () => {
     if (!activeClient) {
@@ -486,16 +499,20 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {['Template', 'Category', 'Language', 'Status', 'Components', 'Body preview', 'Preview'].map((header) => (
-                    <th key={header} className="px-4 py-3 font-semibold">{header}</th>
-                  ))}
+                  <SortableTh label="Template" sortKey="template" sort={templateSort} onSort={setTemplateSort} />
+                  <SortableTh label="Category" sortKey="category" sort={templateSort} onSort={setTemplateSort} />
+                  <SortableTh label="Language" sortKey="language" sort={templateSort} onSort={setTemplateSort} />
+                  <SortableTh label="Status" sortKey="status" sort={templateSort} onSort={setTemplateSort} />
+                  <SortableTh label="Components" sortKey="components" sort={templateSort} onSort={setTemplateSort} />
+                  <SortableTh label="Body preview" sortKey="body" sort={templateSort} onSort={setTemplateSort} />
+                  <th className="px-4 py-3 font-semibold">Preview</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredTemplates.length && (
                   <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No templates match these filters.</td></tr>
                 )}
-                {filteredTemplates.map((template) => {
+                {templatesPage.pageItems.map((template) => {
                   const reason = templateRejectionReason(template);
                   return (
                     <tr key={template._id} className="table-row-hover">
@@ -530,6 +547,7 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...templatesPage} onPageChange={templatesPage.setPage} onPageSizeChange={templatesPage.setPageSize} />
         </Card>
       )}
 

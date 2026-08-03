@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Subscription, SubscriptionDocument, SubscriptionStatus } from './subscription.schema';
-import { Plan, PlanDocument } from '../plans/plan.schema';
+import { Plan, PlanDocument, PlanStatus } from '../plans/plan.schema';
 import { BillingCycle } from '../common/enums/billing-cycle.enum';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import {
@@ -19,6 +19,8 @@ const CYCLE_DAYS: Record<string, number> = {
   custom: 30,
   on_request: 365, // Enterprise — placeholder until a custom contract term is set manually
 };
+const SIGNUP_TRIAL_DAYS = 7;
+const SIGNUP_TRIAL_CYCLE = 'trial';
 
 @Injectable()
 export class SubscriptionsService {
@@ -46,6 +48,50 @@ export class SubscriptionsService {
   // Assigns a plan to a tenant — either their first subscription, or a fresh
   // one replacing whatever's currently active (the previous one is marked
   // cancelled rather than deleted, preserving billing history).
+  async findSignupTrialPlan() {
+    const plan = await this.planModel.findOne({
+      name: { $regex: /^(starter|stater)$/i },
+      status: PlanStatus.ACTIVE,
+    });
+    if (!plan) {
+      throw new NotFoundException('Starter plan is not configured for signup trials');
+    }
+    return plan;
+  }
+
+  async activateSignupTrial(tenantIdInput: string, plan?: PlanDocument) {
+    const tenantId = toObjectId(tenantIdInput, 'tenantId');
+    const trialPlan = plan || await this.findSignupTrialPlan();
+
+    const tenant = await this.tenantModel.findById(tenantId);
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    await this.subModel.updateMany(
+      { tenantId, status: SubscriptionStatus.ACTIVE },
+      { status: SubscriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: 'Superseded by signup trial' },
+    );
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + SIGNUP_TRIAL_DAYS);
+
+    const subscription = await this.subModel.create({
+      tenantId,
+      planId: trialPlan._id,
+      startDate,
+      endDate,
+      status: SubscriptionStatus.ACTIVE,
+      priceSnapshot: 0,
+      billingCycleSnapshot: SIGNUP_TRIAL_CYCLE,
+      taxPercentSnapshot: 0,
+      currency: trialPlan.currency || 'INR',
+      autoRenew: false,
+    });
+
+    await this.syncTenant(tenant, subscription, trialPlan);
+    return subscription;
+  }
+
   async assign(dto: AssignSubscriptionDto) {
     const tenantId = toObjectId(dto.tenantId, 'tenantId');
     const planId = toObjectId(dto.planId, 'planId');
@@ -77,6 +123,7 @@ export class SubscriptionsService {
       status: SubscriptionStatus.ACTIVE,
       priceSnapshot,
       billingCycleSnapshot: billingCycle,
+      taxPercentSnapshot: plan.taxPercent || 0,
       currency: plan.currency,
     });
 

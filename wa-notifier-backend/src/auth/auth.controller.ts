@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateStaffDto, CreateTenantUserDto, LoginDto, RegisterDto, ResetTenantUserPasswordDto, UpdateStaffDto, UpdateTenantTeamUserDto } from './auth.dto';
+import { CreateStaffDto, CreateTenantUserDto, LoginDto, RegisterDto, ResetTenantUserPasswordDto, UpdateStaffDto, UpdateTenantTeamUserDto, UpdateTenantUserDto } from './auth.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
@@ -95,5 +95,17 @@ export class AuthController {
   @Roles(UserRole.ADMIN)
   resetTenantUserPassword(@Param('id') id: string, @Body() dto: ResetTenantUserPasswordDto) {
     return this.authService.resetTenantUserPassword(id, dto.newPassword);
+  }
+
+  @Patch('tenant-users/:id')
+  @Roles(UserRole.ADMIN)
+  updateTenantUser(@Param('id') id: string, @Body() dto: UpdateTenantUserDto) {
+    return this.authService.updateTenantUser(id, dto);
+  }
+
+  @Delete('tenant-users/:id')
+  @Roles(UserRole.ADMIN)
+  removeTenantUser(@Param('id') id: string) {
+    return this.authService.removeTenantUser(id);
   }
 }

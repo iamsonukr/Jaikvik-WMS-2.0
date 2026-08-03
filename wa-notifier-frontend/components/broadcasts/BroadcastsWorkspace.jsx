@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { Copy, Eye as EyeIcon, Megaphone, Pause, Plus, Send, XCircle } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import { Button, Card, Empty, Input, PageHeader, Select, Spinner, StatusBadge } from '@/components/ui';
+import { Button, Card, Empty, Input, PageHeader, Select, Spinner, StatusBadge, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
@@ -19,6 +19,7 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'createdAt', direction: 'desc' });
   const pollRefs = useRef({});
 
   const load = () => {
@@ -106,6 +107,23 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
     });
   }, [broadcasts, search, statusFilter, templateFilter]);
 
+  const sortedBroadcasts = useMemo(() => sortItems(filteredBroadcasts, sort, {
+    campaign: (b) => b.name,
+    template: (b) => b.templateName,
+    status: (b) => b.status,
+    schedule: (b) => b.scheduledAt,
+    total: (b) => b.totalCount ?? 0,
+    sent: (b) => b.sentCount ?? 0,
+    delivered: (b) => b.deliveredCount ?? 0,
+    read: (b) => b.readCount ?? 0,
+    failed: (b) => b.failedCount ?? 0,
+    createdAt: (b) => b.createdAt,
+  }), [filteredBroadcasts, sort]);
+  const broadcastsPage = usePagination(sortedBroadcasts, {
+    initialPageSize: 10,
+    resetKey: `${search}|${statusFilter}|${templateFilter}|${sort.key}|${sort.direction}`,
+  });
+
   const pct = (n, d) => d > 0 ? `${Math.round((n / d) * 100)}%` : '-';
 
   return (
@@ -149,16 +167,24 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {['Campaign', 'Template', 'Status', 'Schedule', 'Total', 'Sent', 'Delivered', 'Read', 'Failed', 'Created', 'Actions'].map((h) => (
-                    <th key={h} className="whitespace-nowrap px-4 py-3 font-semibold">{h}</th>
-                  ))}
+                  <SortableTh label="Campaign" sortKey="campaign" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Template" sortKey="template" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Schedule" sortKey="schedule" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Total" sortKey="total" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Sent" sortKey="sent" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Delivered" sortKey="delivered" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Read" sortKey="read" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Failed" sortKey="failed" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <SortableTh label="Created" sortKey="createdAt" sort={sort} onSort={setSort} className="whitespace-nowrap" />
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredBroadcasts.length && (
                   <tr><td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">No campaigns match these filters.</td></tr>
                 )}
-                {filteredBroadcasts.map((b) => (
+                {broadcastsPage.pageItems.map((b) => (
                   <tr key={b._id} className="table-row-hover">
                     <td className="px-4 py-3">
                       <p className="max-w-[180px] truncate font-medium">{b.name}</p>
@@ -201,6 +227,7 @@ export default function BroadcastsWorkspace({ allowedRoles, basePath }) {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...broadcastsPage} onPageChange={broadcastsPage.setPage} onPageSizeChange={broadcastsPage.setPageSize} />
         </Card>
       )}
     </AppShell>

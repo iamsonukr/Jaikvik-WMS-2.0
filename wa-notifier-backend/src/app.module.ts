@@ -20,6 +20,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { SettingsModule } from './settings/settings.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { TicketsModule } from './tickets/tickets.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -48,6 +49,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AuditLogModule,
     SettingsModule,
     AlertsModule,
+    TicketsModule,
   ],
   providers: [
     // Guards run in registration order: JwtAuthGuard populates req.user first

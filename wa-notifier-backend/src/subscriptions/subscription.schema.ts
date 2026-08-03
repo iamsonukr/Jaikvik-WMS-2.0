@@ -27,6 +27,7 @@ export class Subscription {
   // historical invoices said.
   @Prop({ required: true }) priceSnapshot: number;
   @Prop({ required: true }) billingCycleSnapshot: string;
+  @Prop({ default: 0 }) taxPercentSnapshot: number;
   @Prop({ default: 'INR' }) currency: string;
 
   @Prop({ default: true }) autoRenew: boolean;

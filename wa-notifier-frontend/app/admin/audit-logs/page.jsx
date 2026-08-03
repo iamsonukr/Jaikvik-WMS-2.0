@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Input, Select, Empty, Spinner, Button } from '@/components/ui';
+import { PageHeader, Card, Input, Select, Empty, Spinner, Button, SortableTh, PaginationControls, sortItems } from '@/components/ui';
 import { ScrollText } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -12,9 +12,11 @@ export default function AuditLogsPage() {
   const [data, setData] = useState(null);
   const [action, setAction] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'createdAt', direction: 'desc' });
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
 
-  const load = (p = page) => api.get('/audit-logs', { params: { action: action || undefined, page: p, limit: 25 } })
+  const load = (p = page, nextLimit = limit) => api.get('/audit-logs', { params: { action: action || undefined, page: p, limit: nextLimit } })
     .then((r) => { setData(r.data); setPage(p); });
 
   useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -38,6 +40,17 @@ export default function AuditLogsPage() {
       return matchesQuery && matchesTargetType;
     });
   }, [data, action, targetTypeFilter]);
+
+  const sortedItems = useMemo(() => sortItems(filteredItems, sort, {
+    action: (log) => log.action,
+    actor: (log) => log.actorId?.name || log.actorId?.email || log.actorId,
+    target: (log) => `${log.targetType || ''} ${log.targetId || ''}`,
+    reason: (log) => log.reason,
+    createdAt: (log) => log.createdAt,
+  }), [filteredItems, sort]);
+  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / (data?.limit || limit)));
+  const startItem = data?.total ? (((data.page || page) - 1) * (data.limit || limit)) + 1 : 0;
+  const endItem = Math.min(data?.total || 0, (data?.page || page) * (data?.limit || limit));
 
   return (
     <AppShell allowedRoles={['admin', 'master']}>
@@ -67,18 +80,18 @@ export default function AuditLogsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Action</th>
-                    <th className="px-4 py-3 font-semibold">Actor</th>
-                    <th className="px-4 py-3 font-semibold">Target</th>
-                    <th className="px-4 py-3 font-semibold">Reason</th>
-                    <th className="px-4 py-3 font-semibold">Created</th>
+                    <SortableTh label="Action" sortKey="action" sort={sort} onSort={setSort} />
+                    <SortableTh label="Actor" sortKey="actor" sort={sort} onSort={setSort} />
+                    <SortableTh label="Target" sortKey="target" sort={sort} onSort={setSort} />
+                    <SortableTh label="Reason" sortKey="reason" sort={sort} onSort={setSort} />
+                    <SortableTh label="Created" sortKey="createdAt" sort={sort} onSort={setSort} />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {!filteredItems.length && (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No audit entries match these filters.</td></tr>
                   )}
-                  {filteredItems.map((log) => (
+                  {sortedItems.map((log) => (
                     <tr key={log._id} className="table-row-hover">
                       <td className="px-4 py-3 font-medium">{log.action}</td>
                       <td className="px-4 py-3">
@@ -99,13 +112,19 @@ export default function AuditLogsPage() {
               </table>
             </div>
           </Card>
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Page {data.page} of {Math.max(1, Math.ceil(data.total / data.limit))} - {data.total} total entries</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => load(page - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page * data.limit >= data.total} onClick={() => load(page + 1)}>Next</Button>
-            </div>
-          </div>
+          <PaginationControls
+            page={data.page || page}
+            totalPages={totalPages}
+            pageSize={data.limit || limit}
+            totalItems={data.total || 0}
+            startItem={startItem}
+            endItem={endItem}
+            onPageChange={(nextPage) => load(nextPage)}
+            onPageSizeChange={(nextLimit) => {
+              setLimit(nextLimit);
+              load(1, nextLimit);
+            }}
+          />
         </>
       )}
     </AppShell>

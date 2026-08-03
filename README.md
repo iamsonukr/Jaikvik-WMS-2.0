@@ -157,3 +157,16 @@ The verify token must match `META_VERIFY_TOKEN` in the backend environment.
 ## Summary
 
 WhatsApp Business is best for manual one-to-one customer chats. Jaikvik WMS is built for serious business messaging operations: multi-client control, segmented broadcasts, template messaging, automation, team inbox workflows, delivery tracking, and analytics.
+
+
+| Feature                                  | Owner | User |
+|------------------------------------------|:-----:|:----:|
+| Connect/setup WhatsApp account           |  ✅   |  ❌  |
+| Edit/delete WhatsApp account             |  ✅   |  ❌  |
+| Subscribe webhooks / register phone      |  ✅   |  ❌  |
+| Update company/billing profile           |  ✅   |  ❌  |
+| Buy/verify subscription plan             |  ✅   |  ❌  |
+| Invite team members                      |  ✅   |  ❌  |
+| Change team roles                        |  ✅   |  ❌  |
+| Disable/remove team members              |  ✅   |  ❌  |
+| Reset team member password               |  ✅   |  ❌  |

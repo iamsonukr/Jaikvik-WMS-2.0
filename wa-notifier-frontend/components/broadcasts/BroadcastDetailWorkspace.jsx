@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Copy, Download, Pause, RefreshCw, Send, XCircle } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import { Button, Card, Input, PageHeader, Select, Spinner, StatusBadge } from '@/components/ui';
+import { Button, Card, Input, PageHeader, Select, Spinner, StatusBadge, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import api from '@/lib/api';
 
 const text = (value) => String(value || '').toLowerCase();
@@ -19,6 +19,7 @@ export default function BroadcastDetailWorkspace({ allowedRoles, basePath }) {
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'contact', direction: 'asc' });
   const [testPhone, setTestPhone] = useState('');
   const [actioning, setActioning] = useState('');
 
@@ -115,6 +116,19 @@ export default function BroadcastDetailWorkspace({ allowedRoles, basePath }) {
     });
   }, [logs, search, statusFilter]);
 
+  const sortedLogs = useMemo(() => sortItems(filteredLogs, sort, {
+    contact: (log) => log.contactName,
+    phone: (log) => log.phone,
+    status: (log) => log.status,
+    messageId: (log) => log.waMessageId,
+    errorCode: (log) => log.errorCode || log.errorSubcode,
+    reason: (log) => log.errorMessage,
+  }), [filteredLogs, sort]);
+  const logsPage = usePagination(sortedLogs, {
+    initialPageSize: 25,
+    resetKey: `${search}|${statusFilter}|${sort.key}|${sort.direction}`,
+  });
+
   if (loading) return <AppShell allowedRoles={allowedRoles}><div className="flex justify-center py-20"><Spinner size={32} /></div></AppShell>;
 
   if (error) {
@@ -193,13 +207,16 @@ export default function BroadcastDetailWorkspace({ allowedRoles, basePath }) {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                {['Contact', 'Phone', 'Status', 'WA Message ID', 'Error Code', 'Failure Reason'].map((h) => (
-                  <th key={h} className="px-4 py-3 font-semibold">{h}</th>
-                ))}
+                <SortableTh label="Contact" sortKey="contact" sort={sort} onSort={setSort} />
+                <SortableTh label="Phone" sortKey="phone" sort={sort} onSort={setSort} />
+                <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                <SortableTh label="WA Message ID" sortKey="messageId" sort={sort} onSort={setSort} />
+                <SortableTh label="Error Code" sortKey="errorCode" sort={sort} onSort={setSort} />
+                <SortableTh label="Failure Reason" sortKey="reason" sort={sort} onSort={setSort} />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredLogs.map((log) => (
+              {logsPage.pageItems.map((log) => (
                 <tr key={log._id} className="table-row-hover">
                   <td className="px-4 py-2.5">{log.contactName || '-'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{log.phone || '-'}</td>
@@ -215,6 +232,7 @@ export default function BroadcastDetailWorkspace({ allowedRoles, basePath }) {
             </tbody>
           </table>
         </div>
+        <PaginationControls {...logsPage} onPageChange={logsPage.setPage} onPageSizeChange={logsPage.setPageSize} />
       </Card>
     </AppShell>
   );

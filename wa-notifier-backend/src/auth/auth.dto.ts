@@ -39,6 +39,13 @@ export class UpdateTenantTeamUserDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
+export class UpdateTenantUserDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsIn(['client_owner', 'client_user']) role?: 'client_owner' | 'client_user';
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
 export class ResetTenantUserPasswordDto {
   @IsString() @MinLength(6) newPassword: string;
 }

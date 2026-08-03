@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MessageCircle, Eye, EyeOff } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import { Button, Input, Card } from '@/components/ui';
 import { useAuth } from '@/lib/auth-context';
 import { roleHomePath } from '@/hooks/useBasePath';
@@ -13,7 +13,6 @@ export default function SignupPage() {
   const router = useRouter();
   const { setSession } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', companyName: '', password: '' });
-  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -51,14 +50,8 @@ export default function SignupPage() {
             onChange={e => setForm({ ...form, companyName: e.target.value })} />
           <Input type="email" placeholder="Work email" required value={form.email}
             onChange={e => setForm({ ...form, email: e.target.value })} />
-          <div className="relative">
-            <Input type={show ? 'text' : 'password'} placeholder="Password (min. 6 characters)" required minLength={6}
-              value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-            <button type="button" onClick={() => setShow(s => !s)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-              {show ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
+          <Input type="password" placeholder="Password (min. 6 characters)" required minLength={6}
+            value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 

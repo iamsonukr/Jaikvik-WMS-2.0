@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea } from '@/components/ui';
+import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { Building2, Plus, ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -37,6 +37,7 @@ export default function TenantsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'createdAt', direction: 'desc' });
 
   const load = () => api.get('/tenants').then((r) => setTenants(r.data));
   useEffect(() => { load(); }, []);
@@ -77,6 +78,19 @@ export default function TenantsPage() {
     });
   }, [tenants, search, statusFilter, planFilter]);
 
+  const sortedTenants = useMemo(() => sortItems(filteredTenants, sort, {
+    client: (t) => t.name,
+    contact: (t) => t.contactEmail || t.contactPhone,
+    industry: (t) => t.industry,
+    plan: (t) => t.planId?.name,
+    status: (t) => t.status,
+    createdAt: (t) => t.createdAt,
+  }), [filteredTenants, sort]);
+  const tenantsPage = usePagination(sortedTenants, {
+    initialPageSize: 10,
+    resetKey: `${search}|${statusFilter}|${planFilter}|${sort.key}|${sort.direction}`,
+  });
+
   return (
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader
@@ -108,12 +122,12 @@ export default function TenantsPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Client</th>
-                  <th className="px-4 py-3 font-semibold">Contact</th>
-                  <th className="px-4 py-3 font-semibold">Industry</th>
-                  <th className="px-4 py-3 font-semibold">Plan</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Created</th>
+                  <SortableTh label="Client" sortKey="client" sort={sort} onSort={setSort} />
+                  <SortableTh label="Contact" sortKey="contact" sort={sort} onSort={setSort} />
+                  <SortableTh label="Industry" sortKey="industry" sort={sort} onSort={setSort} />
+                  <SortableTh label="Plan" sortKey="plan" sort={sort} onSort={setSort} />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                  <SortableTh label="Created" sortKey="createdAt" sort={sort} onSort={setSort} />
                   <th className="px-4 py-3 text-right font-semibold">Open</th>
                 </tr>
               </thead>
@@ -121,7 +135,7 @@ export default function TenantsPage() {
                 {!filteredTenants.length && (
                   <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No clients match these filters.</td></tr>
                 )}
-                {filteredTenants.map((t) => (
+                {tenantsPage.pageItems.map((t) => (
                   <tr key={t._id} className="table-row-hover">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -152,6 +166,7 @@ export default function TenantsPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...tenantsPage} onPageChange={tenantsPage.setPage} onPageSizeChange={tenantsPage.setPageSize} />
         </Card>
       )}
 

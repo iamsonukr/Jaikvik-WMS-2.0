@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, PageHeader, Select, Spinner } from '@/components/ui';
+import { Badge, Button, Card, PageHeader, Select, Spinner, PaginationControls, usePagination } from '@/components/ui';
 import api from '@/lib/api';
 import { CreditCard, Download, FileText, Wallet } from 'lucide-react';
 
@@ -113,6 +113,10 @@ export default function PaymentHistoryWorkspace() {
     (purposeFilter === 'all' || p.purpose === purposeFilter) &&
     (statusFilter === 'all' || p.status === statusFilter)
   )), [payments, purposeFilter, statusFilter]);
+  const paymentsPage = usePagination(filtered, {
+    initialPageSize: 10,
+    resetKey: `${purposeFilter}|${statusFilter}`,
+  });
 
   const downloadInvoice = async (payment) => {
     setInvoicingId(payment._id);
@@ -214,7 +218,7 @@ export default function PaymentHistoryWorkspace() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((p) => (
+                {paymentsPage.pageItems.map((p) => (
                   <tr key={p._id} className="hover:bg-muted/20">
                     <td className="px-4 py-3">{fmtDateTime(p.createdAt)}</td>
                     <td className="px-4 py-3">
@@ -249,6 +253,9 @@ export default function PaymentHistoryWorkspace() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <PaginationControls {...paymentsPage} onPageChange={paymentsPage.setPage} onPageSizeChange={paymentsPage.setPageSize} />
         )}
       </Card>
     </div>

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner } from '@/components/ui';
+import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { UsersRound, Plus } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -19,6 +19,7 @@ export default function StaffPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'createdAt', direction: 'desc' });
 
   const load = () => api.get('/auth/staff').then((r) => setStaff(r.data));
   useEffect(() => { load(); }, []);
@@ -70,6 +71,18 @@ export default function StaffPage() {
     });
   }, [staff, search, roleFilter, statusFilter]);
 
+  const sortedStaff = useMemo(() => sortItems(filteredStaff, sort, {
+    member: (s) => s.name || s.email,
+    role: (s) => s.role,
+    permissions: (s) => (s.permissions || []).join(' '),
+    status: (s) => Boolean(s.isActive),
+    createdAt: (s) => s.createdAt,
+  }), [filteredStaff, sort]);
+  const staffPage = usePagination(sortedStaff, {
+    initialPageSize: 10,
+    resetKey: `${search}|${roleFilter}|${statusFilter}|${sort.key}|${sort.direction}`,
+  });
+
   return (
     <AppShell allowedRoles={['admin']}>
       <PageHeader
@@ -101,11 +114,11 @@ export default function StaffPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Staff member</th>
-                  <th className="px-4 py-3 font-semibold">Role</th>
-                  <th className="px-4 py-3 font-semibold">Permissions</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Created</th>
+                  <SortableTh label="Staff member" sortKey="member" sort={sort} onSort={setSort} />
+                  <SortableTh label="Role" sortKey="role" sort={sort} onSort={setSort} />
+                  <SortableTh label="Permissions" sortKey="permissions" sort={sort} onSort={setSort} />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                  <SortableTh label="Created" sortKey="createdAt" sort={sort} onSort={setSort} />
                   <th className="px-4 py-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
@@ -113,7 +126,7 @@ export default function StaffPage() {
                 {!filteredStaff.length && (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No staff match these filters.</td></tr>
                 )}
-                {filteredStaff.map((s) => (
+                {staffPage.pageItems.map((s) => (
                   <tr key={s._id} className="table-row-hover">
                     <td className="px-4 py-3">
                       <p className="font-medium">{s.name}</p>
@@ -147,6 +160,7 @@ export default function StaffPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...staffPage} onPageChange={staffPage.setPage} onPageSizeChange={staffPage.setPageSize} />
         </Card>
       )}
 

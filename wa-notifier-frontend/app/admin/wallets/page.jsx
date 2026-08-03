@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Spinner, Empty, Input, Select, Badge } from '@/components/ui';
+import { PageHeader, Card, Spinner, Empty, Input, Select, Badge, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { ArrowRight, Wallet as WalletIcon } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -15,6 +15,7 @@ export default function WalletsOverviewPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [balanceFilter, setBalanceFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'balance', direction: 'desc' });
 
   useEffect(() => {
     // No single "list all wallets" endpoint exists yet; this fetches each
@@ -53,6 +54,20 @@ export default function WalletsOverviewPage() {
     });
   }, [rows, search, statusFilter, balanceFilter]);
 
+  const sortedRows = useMemo(() => sortItems(filteredRows, sort, {
+    client: ({ tenant }) => tenant.name,
+    contact: ({ tenant }) => tenant.contactEmail || tenant.contactPhone,
+    plan: ({ tenant }) => tenant.planId?.name,
+    balance: ({ balance }) => balance?.balance ?? 0,
+    recharged: ({ balance }) => balance?.totalRecharged ?? 0,
+    spent: ({ balance }) => balance?.totalSpent ?? 0,
+    status: ({ tenant }) => tenant.status,
+  }), [filteredRows, sort]);
+  const walletsPage = usePagination(sortedRows, {
+    initialPageSize: 10,
+    resetKey: `${search}|${statusFilter}|${balanceFilter}|${sort.key}|${sort.direction}`,
+  });
+
   return (
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader title="Wallets" subtitle="Balance across every client." />
@@ -83,13 +98,13 @@ export default function WalletsOverviewPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Client</th>
-                  <th className="px-4 py-3 font-semibold">Contact</th>
-                  <th className="px-4 py-3 font-semibold">Plan</th>
-                  <th className="px-4 py-3 text-right font-semibold">Balance</th>
-                  <th className="px-4 py-3 text-right font-semibold">Recharged</th>
-                  <th className="px-4 py-3 text-right font-semibold">Spent</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <SortableTh label="Client" sortKey="client" sort={sort} onSort={setSort} />
+                  <SortableTh label="Contact" sortKey="contact" sort={sort} onSort={setSort} />
+                  <SortableTh label="Plan" sortKey="plan" sort={sort} onSort={setSort} />
+                  <SortableTh label="Balance" sortKey="balance" sort={sort} onSort={setSort} align="right" />
+                  <SortableTh label="Recharged" sortKey="recharged" sort={sort} onSort={setSort} align="right" />
+                  <SortableTh label="Spent" sortKey="spent" sort={sort} onSort={setSort} align="right" />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
                   <th className="px-4 py-3 text-right font-semibold">Open</th>
                 </tr>
               </thead>
@@ -97,7 +112,7 @@ export default function WalletsOverviewPage() {
                 {!filteredRows.length && (
                   <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No wallets match these filters.</td></tr>
                 )}
-                {filteredRows.map(({ tenant, balance }) => (
+                {walletsPage.pageItems.map(({ tenant, balance }) => (
                   <tr key={tenant._id} className="table-row-hover">
                     <td className="px-4 py-3">
                       <p className="font-medium">{tenant.name}</p>
@@ -122,6 +137,7 @@ export default function WalletsOverviewPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...walletsPage} onPageChange={walletsPage.setPage} onPageSizeChange={walletsPage.setPageSize} />
         </Card>
       )}
     </AppShell>

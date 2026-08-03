@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertCircle, AlertTriangle, Bell, CheckCircle2, CreditCard, Megaphone, MessageCircle, RefreshCw, Wallet } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import { Badge, Button, Card, Empty, PageHeader, Select, Spinner } from '@/components/ui';
+import { Badge, Button, Card, Empty, PageHeader, Select, Spinner, PaginationControls, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
@@ -43,6 +43,10 @@ export default function ClientAlertsPage() {
     const matchesSource = source === 'all' || alert.source === source;
     return matchesSeverity && matchesSource;
   }), [alerts, severity, source]);
+  const alertsPage = usePagination(filtered, {
+    initialPageSize: 10,
+    resetKey: `${severity}|${source}`,
+  });
 
   const counts = useMemo(() => ({
     critical: alerts.filter((alert) => alert.severity === 'critical').length,
@@ -113,7 +117,7 @@ export default function ClientAlertsPage() {
 
             {!loading && filtered.length > 0 && (
               <div className="divide-y divide-border">
-                {filtered.map((alert) => {
+                {alertsPage.pageItems.map((alert) => {
                   const Icon = sourceIcon[alert.source] || AlertCircle;
                   return (
                     <div key={alert.id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start">
@@ -146,6 +150,9 @@ export default function ClientAlertsPage() {
                   );
                 })}
               </div>
+            )}
+            {!loading && filtered.length > 0 && (
+              <PaginationControls {...alertsPage} onPageChange={alertsPage.setPage} onPageSizeChange={alertsPage.setPageSize} />
             )}
           </Card>
         </>

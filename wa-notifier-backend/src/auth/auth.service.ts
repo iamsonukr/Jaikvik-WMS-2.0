@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { User, UserDocument } from './user.schema';
-import { CreateTenantUserDto, LoginDto, RegisterDto } from './auth.dto';
+import { CreateTenantUserDto, LoginDto, RegisterDto, UpdateTenantUserDto } from './auth.dto';
 import { TENANT_SCOPED_ROLES, UserRole, normalizeUserRole } from '../common/enums/role.enum';
 import { TenantsService } from '../tenants/tenants.service';
 import { toObjectId } from '../common/mongo-id';
@@ -22,6 +22,7 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const exists = await this.userModel.findOne({ email: dto.email });
     if (exists) throw new ConflictException('Email already in use');
+    const signupTrialPlan = await this.subscriptionsService.findSignupTrialPlan();
 
     // Public signup always provisions a brand-new tenant with this user as its owner.
     const tenant = await this.tenantsService.create({
@@ -36,6 +37,7 @@ export class AuthService {
       role: UserRole.CLIENT_OWNER,
       tenantId: tenant._id,
     });
+    await this.subscriptionsService.activateSignupTrial(String(tenant._id), signupTrialPlan);
     return this.tokenFor(user);
   }
 
@@ -45,6 +47,8 @@ export class AuthService {
     if (!user.isActive) throw new UnauthorizedException('This account has been disabled');
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
+    user.lastLoginAt = new Date();
+    await user.save();
     return this.tokenFor(user);
   }
 
@@ -202,6 +206,40 @@ export class AuthService {
     delete updated.password;
     updated.role = normalizeUserRole(updated.role) as any;
     return { message: 'Password reset', user: updated };
+  }
+
+  async updateTenantUser(userId: string, dto: UpdateTenantUserDto) {
+    const user = await this.userModel.findById(userId);
+    if (!user || !TENANT_SCOPED_ROLES.includes(normalizeUserRole(user.role) as UserRole)) {
+      throw new NotFoundException('Client login user not found');
+    }
+
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase();
+      if (!email) throw new BadRequestException('Email is required');
+      const exists = await this.userModel.findOne({ email, _id: { $ne: user._id } });
+      if (exists) throw new ConflictException('Email already in use');
+      user.email = email;
+    }
+    if (dto.name !== undefined) user.name = dto.name.trim();
+    if (dto.role !== undefined) user.role = dto.role as UserRole;
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    await user.save();
+
+    const updated = user.toObject();
+    delete updated.password;
+    updated.role = normalizeUserRole(updated.role) as any;
+    return updated;
+  }
+
+  async removeTenantUser(userId: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user || !TENANT_SCOPED_ROLES.includes(normalizeUserRole(user.role) as UserRole)) {
+      throw new NotFoundException('Client login user not found');
+    }
+
+    await user.deleteOne();
+    return { message: 'Client login user deleted' };
   }
 
   async updateProfile(userId: string, dto: { name?: string; email?: string }) {

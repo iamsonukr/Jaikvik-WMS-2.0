@@ -40,6 +40,24 @@ export class PaymentsController {
     return res.send(pdf.buffer);
   }
 
+  @Get('tenants/:tenantId/billing-statement.pdf')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  async billingStatementForStaff(@Param('tenantId') tenantId: string, @Res() res: Response) {
+    const pdf = await this.svc.getBillingStatementPdfForStaff(tenantId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  }
+
+  @Get('subscriptions/:id/invoice.pdf')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  async subscriptionInvoicePdfForStaff(@Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.svc.getSubscriptionInvoicePdfForStaff(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  }
+
   @Get(':id/invoice')
   @Roles(UserRole.ADMIN, UserRole.MASTER)
   invoiceForStaff(@Param('id') id: string) {

@@ -1,9 +1,9 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
-import { PageHeader, Card, Button, Select, Input, Modal, Badge, Spinner, Textarea } from '@/components/ui';
-import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, UserPlus, PhoneCall, Building2, MessageCircle, Plus, Pencil, Receipt, CreditCard, CalendarDays, Download } from 'lucide-react';
+import { PageHeader, Card, Button, Select, Input, Modal, Badge, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
+import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, UserPlus, PhoneCall, Building2, MessageCircle, Plus, Pencil, Receipt, CreditCard, CalendarDays, Download, Trash2, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { normalizeRole } from '@/lib/roles';
 import Link from 'next/link';
@@ -34,6 +34,7 @@ const WALLET_TYPE_LABEL = {
   manual_debit: 'Manual debit',
   reversal: 'Reversal',
 };
+const WALLET_TYPE_OPTIONS = Object.keys(WALLET_TYPE_LABEL);
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
@@ -65,10 +66,21 @@ const clientDetailFields = [
   'postalCode',
   'notes',
 ];
+const DETAIL_TABS = [
+  { key: 'details', label: 'Details', icon: Building2 },
+  { key: 'subscription', label: 'Subscription', icon: CreditCard },
+  { key: 'wallet', label: 'Wallet', icon: WalletIcon },
+  { key: 'users', label: 'Users', icon: Users },
+  { key: 'whatsapp', label: 'WhatsApp', icon: PhoneCall },
+  { key: 'ledger', label: 'Ledger', icon: Receipt },
+  { key: 'payments', label: 'Payments', icon: CreditCard },
+  { key: 'history', label: 'History', icon: CalendarDays },
+];
 const fmtDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString('en-IN') : '-';
 const fmtMoney = (value) => `INR ${Number(value || 0).toLocaleString('en-IN')}`;
 const dateForInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
+const text = (value) => String(value || '').toLowerCase();
 
 function displaySubscriptionStatus(item) {
   if (!item) return '-';
@@ -89,16 +101,40 @@ export default function TenantDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const role = normalizeRole(user?.role);
+  const [activeTab, setActiveTab] = useState('details');
   const [tenant, setTenant] = useState(null);
   const [plans, setPlans] = useState([]);
   const [wallet, setWallet] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [subscriptionHistory, setSubscriptionHistory] = useState([]);
   const [walletTransactions, setWalletTransactions] = useState([]);
+  const [walletLedger, setWalletLedger] = useState({ items: [], total: 0, page: 1, limit: 25, totalPages: 1 });
+  const [walletFilters, setWalletFilters] = useState({ from: '', to: '', type: 'all', direction: 'all' });
+  const [walletSearch, setWalletSearch] = useState('');
+  const [walletSort, setWalletSort] = useState({ key: 'createdAt', direction: 'desc' });
+  const [walletPage, setWalletPage] = useState(1);
+  const [walletLimit, setWalletLimit] = useState(25);
+  const [downloadingWallet, setDownloadingWallet] = useState('');
   const [payments, setPayments] = useState([]);
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const [paymentPurposeFilter, setPaymentPurposeFilter] = useState('all');
+  const [paymentSort, setPaymentSort] = useState({ key: 'createdAt', direction: 'desc' });
   const [downloadingPaymentId, setDownloadingPaymentId] = useState(null);
+  const [downloadingBillingStatement, setDownloadingBillingStatement] = useState(false);
+  const [downloadingSubscriptionId, setDownloadingSubscriptionId] = useState(null);
   const [accounts, setAccounts] = useState([]);
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountStatusFilter, setAccountStatusFilter] = useState('all');
+  const [accountSort, setAccountSort] = useState({ key: 'account', direction: 'asc' });
   const [tenantUsers, setTenantUsers] = useState([]);
+  const [tenantUserSearch, setTenantUserSearch] = useState('');
+  const [tenantUserRoleFilter, setTenantUserRoleFilter] = useState('all');
+  const [tenantUserStatusFilter, setTenantUserStatusFilter] = useState('all');
+  const [tenantUserSort, setTenantUserSort] = useState({ key: 'user', direction: 'asc' });
+  const [subscriptionSearch, setSubscriptionSearch] = useState('');
+  const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState('all');
+  const [subscriptionSort, setSubscriptionSort] = useState({ key: 'createdAt', direction: 'desc' });
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [subscriptionForm, setSubscriptionForm] = useState({ planId: '', billingCycle: 'quarterly', startDate: '', endDate: '' });
   const [savingSubscription, setSavingSubscription] = useState(false);
@@ -125,6 +161,18 @@ export default function TenantDetailPage() {
   const [createUserForm, setCreateUserForm] = useState({ name: '', email: '', password: '', role: 'client_owner' });
   const [creatingUser, setCreatingUser] = useState(false);
   const [createUserError, setCreateUserError] = useState('');
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [editUserTarget, setEditUserTarget] = useState(null);
+  const [editUserForm, setEditUserForm] = useState({ name: '', email: '', role: 'client_user', isActive: true });
+  const [savingUser, setSavingUser] = useState(false);
+  const [editUserError, setEditUserError] = useState('');
+  const [userBusyId, setUserBusyId] = useState(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [reverseTarget, setReverseTarget] = useState(null);
+  const [reverseForm, setReverseForm] = useState({ action: 'refund', reason: '' });
+  const [reversingTxn, setReversingTxn] = useState(false);
+  const [reverseError, setReverseError] = useState('');
   const [manualAccountOpen, setManualAccountOpen] = useState(false);
   const [manualAccountForm, setManualAccountForm] = useState(blankAccountForm);
   const [savingAccount, setSavingAccount] = useState(false);
@@ -139,12 +187,36 @@ export default function TenantDetailPage() {
   const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '' });
   const waitTimerRef = useRef(null);
 
+  const walletQuery = (page = walletPage, filters = walletFilters, limit = walletLimit) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+    if (filters.type !== 'all') params.set('type', filters.type);
+    if (filters.direction !== 'all') params.set('direction', filters.direction);
+    return params.toString();
+  };
+
+  const loadWalletLedger = async (page = walletPage, filters = walletFilters, limit = walletLimit) => {
+    const { data } = await api.get(`/wallet/${id}/transactions?${walletQuery(page, filters, limit)}`);
+    const next = {
+      items: data?.items || [],
+      total: data?.total || 0,
+      page: data?.page || page,
+      limit: data?.limit || limit,
+      totalPages: data?.totalPages || 1,
+    };
+    setWalletLedger(next);
+    setWalletTransactions(next.items);
+  };
+
   const load = async () => {
     const [tenantRes, plansRes, walletRes, walletTxRes, subsRes, paymentsRes, accountsRes, usersRes] = await Promise.all([
       api.get(`/tenants/${id}`),
       api.get('/plans'),
       api.get(`/wallet/${id}`),
-      api.get(`/wallet/${id}/transactions?limit=100`),
+      api.get(`/wallet/${id}/transactions?${walletQuery()}`),
       api.get(`/subscriptions/tenant/${id}`),
       api.get(`/payments?tenantId=${id}`),
       api.get(`/whatsapp-accounts/tenant/${id}`),
@@ -154,6 +226,13 @@ export default function TenantDetailPage() {
     setTenant(tenantRes.data);
     setPlans(plansRes.data);
     setWallet(walletRes.data);
+    setWalletLedger({
+      items: walletTxRes.data?.items || [],
+      total: walletTxRes.data?.total || 0,
+      page: walletTxRes.data?.page || walletPage,
+      limit: walletTxRes.data?.limit || walletLimit,
+      totalPages: walletTxRes.data?.totalPages || 1,
+    });
     setWalletTransactions(walletTxRes.data?.items || []);
     setSubscription(subscriptions.find((item) => item.status === 'active') || subscriptions[0] || null);
     setSubscriptionHistory(subscriptions);
@@ -163,6 +242,140 @@ export default function TenantDetailPage() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  const filteredTenantUsers = useMemo(() => {
+    const query = text(tenantUserSearch.trim());
+    return tenantUsers.filter((loginUser) => {
+      const matchesSearch = !query
+        || text(loginUser.name).includes(query)
+        || text(loginUser.email).includes(query)
+        || text(loginUser.role).includes(query);
+      const matchesRole = tenantUserRoleFilter === 'all' || loginUser.role === tenantUserRoleFilter;
+      const matchesStatus = tenantUserStatusFilter === 'all'
+        || (tenantUserStatusFilter === 'active' && loginUser.isActive)
+        || (tenantUserStatusFilter === 'inactive' && !loginUser.isActive);
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [tenantUsers, tenantUserRoleFilter, tenantUserSearch, tenantUserStatusFilter]);
+
+  const sortedTenantUsers = useMemo(() => sortItems(filteredTenantUsers, tenantUserSort, {
+    user: (loginUser) => loginUser.name || loginUser.email,
+    role: (loginUser) => loginUser.role,
+    status: (loginUser) => Boolean(loginUser.isActive),
+    lastLoginAt: (loginUser) => loginUser.lastLoginAt || '',
+  }), [filteredTenantUsers, tenantUserSort]);
+  const tenantUsersPage = usePagination(sortedTenantUsers, {
+    initialPageSize: 10,
+    resetKey: `${tenantUserSearch}|${tenantUserRoleFilter}|${tenantUserStatusFilter}|${tenantUserSort.key}|${tenantUserSort.direction}`,
+  });
+
+  const filteredAccounts = useMemo(() => {
+    const query = text(accountSearch.trim());
+    return accounts.filter((account) => {
+      const matchesSearch = !query
+        || text(account.name).includes(query)
+        || text(account.phone).includes(query)
+        || text(account.wabaId).includes(query)
+        || text(account.phoneNumberId).includes(query)
+        || text(account.timezone).includes(query);
+      const matchesStatus = accountStatusFilter === 'all'
+        || (accountStatusFilter === 'active' && account.isActive)
+        || (accountStatusFilter === 'inactive' && !account.isActive);
+      return matchesSearch && matchesStatus;
+    });
+  }, [accountSearch, accountStatusFilter, accounts]);
+
+  const sortedAccounts = useMemo(() => sortItems(filteredAccounts, accountSort, {
+    account: (account) => account.name,
+    phone: (account) => account.phone,
+    meta: (account) => account.wabaId || account.phoneNumberId,
+    timezone: (account) => account.timezone,
+    status: (account) => Boolean(account.isActive),
+  }), [accountSort, filteredAccounts]);
+  const accountsPage = usePagination(sortedAccounts, {
+    initialPageSize: 10,
+    resetKey: `${accountSearch}|${accountStatusFilter}|${accountSort.key}|${accountSort.direction}`,
+  });
+
+  const filteredWalletTransactions = useMemo(() => {
+    const query = text(walletSearch.trim());
+    return walletTransactions.filter((txn) => !query
+      || text(WALLET_TYPE_LABEL[txn.type] || txn.type).includes(query)
+      || text(txn.status).includes(query)
+      || text(txn.description).includes(query)
+      || text(txn.reason).includes(query)
+      || text(txn.referenceId).includes(query)
+      || text(txn._id).includes(query));
+  }, [walletSearch, walletTransactions]);
+
+  const sortedWalletTransactions = useMemo(() => sortItems(filteredWalletTransactions, walletSort, {
+    transaction: (txn) => WALLET_TYPE_LABEL[txn.type] || txn.type,
+    status: (txn) => txn.status || 'completed',
+    credit: (txn) => txn.creditAmount || 0,
+    debit: (txn) => txn.debitAmount || 0,
+    balance: (txn) => txn.balanceAfter || 0,
+    createdAt: (txn) => txn.createdAt,
+  }), [filteredWalletTransactions, walletSort]);
+
+  const paymentPurposeOptions = useMemo(() => (
+    Array.from(new Set(payments.map((payment) => payment.purpose).filter(Boolean))).sort()
+  ), [payments]);
+
+  const filteredPayments = useMemo(() => {
+    const query = text(paymentSearch.trim());
+    return payments.filter((payment) => {
+      const matchesSearch = !query
+        || text(payment.razorpayOrderId).includes(query)
+        || text(payment.razorpayPaymentId).includes(query)
+        || text(payment.purpose).includes(query)
+        || text(payment.status).includes(query)
+        || text(payment._id).includes(query);
+      const matchesStatus = paymentStatusFilter === 'all' || payment.status === paymentStatusFilter;
+      const matchesPurpose = paymentPurposeFilter === 'all' || payment.purpose === paymentPurposeFilter;
+      return matchesSearch && matchesStatus && matchesPurpose;
+    });
+  }, [paymentPurposeFilter, paymentSearch, paymentStatusFilter, payments]);
+
+  const sortedPayments = useMemo(() => sortItems(filteredPayments, paymentSort, {
+    payment: (payment) => payment.razorpayOrderId || payment.razorpayPaymentId,
+    purpose: (payment) => payment.purpose,
+    amount: (payment) => payment.amount,
+    status: (payment) => payment.status,
+    createdAt: (payment) => payment.createdAt,
+  }), [filteredPayments, paymentSort]);
+  const paymentsPage = usePagination(sortedPayments, {
+    initialPageSize: 10,
+    resetKey: `${paymentSearch}|${paymentStatusFilter}|${paymentPurposeFilter}|${paymentSort.key}|${paymentSort.direction}`,
+  });
+
+  const filteredSubscriptionHistory = useMemo(() => {
+    const query = text(subscriptionSearch.trim());
+    return subscriptionHistory.filter((item) => {
+      const status = displaySubscriptionStatus(item);
+      const matchesSearch = !query
+        || text(item.planId?.name).includes(query)
+        || text(item._id).includes(query)
+        || text(item.billingCycleSnapshot).includes(query)
+        || text(status).includes(query)
+        || text(item.cancelReason).includes(query);
+      const matchesStatus = subscriptionStatusFilter === 'all' || status === subscriptionStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [subscriptionHistory, subscriptionSearch, subscriptionStatusFilter]);
+
+  const sortedSubscriptionHistory = useMemo(() => sortItems(filteredSubscriptionHistory, subscriptionSort, {
+    plan: (item) => item.planId?.name,
+    period: (item) => item.startDate,
+    billing: (item) => item.billingCycleSnapshot,
+    price: (item) => item.priceSnapshot || 0,
+    status: displaySubscriptionStatus,
+    reason: (item) => item.cancelReason,
+    createdAt: (item) => item.createdAt,
+  }), [filteredSubscriptionHistory, subscriptionSort]);
+  const subscriptionHistoryPage = usePagination(sortedSubscriptionHistory, {
+    initialPageSize: 10,
+    resetKey: `${subscriptionSearch}|${subscriptionStatusFilter}|${subscriptionSort.key}|${subscriptionSort.direction}`,
+  });
 
   const clearWaitTimer = () => {
     if (waitTimerRef.current) {
@@ -310,6 +523,130 @@ export default function TenantDetailPage() {
     }
   };
 
+  const downloadBlob = (data, headers, fallbackFilename) => {
+    const disposition = headers?.['content-disposition'] || '';
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const filename = match?.[1] || fallbackFilename;
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadBillingStatement = async () => {
+    setError('');
+    setDownloadingBillingStatement(true);
+    try {
+      const { data, headers } = await api.get(`/payments/tenants/${id}/billing-statement.pdf`, { responseType: 'blob' });
+      downloadBlob(data, headers, `${tenant?.name || 'client'}-billing-statement.pdf`);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not download billing statement');
+    } finally {
+      setDownloadingBillingStatement(false);
+    }
+  };
+
+  const downloadSubscriptionInvoice = async (subscriptionItem) => {
+    setError('');
+    setDownloadingSubscriptionId(subscriptionItem._id);
+    try {
+      const { data, headers } = await api.get(`/payments/subscriptions/${subscriptionItem._id}/invoice.pdf`, { responseType: 'blob' });
+      downloadBlob(data, headers, `subscription-invoice-${subscriptionItem._id}.pdf`);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not download subscription invoice');
+    } finally {
+      setDownloadingSubscriptionId(null);
+    }
+  };
+
+  const downloadWalletFile = async (kind) => {
+    setError('');
+    setDownloadingWallet(kind);
+    try {
+      const endpoint = kind === 'statement'
+        ? `/wallet/${id}/statement.pdf?${walletQuery(1, walletFilters, walletLimit)}`
+        : `/wallet/${id}/transactions/export.${kind}?${walletQuery(1, walletFilters, walletLimit)}`;
+      const { data, headers } = await api.get(endpoint, { responseType: 'blob' });
+      downloadBlob(data, headers, `${tenant?.name || 'client'}-wallet-${kind}.${kind === 'csv' ? 'csv' : 'pdf'}`);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not download wallet file');
+    } finally {
+      setDownloadingWallet('');
+    }
+  };
+
+  const applyWalletFilters = async () => {
+    setError('');
+    setWalletPage(1);
+    try {
+      await loadWalletLedger(1, walletFilters, walletLimit);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not load wallet ledger');
+    }
+  };
+
+  const clearWalletFilters = async () => {
+    const cleared = { from: '', to: '', type: 'all', direction: 'all' };
+    setWalletFilters(cleared);
+    setWalletSearch('');
+    setWalletPage(1);
+    setError('');
+    try {
+      await loadWalletLedger(1, cleared, walletLimit);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not load wallet ledger');
+    }
+  };
+
+  const changeWalletPage = async (page) => {
+    const nextPage = Math.min(Math.max(1, page), walletLedger.totalPages || 1);
+    setWalletPage(nextPage);
+    setError('');
+    try {
+      await loadWalletLedger(nextPage, walletFilters, walletLimit);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not load wallet ledger');
+    }
+  };
+
+  const changeWalletLimit = async (limit) => {
+    const nextLimit = Number(limit);
+    setWalletLimit(nextLimit);
+    setWalletPage(1);
+    setError('');
+    try {
+      await loadWalletLedger(1, walletFilters, nextLimit);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not load wallet ledger');
+    }
+  };
+
+  const openReverse = (txn) => {
+    setReverseTarget(txn);
+    setReverseForm({ action: 'refund', reason: '' });
+    setReverseError('');
+  };
+
+  const submitReverse = async () => {
+    setReverseError('');
+    if (!reverseForm.reason.trim()) { setReverseError('Reason is required'); return; }
+    setReversingTxn(true);
+    try {
+      await api.post(`/wallet/${id}/transactions/${reverseTarget._id}/reverse`, {
+        ...reverseForm,
+        reason: reverseForm.reason.trim(),
+      });
+      setReverseTarget(null);
+      await load();
+    } catch (err) {
+      setReverseError(err?.response?.data?.message || 'Could not refund/reverse transaction');
+    } finally {
+      setReversingTxn(false);
+    }
+  };
+
   const submitAdjust = async () => {
     setError('');
     const amt = Number(adjust.amount);
@@ -344,6 +681,18 @@ export default function TenantDetailPage() {
     setCreateUserForm({ name: '', email: tenant.contactEmail || '', password: '', role: 'client_owner' });
     setCreateUserError('');
     setCreateUserOpen(true);
+  };
+
+  const openEditUser = (loginUser) => {
+    setEditUserTarget(loginUser);
+    setEditUserForm({
+      name: loginUser.name || '',
+      email: loginUser.email || '',
+      role: loginUser.role || 'client_user',
+      isActive: loginUser.isActive !== false,
+    });
+    setEditUserError('');
+    setEditUserOpen(true);
   };
 
   const openDetails = () => {
@@ -385,6 +734,56 @@ export default function TenantDetailPage() {
       setCreateUserError(err?.response?.data?.message || 'Could not create login user');
     } finally {
       setCreatingUser(false);
+    }
+  };
+
+  const submitEditUser = async () => {
+    setEditUserError('');
+    if (!editUserForm.name.trim()) { setEditUserError('Name is required'); return; }
+    if (!editUserForm.email.trim()) { setEditUserError('Email is required'); return; }
+    setSavingUser(true);
+    try {
+      await api.patch(`/auth/tenant-users/${editUserTarget._id}`, {
+        ...editUserForm,
+        name: editUserForm.name.trim(),
+        email: editUserForm.email.trim(),
+      });
+      setEditUserOpen(false);
+      setEditUserTarget(null);
+      await load();
+    } catch (err) {
+      setEditUserError(err?.response?.data?.message || 'Could not update login user');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const toggleTenantUserActive = async (loginUser) => {
+    setError('');
+    setUserBusyId(loginUser._id);
+    try {
+      await api.patch(`/auth/tenant-users/${loginUser._id}`, { isActive: !loginUser.isActive });
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not update login user');
+    } finally {
+      setUserBusyId(null);
+    }
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUserTarget) return;
+    setDeletingUser(true);
+    setError('');
+    try {
+      await api.delete(`/auth/tenant-users/${deleteUserTarget._id}`);
+      setDeleteUserTarget(null);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not delete login user');
+      setDeleteUserTarget(null);
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -604,8 +1003,35 @@ export default function TenantDetailPage() {
         }
       />
 
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="p-5">
+      <div className="mb-5 overflow-x-auto border-b border-border" role="tablist" aria-label="Client detail sections">
+        <div className="flex min-w-max gap-1">
+          {DETAIL_TABS.map(({ key, label, icon: Icon }) => {
+            const selected = activeTab === key;
+            return (
+              <button
+                key={key}
+                id={`${key}-tab`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`${key}-panel`}
+                onClick={() => setActiveTab(key)}
+                className={`inline-flex h-10 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors ${
+                  selected
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                }`}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeTab === 'details' && (
+        <Card id="details-panel" role="tabpanel" aria-labelledby="details-tab" className="p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Building2 size={16} className="text-primary" />
@@ -635,8 +1061,10 @@ export default function TenantDetailPage() {
             <DetailItem label="Notes" value={tenant.notes} wide />
           </div>
         </Card>
+      )}
 
-        <Card className="p-5">
+      {activeTab === 'subscription' && (
+        <Card id="subscription-panel" role="tabpanel" aria-labelledby="subscription-tab" className="p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold">Subscription</h3>
             <Button variant="outline" size="sm" onClick={openSubscriptionManager}>
@@ -680,8 +1108,10 @@ export default function TenantDetailPage() {
             </div>
           )}
         </Card>
+      )}
 
-        <Card className="p-5">
+      {activeTab === 'wallet' && (
+        <Card id="wallet-panel" role="tabpanel" aria-labelledby="wallet-tab" className="p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-sm">Wallet</h3>
             <Button variant="outline" size="sm" onClick={() => setAdjustOpen(true)}>
@@ -694,8 +1124,10 @@ export default function TenantDetailPage() {
             <div><p className="text-muted-foreground text-xs">Spent</p><p className="font-semibold">{fmtMoney(wallet?.totalSpent)}</p></div>
           </div>
         </Card>
+      )}
 
-        <Card className="p-5">
+      {activeTab === 'users' && (
+        <Card id="users-panel" role="tabpanel" aria-labelledby="users-tab" className="p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Users size={16} className="text-primary" />
@@ -710,47 +1142,84 @@ export default function TenantDetailPage() {
           {!tenantUsers.length ? (
             <p className="text-sm text-muted-foreground">No login users are linked to this client.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="py-2 pr-3 font-semibold">User</th>
-                    <th className="py-2 pr-3 font-semibold">Role</th>
-                    <th className="py-2 pr-3 font-semibold">Status</th>
-                    <th className="py-2 text-right font-semibold">Password</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {tenantUsers.map((u) => (
-                    <tr key={u._id}>
-                      <td className="py-3 pr-3">
-                        <p className="font-medium">{u.name || '-'}</p>
-                        <p className="break-all text-xs text-muted-foreground">{u.email}</p>
-                      </td>
-                      <td className="py-3 pr-3">{ROLE_LABEL[u.role] || u.role}</td>
-                      <td className="py-3 pr-3">
-                        <Badge label={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} />
-                      </td>
-                      <td className="py-3 text-right">
-                        {role === 'admin' ? (
-                          <Button variant="outline" size="sm" onClick={() => openReset(u)}>
-                            <KeyRound size={14} /> Reset
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Admin only</span>
-                        )}
-                      </td>
+            <>
+              <div className="mb-4 grid gap-3 md:grid-cols-[1fr_160px_160px]">
+                <Input placeholder="Search user name, email, role..." value={tenantUserSearch} onChange={(e) => setTenantUserSearch(e.target.value)} />
+                <Select value={tenantUserRoleFilter} onChange={(e) => setTenantUserRoleFilter(e.target.value)}>
+                  <option value="all">All roles</option>
+                  <option value="client_owner">Owner</option>
+                  <option value="client_user">User</option>
+                </Select>
+                <Select value={tenantUserStatusFilter} onChange={(e) => setTenantUserStatusFilter(e.target.value)}>
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </Select>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <SortableTh label="User" sortKey="user" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
+                      <SortableTh label="Role" sortKey="role" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
+                      <SortableTh label="Status" sortKey="status" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
+                      <SortableTh label="Last login" sortKey="lastLoginAt" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
+                      <th className="py-2 text-right font-semibold">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {!sortedTenantUsers.length && (
+                      <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">No login users match these filters.</td></tr>
+                    )}
+                    {tenantUsersPage.pageItems.map((u) => {
+                    const busy = userBusyId === u._id;
+                    return (
+                      <tr key={u._id}>
+                        <td className="py-3 pr-3">
+                          <p className="font-medium">{u.name || '-'}</p>
+                          <p className="break-all text-xs text-muted-foreground">{u.email}</p>
+                        </td>
+                        <td className="py-3 pr-3">{ROLE_LABEL[u.role] || u.role}</td>
+                        <td className="py-3 pr-3">
+                          <Badge label={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} />
+                        </td>
+                        <td className="py-3 pr-3 text-muted-foreground">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : 'Never'}</td>
+                        <td className="py-3 text-right">
+                          {role === 'admin' ? (
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              <Button variant="outline" size="sm" onClick={() => openEditUser(u)}>
+                                <Pencil size={14} /> Edit
+                              </Button>
+                              <Button variant="outline" size="sm" disabled={busy} onClick={() => toggleTenantUserActive(u)}>
+                                {u.isActive ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
+                                {u.isActive ? 'Disable' : 'Activate'}
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => openReset(u)}>
+                                <KeyRound size={14} /> Reset
+                              </Button>
+                              <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setDeleteUserTarget(u)}>
+                                <Trash2 size={14} /> Delete
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Admin only</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls {...tenantUsersPage} onPageChange={tenantUsersPage.setPage} onPageSizeChange={tenantUsersPage.setPageSize} />
+            </>
           )}
         </Card>
-      </div>
+      )}
 
-      <Card className="mt-5 p-5">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {activeTab === 'whatsapp' && (
+        <Card id="whatsapp-panel" role="tabpanel" aria-labelledby="whatsapp-tab" className="p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <PhoneCall size={16} className="text-primary" />
             <h3 className="text-sm font-semibold">Connected WhatsApp Accounts</h3>
@@ -779,20 +1248,32 @@ export default function TenantDetailPage() {
         {!accounts.length ? (
           <p className="text-sm text-muted-foreground">No WhatsApp accounts are connected to this client.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Account</th>
-                  <th className="px-4 py-3 font-semibold">Phone</th>
-                  <th className="px-4 py-3 font-semibold">Meta IDs</th>
-                  <th className="px-4 py-3 font-semibold">Timezone</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Open</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {accounts.map((account) => (
+          <>
+            <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px]">
+              <Input placeholder="Search account, phone, WABA, phone ID..." value={accountSearch} onChange={(e) => setAccountSearch(e.target.value)} />
+              <Select value={accountStatusFilter} onChange={(e) => setAccountStatusFilter(e.target.value)}>
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <SortableTh label="Account" sortKey="account" sort={accountSort} onSort={setAccountSort} />
+                    <SortableTh label="Phone" sortKey="phone" sort={accountSort} onSort={setAccountSort} />
+                    <SortableTh label="Meta IDs" sortKey="meta" sort={accountSort} onSort={setAccountSort} />
+                    <SortableTh label="Timezone" sortKey="timezone" sort={accountSort} onSort={setAccountSort} />
+                    <SortableTh label="Status" sortKey="status" sort={accountSort} onSort={setAccountSort} />
+                    <th className="px-4 py-3 text-right font-semibold">Open</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {!sortedAccounts.length && (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No WhatsApp accounts match these filters.</td></tr>
+                  )}
+                  {accountsPage.pageItems.map((account) => (
                   <tr key={account._id} className="table-row-hover">
                     <td className="px-4 py-3">
                       <p className="font-medium">{account.name}</p>
@@ -811,67 +1292,180 @@ export default function TenantDetailPage() {
                       <Link href={`/master/clients/${account._id}`} className="text-primary hover:underline">Details</Link>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <Card className="p-0 overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <Receipt size={16} className="text-primary" />
-              <h3 className="text-sm font-semibold">Wallet Ledger</h3>
-            </div>
-            <span className="text-xs text-muted-foreground">{walletTransactions.length} entries</span>
-          </div>
-          {!walletTransactions.length ? (
-            <p className="px-5 py-8 text-sm text-muted-foreground">No wallet transactions recorded for this client.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">Transaction</th>
-                    <th className="px-4 py-3 text-right font-semibold">Credit</th>
-                    <th className="px-4 py-3 text-right font-semibold">Debit</th>
-                    <th className="px-4 py-3 text-right font-semibold">Balance</th>
-                    <th className="px-4 py-3 font-semibold">Created</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {walletTransactions.map((txn) => (
-                    <tr key={txn._id} className="table-row-hover">
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{WALLET_TYPE_LABEL[txn.type] || txn.type}</p>
-                        <p className="max-w-xs truncate text-xs text-muted-foreground">{txn.description || txn.reason || txn.referenceId || '-'}</p>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                        {txn.creditAmount ? fmtMoney(txn.creditAmount) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">
-                        {txn.debitAmount ? fmtMoney(txn.debitAmount) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right">{fmtMoney(txn.balanceAfter)}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{fmtDateTime(txn.createdAt)}</td>
-                    </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <PaginationControls {...accountsPage} onPageChange={accountsPage.setPage} onPageSizeChange={accountsPage.setPageSize} />
+          </>
+        )}
+        </Card>
+      )}
+
+      {activeTab === 'ledger' && (
+        <Card id="ledger-panel" role="tabpanel" aria-labelledby="ledger-tab" className="overflow-hidden p-0">
+          <div className="border-b border-border/80 px-5 py-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-2">
+                <Receipt size={16} className="text-primary" />
+                <h3 className="text-sm font-semibold">Wallet Ledger</h3>
+                <span className="text-xs text-muted-foreground">{walletLedger.total} entries</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => downloadWalletFile('csv')} disabled={!!downloadingWallet}>
+                  <Download size={13} /> {downloadingWallet === 'csv' ? 'Exporting...' : 'CSV'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => downloadWalletFile('pdf')} disabled={!!downloadingWallet}>
+                  <Download size={13} /> {downloadingWallet === 'pdf' ? 'Exporting...' : 'PDF'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => downloadWalletFile('statement')} disabled={!!downloadingWallet}>
+                  <Download size={13} /> {downloadingWallet === 'statement' ? 'Downloading...' : 'Statement'}
+                </Button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_auto_auto]">
+              <Input
+                label="Search"
+                placeholder="Description, reason, reference..."
+                value={walletSearch}
+                onChange={(e) => setWalletSearch(e.target.value)}
+              />
+              <Input
+                label="From"
+                type="date"
+                value={walletFilters.from}
+                onChange={(e) => setWalletFilters({ ...walletFilters, from: e.target.value })}
+              />
+              <Input
+                label="To"
+                type="date"
+                value={walletFilters.to}
+                onChange={(e) => setWalletFilters({ ...walletFilters, to: e.target.value })}
+              />
+              <Select
+                label="Type"
+                value={walletFilters.type}
+                onChange={(e) => setWalletFilters({ ...walletFilters, type: e.target.value })}
+              >
+                <option value="all">All transaction types</option>
+                {WALLET_TYPE_OPTIONS.map((type) => <option key={type} value={type}>{WALLET_TYPE_LABEL[type]}</option>)}
+              </Select>
+              <Select
+                label="Direction"
+                value={walletFilters.direction}
+                onChange={(e) => setWalletFilters({ ...walletFilters, direction: e.target.value })}
+              >
+                <option value="all">All</option>
+                <option value="credit">Credits</option>
+                <option value="debit">Debits</option>
+              </Select>
+              <div className="flex items-end">
+                <Button variant="outline" className="w-full" onClick={clearWalletFilters}>Clear</Button>
+              </div>
+              <div className="flex items-end">
+                <Button className="w-full" onClick={applyWalletFilters}>Apply</Button>
+              </div>
+            </div>
+          </div>
+          {!walletTransactions.length ? (
+            <p className="px-5 py-8 text-sm text-muted-foreground">No wallet transactions recorded for this client.</p>
+          ) : (
+            <div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <SortableTh label="Transaction" sortKey="transaction" sort={walletSort} onSort={setWalletSort} />
+                      <SortableTh label="Status" sortKey="status" sort={walletSort} onSort={setWalletSort} />
+                      <SortableTh label="Credit" sortKey="credit" sort={walletSort} onSort={setWalletSort} align="right" />
+                      <SortableTh label="Debit" sortKey="debit" sort={walletSort} onSort={setWalletSort} align="right" />
+                      <SortableTh label="Balance" sortKey="balance" sort={walletSort} onSort={setWalletSort} align="right" />
+                      <SortableTh label="Created" sortKey="createdAt" sort={walletSort} onSort={setWalletSort} />
+                      <th className="px-4 py-3 text-right font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {!sortedWalletTransactions.length && (
+                      <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No wallet transactions match these filters.</td></tr>
+                    )}
+                    {sortedWalletTransactions.map((txn) => {
+                      const canReverse = Number(txn.debitAmount || 0) > 0 && txn.status !== 'reversed';
+                      return (
+                        <tr key={txn._id} className="table-row-hover">
+                          <td className="px-4 py-3">
+                            <p className="font-medium">{WALLET_TYPE_LABEL[txn.type] || txn.type}</p>
+                            <p className="max-w-xs truncate text-xs text-muted-foreground">{txn.description || txn.reason || txn.referenceId || '-'}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge label={txn.status || 'completed'} color={txn.status === 'reversed' ? 'yellow' : 'green'} />
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                            {txn.creditAmount ? fmtMoney(txn.creditAmount) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">
+                            {txn.debitAmount ? fmtMoney(txn.debitAmount) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right">{fmtMoney(txn.balanceAfter)}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{fmtDateTime(txn.createdAt)}</td>
+                          <td className="px-4 py-3 text-right">
+                            {canReverse ? (
+                              <Button variant="outline" size="sm" onClick={() => openReverse(txn)}>
+                                <RotateCcw size={13} /> Refund
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                page={walletLedger.page}
+                totalPages={walletLedger.totalPages || 1}
+                pageSize={walletLimit}
+                totalItems={walletLedger.total}
+                startItem={walletLedger.total === 0 ? 0 : ((walletLedger.page - 1) * walletLimit) + 1}
+                endItem={Math.min(walletLedger.total, walletLedger.page * walletLimit)}
+                onPageChange={changeWalletPage}
+                onPageSizeChange={changeWalletLimit}
+              />
+            </div>
           )}
         </Card>
+      )}
 
-        <Card className="p-0 overflow-hidden">
+      {activeTab === 'payments' && (
+        <Card id="payments-panel" role="tabpanel" aria-labelledby="payments-tab" className="overflow-hidden p-0">
           <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4">
             <div className="flex items-center gap-2">
               <CreditCard size={16} className="text-primary" />
               <h3 className="text-sm font-semibold">Payment Transactions</h3>
             </div>
-            <span className="text-xs text-muted-foreground">{payments.length} records</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{payments.length} records</span>
+              <Button variant="outline" size="sm" onClick={downloadBillingStatement} disabled={downloadingBillingStatement}>
+                <Download size={13} /> {downloadingBillingStatement ? 'Downloading...' : 'Statement'}
+              </Button>
+            </div>
           </div>
+          {!!payments.length && (
+            <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_160px_190px]">
+              <Input placeholder="Search order, payment, purpose..." value={paymentSearch} onChange={(e) => setPaymentSearch(e.target.value)} />
+              <Select value={paymentStatusFilter} onChange={(e) => setPaymentStatusFilter(e.target.value)}>
+                <option value="all">All statuses</option>
+                <option value="paid">Paid</option>
+                <option value="created">Created</option>
+                <option value="failed">Failed</option>
+              </Select>
+              <Select value={paymentPurposeFilter} onChange={(e) => setPaymentPurposeFilter(e.target.value)}>
+                <option value="all">All purposes</option>
+                {paymentPurposeOptions.map((purpose) => <option key={purpose} value={purpose}>{purpose.replace('_', ' ')}</option>)}
+              </Select>
+            </div>
+          )}
           {!payments.length ? (
             <p className="px-5 py-8 text-sm text-muted-foreground">No payment transactions recorded for this client.</p>
           ) : (
@@ -879,16 +1473,19 @@ export default function TenantDetailPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Payment</th>
-                    <th className="px-4 py-3 font-semibold">Purpose</th>
-                    <th className="px-4 py-3 text-right font-semibold">Amount</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold">Created</th>
+                    <SortableTh label="Payment" sortKey="payment" sort={paymentSort} onSort={setPaymentSort} />
+                    <SortableTh label="Purpose" sortKey="purpose" sort={paymentSort} onSort={setPaymentSort} />
+                    <SortableTh label="Amount" sortKey="amount" sort={paymentSort} onSort={setPaymentSort} align="right" />
+                    <SortableTh label="Status" sortKey="status" sort={paymentSort} onSort={setPaymentSort} />
+                    <SortableTh label="Created" sortKey="createdAt" sort={paymentSort} onSort={setPaymentSort} />
                     <th className="px-4 py-3 text-right font-semibold">Document</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {payments.map((payment) => (
+                  {!sortedPayments.length && (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No payment transactions match these filters.</td></tr>
+                  )}
+                  {paymentsPage.pageItems.map((payment) => (
                     <tr key={payment._id} className="table-row-hover">
                       <td className="px-4 py-3">
                         <p className="font-mono text-xs">{payment.razorpayOrderId || '-'}</p>
@@ -918,17 +1515,33 @@ export default function TenantDetailPage() {
               </table>
             </div>
           )}
+          {!!payments.length && (
+            <PaginationControls {...paymentsPage} onPageChange={paymentsPage.setPage} onPageSizeChange={paymentsPage.setPageSize} />
+          )}
         </Card>
-      </div>
+      )}
 
-      <Card className="mt-5 p-0 overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4">
+      {activeTab === 'history' && (
+        <Card id="history-panel" role="tabpanel" aria-labelledby="history-tab" className="overflow-hidden p-0">
+          <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4">
           <div className="flex items-center gap-2">
             <CalendarDays size={16} className="text-primary" />
             <h3 className="text-sm font-semibold">Subscription History</h3>
           </div>
           <span className="text-xs text-muted-foreground">{subscriptionHistory.length} subscriptions</span>
         </div>
+        {!!subscriptionHistory.length && (
+          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_180px]">
+            <Input placeholder="Search plan, billing, status, reason..." value={subscriptionSearch} onChange={(e) => setSubscriptionSearch(e.target.value)} />
+            <Select value={subscriptionStatusFilter} onChange={(e) => setSubscriptionStatusFilter(e.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="expired">Expired</option>
+              <option value="cancelled">Cancelled</option>
+            </Select>
+          </div>
+        )}
         {!subscriptionHistory.length ? (
           <p className="px-5 py-8 text-sm text-muted-foreground">No subscription history recorded for this client.</p>
         ) : (
@@ -936,17 +1549,20 @@ export default function TenantDetailPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Plan</th>
-                  <th className="px-4 py-3 font-semibold">Period</th>
-                  <th className="px-4 py-3 font-semibold">Billing</th>
-                  <th className="px-4 py-3 text-right font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Reason</th>
+                  <SortableTh label="Plan" sortKey="plan" sort={subscriptionSort} onSort={setSubscriptionSort} />
+                  <SortableTh label="Period" sortKey="period" sort={subscriptionSort} onSort={setSubscriptionSort} />
+                  <SortableTh label="Billing" sortKey="billing" sort={subscriptionSort} onSort={setSubscriptionSort} />
+                  <SortableTh label="Price" sortKey="price" sort={subscriptionSort} onSort={setSubscriptionSort} align="right" />
+                  <SortableTh label="Status" sortKey="status" sort={subscriptionSort} onSort={setSubscriptionSort} />
+                  <SortableTh label="Reason" sortKey="reason" sort={subscriptionSort} onSort={setSubscriptionSort} />
                   <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {subscriptionHistory.map((item) => {
+                {!sortedSubscriptionHistory.length && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No subscriptions match these filters.</td></tr>
+                )}
+                {subscriptionHistoryPage.pageItems.map((item) => {
                   const status = displaySubscriptionStatus(item);
                   const canModify = !['cancelled'].includes(item.status);
                   return (
@@ -966,17 +1582,25 @@ export default function TenantDetailPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{item.cancelReason || '-'}</td>
                       <td className="px-4 py-3">
-                        {canModify ? (
-                          <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={downloadingSubscriptionId === item._id}
+                            onClick={() => downloadSubscriptionInvoice(item)}
+                          >
+                            <Download size={13} /> {downloadingSubscriptionId === item._id ? 'Downloading...' : 'Invoice'}
+                          </Button>
+                          {canModify ? (
+                            <>
                             <Button variant="outline" size="sm" onClick={() => openExtendSubscription(item)}>Extend</Button>
                             <Button variant="outline" size="sm" onClick={() => openCancelSubscription('cancel', item)}>Cancel</Button>
                             {role === 'admin' && (
                               <Button variant="outline" size="sm" onClick={() => openCancelSubscription('revoke', item)}>Revoke</Button>
                             )}
-                          </div>
-                        ) : (
-                          <span className="block text-right text-xs text-muted-foreground">Closed</span>
-                        )}
+                            </>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -985,7 +1609,11 @@ export default function TenantDetailPage() {
             </table>
           </div>
         )}
-      </Card>
+        {!!subscriptionHistory.length && (
+          <PaginationControls {...subscriptionHistoryPage} onPageChange={subscriptionHistoryPage.setPage} onPageSizeChange={subscriptionHistoryPage.setPageSize} />
+        )}
+        </Card>
+      )}
 
       <Modal open={subscriptionOpen} onClose={() => setSubscriptionOpen(false)} title={subscription ? 'Change subscription' : 'Assign subscription'}
         footer={
@@ -1097,6 +1725,40 @@ export default function TenantDetailPage() {
         </div>
       </Modal>
 
+      <Modal open={!!reverseTarget} onClose={() => setReverseTarget(null)} title="Refund or reverse transaction"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setReverseTarget(null)} disabled={reversingTxn}>Cancel</Button>
+            <Button onClick={submitReverse} disabled={reversingTxn || !reverseTarget}>
+              {reversingTxn ? 'Saving...' : reverseForm.action === 'refund' ? 'Refund transaction' : 'Reverse transaction'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            <p className="font-medium">{WALLET_TYPE_LABEL[reverseTarget?.type] || reverseTarget?.type || 'Transaction'}</p>
+            <p className="text-xs text-muted-foreground">
+              Debit {fmtMoney(reverseTarget?.debitAmount)} - Balance after {fmtMoney(reverseTarget?.balanceAfter)}
+            </p>
+          </div>
+          <Select
+            label="Action"
+            value={reverseForm.action}
+            onChange={(e) => setReverseForm({ ...reverseForm, action: e.target.value })}
+          >
+            <option value="refund">Refund</option>
+            <option value="reversal">Reversal</option>
+          </Select>
+          <Input
+            label="Reason"
+            value={reverseForm.reason}
+            onChange={(e) => setReverseForm({ ...reverseForm, reason: e.target.value })}
+          />
+          {reverseError && <p className="text-sm text-red-500">{reverseError}</p>}
+        </div>
+      </Modal>
+
       <Modal open={resetOpen} onClose={() => setResetOpen(false)} title="Reset client password"
         footer={
           <>
@@ -1160,6 +1822,63 @@ export default function TenantDetailPage() {
           />
           {createUserError && <p className="text-sm text-red-500">{createUserError}</p>}
         </div>
+      </Modal>
+
+      <Modal open={editUserOpen} onClose={() => setEditUserOpen(false)} title="Edit client login"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditUserOpen(false)} disabled={savingUser}>Cancel</Button>
+            <Button onClick={submitEditUser} disabled={savingUser || !editUserTarget}>
+              {savingUser ? 'Saving...' : 'Save login'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            label="Name"
+            value={editUserForm.name}
+            onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={editUserForm.email}
+            onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+          />
+          <Select
+            label="Role"
+            value={editUserForm.role}
+            onChange={(e) => setEditUserForm({ ...editUserForm, role: e.target.value })}
+          >
+            <option value="client_owner">Owner</option>
+            <option value="client_user">User</option>
+          </Select>
+          <Select
+            label="Status"
+            value={editUserForm.isActive ? 'active' : 'inactive'}
+            onChange={(e) => setEditUserForm({ ...editUserForm, isActive: e.target.value === 'active' })}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </Select>
+          {editUserError && <p className="text-sm text-red-500">{editUserError}</p>}
+        </div>
+      </Modal>
+
+      <Modal open={!!deleteUserTarget} onClose={() => setDeleteUserTarget(null)} title="Delete client login"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeleteUserTarget(null)} disabled={deletingUser}>Cancel</Button>
+            <Button variant="danger" onClick={confirmDeleteUser} disabled={deletingUser}>
+              {deletingUser ? 'Deleting...' : 'Delete login'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Delete <strong>{deleteUserTarget?.name || 'this login'}</strong> ({deleteUserTarget?.email})? This user will immediately lose access.
+        </p>
       </Modal>
 
       <Modal open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Edit client details"

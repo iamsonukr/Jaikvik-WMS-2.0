@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/components/theme-provider';
 import { roleHomePath } from '@/hooks/useBasePath';
-import { MessageCircle, Eye, EyeOff, Moon, Sun, ShieldCheck, Zap, Users2 } from 'lucide-react';
+import { MessageCircle, Moon, Sun, ShieldCheck, Zap, Users2 } from 'lucide-react';
 import { Button, Input, Card } from '@/components/ui';
 
 const highlights = [
@@ -21,7 +21,6 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [show, setShow] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -123,26 +122,14 @@ export default function LoginPage() {
                 placeholder="you@example.com"
               />
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Password</label>
-                <div className="relative">
-                  <input
-                    type={show ? 'text' : 'password'}
-                    required
-                    value={form.password}
-                    onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                    placeholder="Password"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 pr-10 text-sm shadow-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShow(p => !p)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {show ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
+              <Input
+                label="Password"
+                type="password"
+                required
+                value={form.password}
+                onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                placeholder="Password"
+              />
 
               <Button type="submit" disabled={loading} className="mt-2 w-full">
                 {loading ? 'Signing in…' : 'Sign in'}

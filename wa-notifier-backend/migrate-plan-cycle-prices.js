@@ -58,7 +58,6 @@ async function main() {
     );
     updated++;
   }
-
   console.log(`Plan cycle-price migration complete. Updated ${updated}/${plans.length} plan(s).`);
   await mongoose.disconnect();
 }

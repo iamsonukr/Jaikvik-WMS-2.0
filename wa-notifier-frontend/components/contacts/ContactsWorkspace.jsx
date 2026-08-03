@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
+import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 import { CheckCircle2, FileText, Pencil, Plus, Search, Send, Tag, Trash2, Upload, X } from 'lucide-react';
@@ -102,6 +102,9 @@ export default function ContactsWorkspace() {
   const [form, setForm] = useState(blank);
   const [tagModal, setTagModal] = useState(false);
   const [tagForm, setTagForm] = useState(blankTag);
+  const [tagSearch, setTagSearch] = useState('');
+  const [tagColorFilter, setTagColorFilter] = useState('all');
+  const [tagSort, setTagSort] = useState({ key: 'tag', direction: 'asc' });
   const [editingTagId, setEditingTagId] = useState(null);
   const [tagSaving, setTagSaving] = useState(false);
   const [tagError, setTagError] = useState('');
@@ -116,8 +119,14 @@ export default function ContactsWorkspace() {
   const [importRows, setImportRows] = useState([]);
   const [importMapping, setImportMapping] = useState({ phone: '', name: '', tags: '' });
   const [importPreview, setImportPreview] = useState(null);
+  const [importPreviewSearch, setImportPreviewSearch] = useState('');
+  const [importPreviewStatusFilter, setImportPreviewStatusFilter] = useState('all');
+  const [importPreviewSort, setImportPreviewSort] = useState({ key: 'row', direction: 'asc' });
   const [importResult, setImportResult] = useState(null);
   const [importHistory, setImportHistory] = useState([]);
+  const [importHistorySearch, setImportHistorySearch] = useState('');
+  const [importHistoryFilter, setImportHistoryFilter] = useState('all');
+  const [importHistorySort, setImportHistorySort] = useState({ key: 'date', direction: 'desc' });
   const [formError, setFormError] = useState('');
   const [csvError, setCsvError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -129,6 +138,7 @@ export default function ContactsWorkspace() {
   const [templateParams, setTemplateParams] = useState([]);
   const [messageError, setMessageError] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [contactSort, setContactSort] = useState({ key: 'name', direction: 'asc' });
   const fileRef = useRef();
 
   const approvedTemplates = useMemo(
@@ -411,6 +421,81 @@ export default function ContactsWorkspace() {
       || (statusFilter === 'opted_out' && contact.isOptedOut);
     return matchesSearch && matchesStatus;
   });
+  const sortedContacts = sortItems(filtered, contactSort, {
+    name: (contact) => contact.name,
+    phone: (contact) => contact.phone,
+    tags: (contact) => (contact.tags || []).join(' '),
+    status: (contact) => Boolean(contact.isOptedOut),
+  });
+  const contactsPage = usePagination(sortedContacts, {
+    initialPageSize: 25,
+    resetKey: `${search}|${tag}|${statusFilter}|${contactSort.key}|${contactSort.direction}`,
+  });
+  const importQuery = importHistorySearch.trim().toLowerCase();
+  const filteredImportHistory = importHistory.filter((item) => {
+    const hasIssues = Number(item.invalidRows || 0) > 0 || Number(item.skippedCount || 0) > 0;
+    const matchesSearch = !importQuery
+      || String(item.fileName || '').toLowerCase().includes(importQuery)
+      || String(item._id || '').toLowerCase().includes(importQuery);
+    const matchesFilter = importHistoryFilter === 'all'
+      || (importHistoryFilter === 'created' && Number(item.createdCount || 0) > 0)
+      || (importHistoryFilter === 'updated' && Number(item.updatedCount || 0) > 0)
+      || (importHistoryFilter === 'issues' && hasIssues);
+    return matchesSearch && matchesFilter;
+  });
+  const sortedImportHistory = sortItems(filteredImportHistory, importHistorySort, {
+    file: (item) => item.fileName,
+    created: (item) => item.createdCount || 0,
+    updated: (item) => item.updatedCount || 0,
+    invalid: (item) => item.invalidRows || 0,
+    skipped: (item) => item.skippedCount || 0,
+    date: (item) => item.createdAt,
+  });
+  const importHistoryPage = usePagination(sortedImportHistory, {
+    initialPageSize: 5,
+    resetKey: `${importHistorySearch}|${importHistoryFilter}|${importHistorySort.key}|${importHistorySort.direction}`,
+  });
+  const tagColorOptions = Array.from(new Set(tags.map((tagItem) => tagItem.color).filter(Boolean))).sort();
+  const tagQuery = tagSearch.trim().toLowerCase();
+  const filteredTags = tags.filter((tagItem) => {
+    const matchesSearch = !tagQuery
+      || String(tagItem.name || '').toLowerCase().includes(tagQuery)
+      || String(tagItem.description || '').toLowerCase().includes(tagQuery)
+      || String(tagItem.color || '').toLowerCase().includes(tagQuery);
+    const matchesColor = tagColorFilter === 'all' || tagItem.color === tagColorFilter;
+    return matchesSearch && matchesColor;
+  });
+  const sortedTags = sortItems(filteredTags, tagSort, {
+    tag: (tagItem) => tagItem.name,
+    description: (tagItem) => tagItem.description,
+    color: (tagItem) => tagItem.color,
+  });
+  const tagsPage = usePagination(sortedTags, {
+    initialPageSize: 10,
+    resetKey: `${tagSearch}|${tagColorFilter}|${tagSort.key}|${tagSort.direction}`,
+  });
+  const previewRows = importPreview?.rows || [];
+  const previewQuery = importPreviewSearch.trim().toLowerCase();
+  const filteredPreviewRows = previewRows.filter((row) => {
+    const statusLabel = row.status === 'new' ? 'new' : row.status === 'existing' ? 'update' : row.status === 'invalid' ? 'invalid' : 'duplicate';
+    const matchesSearch = !previewQuery
+      || String(row.rowNumber || '').includes(previewQuery)
+      || String(row.phone || row.originalPhone || '').toLowerCase().includes(previewQuery)
+      || String(row.name || '').toLowerCase().includes(previewQuery)
+      || statusLabel.includes(previewQuery);
+    const matchesStatus = importPreviewStatusFilter === 'all' || row.status === importPreviewStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+  const sortedPreviewRows = sortItems(filteredPreviewRows, importPreviewSort, {
+    row: (row) => row.rowNumber || 0,
+    phone: (row) => row.phone || row.originalPhone,
+    name: (row) => row.name,
+    status: (row) => row.status,
+  });
+  const previewRowsPage = usePagination(sortedPreviewRows, {
+    initialPageSize: 50,
+    resetKey: `${importPreviewSearch}|${importPreviewStatusFilter}|${importPreviewSort.key}|${importPreviewSort.direction}`,
+  });
   const canSend = messageMode === 'template'
     ? Boolean(selectedTemplate) && templateParams.slice(0, requiredParams).every((value) => value.trim())
     : Boolean(messageText.trim());
@@ -460,20 +545,32 @@ export default function ContactsWorkspace() {
             </div>
             <span className="text-xs text-muted-foreground">{importHistory.length} recent imports</span>
           </div>
+          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_180px]">
+            <Input placeholder="Search file name..." value={importHistorySearch} onChange={(e) => setImportHistorySearch(e.target.value)} />
+            <Select value={importHistoryFilter} onChange={(e) => setImportHistoryFilter(e.target.value)}>
+              <option value="all">All outcomes</option>
+              <option value="created">Created rows</option>
+              <option value="updated">Updated rows</option>
+              <option value="issues">Has issues</option>
+            </Select>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">File</th>
-                  <th className="px-4 py-3 text-right font-semibold">Created</th>
-                  <th className="px-4 py-3 text-right font-semibold">Updated</th>
-                  <th className="px-4 py-3 text-right font-semibold">Invalid</th>
-                  <th className="px-4 py-3 text-right font-semibold">Skipped</th>
-                  <th className="px-4 py-3 font-semibold">Date</th>
+                  <SortableTh label="File" sortKey="file" sort={importHistorySort} onSort={setImportHistorySort} />
+                  <SortableTh label="Created" sortKey="created" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
+                  <SortableTh label="Updated" sortKey="updated" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
+                  <SortableTh label="Invalid" sortKey="invalid" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
+                  <SortableTh label="Skipped" sortKey="skipped" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
+                  <SortableTh label="Date" sortKey="date" sort={importHistorySort} onSort={setImportHistorySort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {importHistory.slice(0, 5).map((item) => (
+                {!sortedImportHistory.length && (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No imports match these filters.</td></tr>
+                )}
+                {importHistoryPage.pageItems.map((item) => (
                   <tr key={item._id}>
                     <td className="px-4 py-3">
                       <p className="font-medium">{item.fileName || 'contacts.csv'}</p>
@@ -489,6 +586,7 @@ export default function ContactsWorkspace() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...importHistoryPage} onPageChange={importHistoryPage.setPage} onPageSizeChange={importHistoryPage.setPageSize} />
         </Card>
       )}
 
@@ -521,16 +619,18 @@ export default function ContactsWorkspace() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {['Name', 'Phone', 'Tags', 'Status', 'Actions'].map((header) => (
-                    <th key={header} className="px-4 py-3 font-semibold">{header}</th>
-                  ))}
+                  <SortableTh label="Name" sortKey="name" sort={contactSort} onSort={setContactSort} />
+                  <SortableTh label="Phone" sortKey="phone" sort={contactSort} onSort={setContactSort} />
+                  <SortableTh label="Tags" sortKey="tags" sort={contactSort} onSort={setContactSort} />
+                  <SortableTh label="Status" sortKey="status" sort={contactSort} onSort={setContactSort} />
+                  <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.length === 0 && (
                   <tr><td colSpan={5} className="text-center py-12 text-[var(--muted-text)]">No contacts found</td></tr>
                 )}
-                {filtered.map((contact) => (
+                {contactsPage.pageItems.map((contact) => (
                   <tr key={contact._id} className="table-row-hover">
                     <td className="px-4 py-3 font-medium">{contact.name || '-'}</td>
                     <td className="px-4 py-3 text-[var(--muted-text)]">{contact.phone}</td>
@@ -559,6 +659,7 @@ export default function ContactsWorkspace() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...contactsPage} onPageChange={contactsPage.setPage} onPageSizeChange={contactsPage.setPageSize} />
         </Card>
       )}
 
@@ -636,18 +737,32 @@ export default function ContactsWorkspace() {
                 </div>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+                <Input placeholder="Search preview rows..." value={importPreviewSearch} onChange={(e) => setImportPreviewSearch(e.target.value)} />
+                <Select value={importPreviewStatusFilter} onChange={(e) => setImportPreviewStatusFilter(e.target.value)}>
+                  <option value="all">All statuses</option>
+                  <option value="new">New</option>
+                  <option value="existing">Update</option>
+                  <option value="invalid">Invalid</option>
+                  <option value="duplicate">Duplicate</option>
+                </Select>
+              </div>
+
               <div className="max-h-64 overflow-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-semibold">Row</th>
-                      <th className="px-3 py-2 font-semibold">Phone</th>
-                      <th className="px-3 py-2 font-semibold">Name</th>
-                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <SortableTh label="Row" sortKey="row" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
+                      <SortableTh label="Phone" sortKey="phone" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
+                      <SortableTh label="Name" sortKey="name" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
+                      <SortableTh label="Status" sortKey="status" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {importPreview.rows?.slice(0, 50).map((row) => (
+                    {!sortedPreviewRows.length && (
+                      <tr><td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">No preview rows match these filters.</td></tr>
+                    )}
+                    {previewRowsPage.pageItems.map((row) => (
                       <tr key={`${row.rowNumber}-${row.phone || row.originalPhone}`}>
                         <td className="px-3 py-2">{row.rowNumber}</td>
                         <td className="px-3 py-2 font-mono text-xs">{row.phone || row.originalPhone || '-'}</td>
@@ -663,6 +778,7 @@ export default function ContactsWorkspace() {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls {...previewRowsPage} onPageChange={previewRowsPage.setPage} onPageSizeChange={previewRowsPage.setPageSize} />
 
               {(importPreview.invalidReport?.length > 0 || importPreview.duplicateReport?.length > 0) && (
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -770,12 +886,20 @@ export default function ContactsWorkspace() {
             </Button>
           )}
 
+          <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+            <Input placeholder="Search tags..." value={tagSearch} onChange={(e) => setTagSearch(e.target.value)} />
+            <Select value={tagColorFilter} onChange={(e) => setTagColorFilter(e.target.value)}>
+              <option value="all">All colors</option>
+              {tagColorOptions.map((color) => <option key={color} value={color}>{color}</option>)}
+            </Select>
+          </div>
+
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-semibold">Tag</th>
-                  <th className="px-3 py-2 font-semibold">Description</th>
+                  <SortableTh label="Tag" sortKey="tag" sort={tagSort} onSort={setTagSort} className="px-3 py-2" />
+                  <SortableTh label="Description" sortKey="description" sort={tagSort} onSort={setTagSort} className="px-3 py-2" />
                   <th className="px-3 py-2 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -783,7 +907,10 @@ export default function ContactsWorkspace() {
                 {tags.length === 0 && (
                   <tr><td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">No tags created yet.</td></tr>
                 )}
-                {tags.map((tagItem) => (
+                {tags.length > 0 && sortedTags.length === 0 && (
+                  <tr><td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">No tags match these filters.</td></tr>
+                )}
+                {tagsPage.pageItems.map((tagItem) => (
                   <tr key={tagItem._id}>
                     <td className="px-3 py-2">
                       <span className="inline-flex items-center gap-2">
@@ -807,6 +934,7 @@ export default function ContactsWorkspace() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...tagsPage} onPageChange={tagsPage.setPage} onPageSizeChange={tagsPage.setPageSize} />
         </div>
       </Modal>
 

@@ -3,22 +3,63 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner } from '@/components/ui';
+import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import api from '@/lib/api';
 import {
   Activity, Building2, Loader2, MessageCircle, Pencil, Phone, Power,
   RefreshCw, ShieldCheck, Trash2, Wifi,
 } from 'lucide-react';
 
-const blankEdit = { name: '', phone: '', timezone: '', industry: '', accessToken: '' };
+const blankEdit = { name: '', wabaId: '', phoneNumberId: '', phone: '', timezone: '', industry: '', accessToken: '' };
 const text = (value) => String(value || '').toLowerCase();
 const tenantIdOf = (account) => String(account?.tenantId?._id || account?.tenantId || '');
+const requiredMetaFields = ['wabaId', 'phoneNumberId'];
 
 function qualityColor(rating) {
   if (rating === 'GREEN') return 'green';
   if (rating === 'YELLOW') return 'yellow';
   if (rating === 'RED') return 'red';
   return 'gray';
+}
+
+function HealthCell({ account, health }) {
+  const phoneNumber = health?.phoneNumber;
+  const missingMeta = requiredMetaFields.some((field) => !account?.[field]);
+  const tokenLabel = health?.tokenStatus === 'ok'
+    ? 'Token OK'
+    : health?.tokenStatus === 'error'
+      ? 'Token issue'
+      : 'Token unchecked';
+  const webhookLabel = health?.webhookStatus === 'ok'
+    ? 'Webhook subscribed'
+    : health?.webhookStatus === 'error'
+      ? 'Webhook issue'
+      : 'Webhook unchecked';
+
+  return (
+    <div className="flex max-w-[260px] flex-wrap gap-1.5">
+      <Badge label={tokenLabel} color={health?.tokenStatus === 'ok' ? 'green' : health?.tokenStatus === 'error' ? 'red' : 'gray'} />
+      <Badge label={webhookLabel} color={health?.webhookStatus === 'ok' ? 'green' : health?.webhookStatus === 'error' ? 'red' : 'gray'} />
+      {missingMeta ? (
+        <Badge label="Setup incomplete" color="yellow" />
+      ) : phoneNumber ? (
+        <>
+          <Badge label={`Quality ${phoneNumber.quality_rating || 'Unknown'}`} color={qualityColor(phoneNumber.quality_rating)} />
+          <Badge label={phoneNumber.code_verification_status || 'Phone checked'} color="green" />
+        </>
+      ) : health?.phoneStatus === 'error' ? (
+        <Badge label="Phone issue" color="red" />
+      ) : (
+        <Badge label="Phone unchecked" color="gray" />
+      )}
+      {health?.diagnosticsAt && (
+        <span className="basis-full text-xs text-muted-foreground">Last checked {new Date(health.diagnosticsAt).toLocaleString()}</span>
+      )}
+      {health?.error && (
+        <span className="basis-full truncate text-xs text-destructive" title={health.error}>{health.error}</span>
+      )}
+    </div>
+  );
 }
 
 export default function AdminWhatsAppAccountsPage() {
@@ -28,9 +69,11 @@ export default function AdminWhatsAppAccountsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [tenantFilter, setTenantFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'account', direction: 'asc' });
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const [healthById, setHealthById] = useState({});
 
   const [editTarget, setEditTarget] = useState(null);
   const [editForm, setEditForm] = useState(blankEdit);
@@ -99,6 +142,19 @@ export default function AdminWhatsAppAccountsPage() {
     });
   }, [accounts, search, statusFilter, tenantFilter, tenantsById]);
 
+  const sortedAccounts = useMemo(() => sortItems(filteredAccounts, sort, {
+    account: (account) => account.name,
+    client: (account) => tenantsById.get(tenantIdOf(account))?.name,
+    phone: (account) => account.phone,
+    meta: (account) => account.wabaId || account.phoneNumberId,
+    status: (account) => Boolean(account.isActive),
+    health: (account) => healthById[account._id]?.tokenStatus || healthById[account._id]?.webhookStatus || '',
+  }), [filteredAccounts, healthById, sort, tenantsById]);
+  const accountsPage = usePagination(sortedAccounts, {
+    initialPageSize: 10,
+    resetKey: `${search}|${statusFilter}|${tenantFilter}|${sort.key}|${sort.direction}`,
+  });
+
   const stats = useMemo(() => {
     const list = accounts || [];
     return {
@@ -106,12 +162,15 @@ export default function AdminWhatsAppAccountsPage() {
       active: list.filter((account) => account.isActive).length,
       inactive: list.filter((account) => !account.isActive).length,
       tenants: new Set(list.map(tenantIdOf).filter(Boolean)).size,
+      checked: list.filter((account) => healthById[account._id]?.diagnosticsAt).length,
     };
-  }, [accounts]);
+  }, [accounts, healthById]);
 
   const openEdit = (account) => {
     setEditForm({
       name: account.name || '',
+      wabaId: account.wabaId || '',
+      phoneNumberId: account.phoneNumberId || '',
       phone: account.phone || '',
       timezone: account.timezone || '',
       industry: account.industry || '',
@@ -123,10 +182,14 @@ export default function AdminWhatsAppAccountsPage() {
 
   const submitEdit = async () => {
     if (!editTarget) return;
+    if (!editForm.name.trim() || !editForm.wabaId.trim() || !editForm.phoneNumberId.trim()) {
+      setEditError('Display name, WABA ID, and phone number ID are required.');
+      return;
+    }
     setSavingEdit(true);
     setEditError('');
     try {
-      const payload = { ...editForm };
+      const payload = Object.fromEntries(Object.entries(editForm).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
       if (!payload.accessToken) delete payload.accessToken;
       await api.patch(`/whatsapp-accounts/${editTarget._id}`, payload);
       setEditTarget(null);
@@ -158,9 +221,27 @@ export default function AdminWhatsAppAccountsPage() {
     setActionError('');
     try {
       await api.post(`/whatsapp-accounts/${account._id}/webhooks/subscribe`);
+      setHealthById((prev) => ({
+        ...prev,
+        [account._id]: {
+          ...(prev[account._id] || {}),
+          webhookStatus: 'ok',
+          webhookCheckedAt: new Date().toISOString(),
+          error: '',
+        },
+      }));
       flash('Webhook subscribed for ' + account.name);
     } catch (err) {
-      setActionError(err?.response?.data?.message || 'Failed to subscribe webhook');
+      const message = err?.response?.data?.message || 'Failed to subscribe webhook';
+      setActionError(message);
+      setHealthById((prev) => ({
+        ...prev,
+        [account._id]: {
+          ...(prev[account._id] || {}),
+          webhookStatus: 'error',
+          error: message,
+        },
+      }));
     } finally {
       setBusyId(null);
     }
@@ -198,8 +279,31 @@ export default function AdminWhatsAppAccountsPage() {
     try {
       const { data } = await api.get(`/whatsapp-accounts/${account._id}/sending-diagnostics`);
       setDiagResult(data);
+      setHealthById((prev) => ({
+        ...prev,
+        [account._id]: {
+          ...(prev[account._id] || {}),
+          diagnosticsAt: new Date().toISOString(),
+          tokenStatus: data?.phoneNumber ? 'ok' : 'error',
+          phoneStatus: data?.phoneNumber ? 'ok' : 'error',
+          phoneNumber: data?.phoneNumber || null,
+          wabaPhoneNumbers: Array.isArray(data?.wabaPhoneNumbers) ? data.wabaPhoneNumbers : [],
+          error: data?.error || data?.wabaPhoneNumbersError || '',
+        },
+      }));
     } catch (err) {
-      setDiagError(err?.response?.data?.message || 'Failed to run diagnostics');
+      const message = err?.response?.data?.message || 'Failed to run diagnostics';
+      setDiagError(message);
+      setHealthById((prev) => ({
+        ...prev,
+        [account._id]: {
+          ...(prev[account._id] || {}),
+          diagnosticsAt: new Date().toISOString(),
+          tokenStatus: 'error',
+          phoneStatus: 'error',
+          error: message,
+        },
+      }));
     } finally {
       setDiagLoading(false);
     }
@@ -213,7 +317,7 @@ export default function AdminWhatsAppAccountsPage() {
       await api.delete(`/whatsapp-accounts/${removeTarget._id}`);
       setRemoveTarget(null);
       await load();
-      flash('WhatsApp account removed');
+      flash('WhatsApp account deleted');
     } catch (err) {
       setActionError(err?.response?.data?.message || 'Failed to remove account');
       setRemoveTarget(null);
@@ -241,7 +345,7 @@ export default function AdminWhatsAppAccountsPage() {
         <Card className="p-4"><p className="text-xs text-muted-foreground">Total accounts</p><p className="mt-1 text-2xl font-bold">{stats.total}</p></Card>
         <Card className="p-4"><p className="text-xs text-muted-foreground">Active</p><p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.active}</p></Card>
         <Card className="p-4"><p className="text-xs text-muted-foreground">Inactive</p><p className="mt-1 text-2xl font-bold text-red-600 dark:text-red-400">{stats.inactive}</p></Card>
-        <Card className="p-4"><p className="text-xs text-muted-foreground">Clients linked</p><p className="mt-1 text-2xl font-bold">{stats.tenants}</p></Card>
+        <Card className="p-4"><p className="text-xs text-muted-foreground">Health checked</p><p className="mt-1 text-2xl font-bold">{stats.checked}</p></Card>
       </div>
 
       {loading && !accounts ? (
@@ -268,21 +372,23 @@ export default function AdminWhatsAppAccountsPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Account</th>
-                  <th className="px-4 py-3 font-semibold">Client</th>
-                  <th className="px-4 py-3 font-semibold">Phone</th>
-                  <th className="px-4 py-3 font-semibold">Meta IDs</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <SortableTh label="Account" sortKey="account" sort={sort} onSort={setSort} />
+                  <SortableTh label="Client" sortKey="client" sort={sort} onSort={setSort} />
+                  <SortableTh label="Phone" sortKey="phone" sort={sort} onSort={setSort} />
+                  <SortableTh label="Meta IDs" sortKey="meta" sort={sort} onSort={setSort} />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                  <SortableTh label="Health" sortKey="health" sort={sort} onSort={setSort} />
                   <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredAccounts.length && (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No WhatsApp accounts match these filters.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No WhatsApp accounts match these filters.</td></tr>
                 )}
-                {filteredAccounts.map((account) => {
+                {accountsPage.pageItems.map((account) => {
                   const tenant = tenantsById.get(tenantIdOf(account));
                   const busy = busyId === account._id;
+                  const health = healthById[account._id];
                   return (
                     <tr key={account._id} className="table-row-hover align-top">
                       <td className="px-4 py-3">
@@ -318,10 +424,13 @@ export default function AdminWhatsAppAccountsPage() {
                         <Badge label={account.isActive ? 'Active' : 'Inactive'} color={account.isActive ? 'green' : 'red'} />
                       </td>
                       <td className="px-4 py-3">
+                        <HealthCell account={account} health={health} />
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex flex-wrap justify-end gap-1.5">
                           <Button variant="outline" size="sm" onClick={() => openEdit(account)}><Pencil size={13} />Edit</Button>
                           <Button variant="outline" size="sm" disabled={busy} onClick={() => subscribeWebhook(account)}>
-                            {busy ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}Webhook
+                            {busy ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}Subscribe
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => openPinModal(account)}><ShieldCheck size={13} />Register</Button>
                           <Button variant="outline" size="sm" onClick={() => openDiagnostics(account)}><Activity size={13} />Diagnostics</Button>
@@ -329,7 +438,7 @@ export default function AdminWhatsAppAccountsPage() {
                             <Power size={13} />{account.isActive ? 'Deactivate' : 'Activate'}
                           </Button>
                           <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setRemoveTarget(account)}>
-                            <Trash2 size={13} />Remove
+                            <Trash2 size={13} />Delete
                           </Button>
                         </div>
                       </td>
@@ -339,6 +448,7 @@ export default function AdminWhatsAppAccountsPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...accountsPage} onPageChange={accountsPage.setPage} onPageSizeChange={accountsPage.setPageSize} />
         </Card>
       )}
 
@@ -357,6 +467,8 @@ export default function AdminWhatsAppAccountsPage() {
           {editError && <p className="text-sm text-destructive">{editError}</p>}
           <Input label="Display name" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
           <Input label="Display phone" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+          <Input label="WABA ID" value={editForm.wabaId} onChange={(e) => setEditForm({ ...editForm, wabaId: e.target.value })} />
+          <Input label="Phone number ID" value={editForm.phoneNumberId} onChange={(e) => setEditForm({ ...editForm, phoneNumberId: e.target.value })} />
           <Input label="Timezone" value={editForm.timezone} onChange={(e) => setEditForm({ ...editForm, timezone: e.target.value })} placeholder="Asia/Kolkata" />
           <Input label="Industry" value={editForm.industry} onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })} />
           <Input label="Access token (leave blank to keep current)" type="password" value={editForm.accessToken} onChange={(e) => setEditForm({ ...editForm, accessToken: e.target.value })} />
@@ -427,16 +539,16 @@ export default function AdminWhatsAppAccountsPage() {
       <Modal
         open={!!removeTarget}
         onClose={() => setRemoveTarget(null)}
-        title="Remove WhatsApp account"
+        title="Delete WhatsApp account"
         footer={(
           <>
             <Button variant="outline" onClick={() => setRemoveTarget(null)}>Cancel</Button>
-            <Button variant="danger" onClick={confirmRemove} disabled={removing}>{removing ? 'Removing...' : 'Remove'}</Button>
+            <Button variant="danger" onClick={confirmRemove} disabled={removing}>{removing ? 'Deleting...' : 'Delete'}</Button>
           </>
         )}
       >
         <p className="text-sm text-muted-foreground">
-          Remove <strong>{removeTarget?.name}</strong> ({removeTarget?.phone || removeTarget?.phoneNumberId})? Broadcasts, templates, and inbox history tied to this number will remain.
+          Delete <strong>{removeTarget?.name}</strong> ({removeTarget?.phone || removeTarget?.phoneNumberId})? Broadcasts, templates, and inbox history tied to this number will remain.
         </p>
       </Modal>
     </AppShell>

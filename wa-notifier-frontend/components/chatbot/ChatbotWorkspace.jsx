@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, Pencil, Plus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select } from '@/components/ui';
+import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
@@ -22,6 +22,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
   const [search, setSearch] = useState('');
   const [matchFilter, setMatchFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sort, setSort] = useState({ key: 'priority', direction: 'asc' });
 
   const load = () => {
     if (!activeClient) { setRules([]); return; }
@@ -89,8 +90,20 @@ export default function ChatbotWorkspace({ allowedRoles }) {
         || (statusFilter === 'active' && rule.isActive)
         || (statusFilter === 'inactive' && !rule.isActive);
       return matchesSearch && matchesMatch && matchesStatus;
-    }).sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
+    });
   }, [rules, search, matchFilter, statusFilter]);
+
+  const sortedRules = useMemo(() => sortItems(filteredRules, sort, {
+    priority: (rule) => rule.priority ?? 0,
+    keyword: (rule) => rule.keyword,
+    match: (rule) => rule.matchType,
+    reply: (rule) => rule.replyText,
+    status: (rule) => Boolean(rule.isActive),
+  }), [filteredRules, sort]);
+  const rulesPage = usePagination(sortedRules, {
+    initialPageSize: 10,
+    resetKey: `${search}|${matchFilter}|${statusFilter}|${sort.key}|${sort.direction}`,
+  });
 
   return (
     <AppShell allowedRoles={allowedRoles}>
@@ -132,16 +145,19 @@ export default function ChatbotWorkspace({ allowedRoles }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  {['Priority', 'Keyword', 'Match', 'Auto Reply', 'Status', 'Actions'].map((h) => (
-                    <th key={h} className="px-4 py-3 font-semibold">{h}</th>
-                  ))}
+                  <SortableTh label="Priority" sortKey="priority" sort={sort} onSort={setSort} />
+                  <SortableTh label="Keyword" sortKey="keyword" sort={sort} onSort={setSort} />
+                  <SortableTh label="Match" sortKey="match" sort={sort} onSort={setSort} />
+                  <SortableTh label="Auto Reply" sortKey="reply" sort={sort} onSort={setSort} />
+                  <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                  <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredRules.length && (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No rules match these filters.</td></tr>
                 )}
-                {filteredRules.map((rule) => (
+                {rulesPage.pageItems.map((rule) => (
                   <tr key={rule._id} className="table-row-hover">
                     <td className="px-4 py-3 text-muted-foreground">{rule.priority}</td>
                     <td className="px-4 py-3 font-mono font-medium">"{rule.keyword}"</td>
@@ -165,6 +181,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
               </tbody>
             </table>
           </div>
+          <PaginationControls {...rulesPage} onPageChange={rulesPage.setPage} onPageSizeChange={rulesPage.setPageSize} />
         </Card>
       )}
 
