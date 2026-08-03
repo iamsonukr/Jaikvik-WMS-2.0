@@ -9,6 +9,7 @@ import { Template, TemplateDocument } from '../templates/template.schema';
 import { Broadcast, BroadcastDocument } from '../broadcasts/broadcast.schema';
 import { AccountAlert, AccountAlertDocument } from '../webhooks/account-alert.schema';
 import { toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
+import { Message, MessageDocument } from '../inbox/message.schema';
 
 type AlertSeverity = 'critical' | 'warning' | 'info';
 
@@ -35,9 +36,10 @@ export class AlertsService {
     @InjectModel(Template.name) private templateModel: Model<TemplateDocument>,
     @InjectModel(Broadcast.name) private broadcastModel: Model<BroadcastDocument>,
     @InjectModel(AccountAlert.name) private accountAlertModel: Model<AccountAlertDocument>,
+    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
   ) {}
 
-  async list(whatsappAccountId: string) {
+  async list(whatsappAccountId: string, user?: any) {
     const account = await this.whatsappAccounts.findOne(whatsappAccountId);
     if (!account) throw new NotFoundException('WhatsApp account not found');
 
@@ -45,7 +47,15 @@ export class AlertsService {
     const tenantId = account.tenantId ? toObjectId(account.tenantId, 'tenantId') : null;
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const [wallet, subscriptions, failedPayments, rejectedTemplates, failedBroadcasts, accountAlerts] = await Promise.all([
+    const [
+      wallet,
+      subscriptions,
+      failedPayments,
+      rejectedTemplates,
+      failedBroadcasts,
+      accountAlerts,
+      assignedThreads,
+    ] = await Promise.all([
       tenantId ? this.walletModel.findOne({ tenantId }) : null,
       tenantId ? this.subscriptionModel.find({ tenantId }).sort({ endDate: -1 }).limit(5) : [],
       tenantId ? this.paymentModel.find({ tenantId, status: 'failed', createdAt: { $gte: since } }).sort({ createdAt: -1 }).limit(5) : [],
@@ -63,6 +73,7 @@ export class AlertsService {
           { whatsappAccountId: null },
         ],
       }).sort({ createdAt: -1 }).limit(10),
+      this.assignedThreadAlerts(whatsappAccountId, tenantId, user),
     ]);
 
     const alerts: AlertItem[] = [
@@ -73,6 +84,7 @@ export class AlertsService {
       ...this.templateAlerts(rejectedTemplates),
       ...this.broadcastAlerts(failedBroadcasts),
       ...this.metaAccountAlerts(accountAlerts),
+      ...assignedThreads,
     ];
 
     return alerts
@@ -192,6 +204,64 @@ export class AlertsService {
         { entityType: item.entityType, entityId: item.entityId, status: item.status },
       );
     });
+  }
+
+  private async assignedThreadAlerts(whatsappAccountId: string, tenantId?: any, user?: any): Promise<AlertItem[]> {
+    if (!user?._id) return [];
+    const userId = toObjectId(user._id, 'userId');
+    const scope = await this.assignedThreadScope(whatsappAccountId, tenantId, user);
+    const threads = await this.messageModel.aggregate([
+      {
+        $match: {
+          ...scope,
+          assignedTo: { $in: [userId, String(userId)] },
+          threadStatus: { $nin: ['resolved', 'closed'] },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$phone', latest: { $first: '$$ROOT' } } },
+      { $replaceRoot: { newRoot: '$latest' } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 10 },
+    ]);
+
+    return threads.map((thread: any) => this.alert(
+      `chat_assigned_${thread._id}`,
+      thread.priority === 'urgent' ? 'critical' : 'info',
+      thread.priority === 'urgent' ? 89 : 85,
+      'Chat assigned to you',
+      `${thread.contactName || thread.phone} is assigned to you${thread.text ? `: ${String(thread.text).slice(0, 120)}` : '.'}`,
+      'inbox',
+      '/client/inbox',
+      this.dateOf(thread, 'updatedAt') || this.dateOf(thread, 'createdAt'),
+      {
+        whatsappAccountId,
+        threadWhatsappAccountId: thread.whatsappAccountId,
+        phone: thread.phone,
+        threadStatus: thread.threadStatus,
+        priority: thread.priority,
+      },
+    ));
+  }
+
+  private async assignedThreadScope(whatsappAccountId: string, tenantId?: any, user?: any) {
+    const scopedTenantId = user?.tenantId
+      ? toObjectId(user.tenantId, 'tenantId')
+      : tenantId || null;
+    if (!scopedTenantId) return whatsappAccountIdFilter(whatsappAccountId);
+
+    const accounts = await this.whatsappAccounts.findAllByTenant(scopedTenantId);
+    const accountIds = accounts.flatMap((account: any) => {
+      const id = toObjectId(account._id, 'whatsappAccountId');
+      return [id, String(id)];
+    });
+    return {
+      $or: [
+        { tenantId: scopedTenantId },
+        { tenantId: String(scopedTenantId) },
+        ...(accountIds.length ? [{ whatsappAccountId: { $in: accountIds } }] : []),
+      ],
+    };
   }
 
   private metaSeverity(severity?: string): AlertSeverity {

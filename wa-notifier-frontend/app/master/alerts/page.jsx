@@ -61,7 +61,7 @@ export default function ClientAlertsPage() {
   }), [alerts]);
 
   return (
-    <AppShell allowedRoles={['client_owner', 'client_user']}>
+    <AppShell allowedRoles={['master', 'admin']}>
       <PageHeader
         title="Notifications"
         subtitle={activeClient ? `Priority notifications for ${activeClient.name}` : 'Select a WhatsApp account to view notifications'}
@@ -75,7 +75,7 @@ export default function ClientAlertsPage() {
           icon={Bell}
           title="No WhatsApp account selected"
           description="Select or connect a WhatsApp account before viewing notifications."
-          action={<Link href="/client/connect-whatsapp"><Button><MessageCircle size={15} />Connect WhatsApp</Button></Link>}
+          action={<Link href="/master/connect-whatsapp"><Button><MessageCircle size={15} />Connect WhatsApp</Button></Link>}
         />
       )}
 

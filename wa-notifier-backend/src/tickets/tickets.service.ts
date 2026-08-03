@@ -10,6 +10,8 @@ import { TICKET_PRIORITIES, TICKET_STATUSES, Ticket, TicketDocument } from './ti
 import { TicketMessage, TicketMessageDocument } from './ticket-message.schema';
 
 const CLIENT_ROLES = [UserRole.CLIENT_OWNER, UserRole.CLIENT_USER];
+const TERMINAL_STATUSES = ['resolved', 'closed'];
+const CLIENT_MUTABLE_STATUSES = ['open', 'closed'];
 
 @Injectable()
 export class TicketsService {
@@ -41,7 +43,7 @@ export class TicketsService {
     const search = String(query.search || '').trim();
     if (search) {
       const re = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ subject: re }, { category: re }, { lastMessagePreview: re }];
+      filter.$or = [{ refNumber: re }, { subject: re }, { category: re }, { lastMessagePreview: re }];
     }
 
     return this.ticketModel
@@ -54,15 +56,15 @@ export class TicketsService {
   }
 
   async findOne(id: string, user: any) {
-    const ticket = await this.ticketModel
-      .findById(id)
-      .populate('tenantId', 'name contactEmail')
-      .populate('createdBy', 'name email role')
-      .populate('assignedTo', 'name email role')
-      .populate('lastMessageBy', 'name email role');
+    const ticket = await this.ticketModel.findById(id);
     if (!ticket) throw new NotFoundException('Ticket not found');
     this.assertCanView(ticket, user);
-    return ticket;
+    return ticket.populate([
+      { path: 'tenantId', select: 'name contactEmail' },
+      { path: 'createdBy', select: 'name email role' },
+      { path: 'assignedTo', select: 'name email role' },
+      { path: 'lastMessageBy', select: 'name email role' },
+    ]);
   }
 
   async messages(id: string, user: any) {
@@ -75,19 +77,25 @@ export class TicketsService {
 
   async create(dto: CreateTicketDto, user: any) {
     const role = normalizeUserRole(user.role) as UserRole;
+    if (!CLIENT_ROLES.includes(role) && role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only clients and admin can create tickets');
+    }
+
     const tenantId = CLIENT_ROLES.includes(role)
       ? toObjectId(user.tenantId, 'tenantId')
       : toObjectId(dto.tenantId, 'tenantId');
-
     if (!dto.subject?.trim()) throw new BadRequestException('Ticket subject is required');
     if (!dto.message?.trim()) throw new BadRequestException('Ticket message is required');
     await this.assertTenantExists(tenantId);
 
     const priority = this.validPriority(dto.priority || 'normal');
     const now = new Date();
+    const ticketId = new Types.ObjectId();
     const ticket = await this.ticketModel.create({
+      _id: ticketId,
       tenantId,
       createdBy: toObjectId(user._id, 'userId'),
+      refNumber: this.createRefNumber(ticketId, now),
       subject: dto.subject.trim(),
       category: dto.category?.trim() || 'general',
       priority,
@@ -110,7 +118,11 @@ export class TicketsService {
     ticket.lastMessagePreview = dto.body.trim().slice(0, 180);
     ticket.lastMessageAt = new Date();
     ticket.lastMessageBy = toObjectId(user._id, 'userId');
-    if (ticket.status === 'closed') ticket.status = 'open';
+    if (TERMINAL_STATUSES.includes(ticket.status)) {
+      ticket.status = 'open';
+      ticket.resolvedAt = undefined;
+      ticket.closedAt = undefined;
+    }
     await ticket.save();
     return this.messages(id, user);
   }
@@ -123,7 +135,8 @@ export class TicketsService {
     const assignee = await this.findMaster(dto.assignedTo);
     const label = assignee ? `Assigned to ${assignee.name || assignee.email}` : 'Assignment cleared';
     ticket.assignedTo = assignee?._id as Types.ObjectId || null;
-    ticket.status = assignee ? 'assigned' : 'open';
+    if (assignee && !TERMINAL_STATUSES.includes(ticket.status)) ticket.status = 'assigned';
+    if (!assignee && ticket.status === 'assigned') ticket.status = 'open';
     ticket.lastMessagePreview = label;
     ticket.lastMessageAt = new Date();
     ticket.lastMessageBy = toObjectId(user._id, 'userId');
@@ -145,9 +158,15 @@ export class TicketsService {
 
     const systemEvents: Array<{ body: string; kind: string }> = [];
     if (dto.status !== undefined) {
-      ticket.status = this.validStatus(dto.status);
+      const nextStatus = this.validStatus(dto.status);
+      if (CLIENT_ROLES.includes(role) && !CLIENT_MUTABLE_STATUSES.includes(nextStatus)) {
+        throw new ForbiddenException('Clients can only reopen or close their tickets');
+      }
+      ticket.status = nextStatus;
       if (ticket.status === 'resolved') ticket.resolvedAt = new Date();
+      else ticket.resolvedAt = undefined;
       if (ticket.status === 'closed') ticket.closedAt = new Date();
+      else ticket.closedAt = undefined;
       systemEvents.push({ body: `Status changed to ${ticket.status}`, kind: 'status' });
     }
     if (dto.priority !== undefined) {
@@ -190,17 +209,41 @@ export class TicketsService {
   private assertCanView(ticket: TicketDocument, user: any) {
     const role = normalizeUserRole(user.role) as UserRole;
     if (role === UserRole.ADMIN) return;
-    if (role === UserRole.MASTER && String(ticket.assignedTo || '') === String(user._id)) return;
-    if (CLIENT_ROLES.includes(role) && String(ticket.tenantId) === String(user.tenantId)) return;
+    if (role === UserRole.MASTER && this.sameId(ticket.assignedTo, user._id)) return;
+    if (CLIENT_ROLES.includes(role) && this.sameId(ticket.tenantId, user.tenantId)) return;
     throw new ForbiddenException('You do not have access to this ticket');
   }
 
   private assertCanUpdate(ticket: TicketDocument, user: any) {
     const role = normalizeUserRole(user.role) as UserRole;
     if (role === UserRole.ADMIN) return;
-    if (role === UserRole.MASTER && String(ticket.assignedTo || '') === String(user._id)) return;
-    if (CLIENT_ROLES.includes(role) && String(ticket.tenantId) === String(user.tenantId)) return;
+    if (role === UserRole.MASTER && this.sameId(ticket.assignedTo, user._id)) return;
+    if (CLIENT_ROLES.includes(role) && this.sameId(ticket.tenantId, user.tenantId)) return;
     throw new ForbiddenException('You cannot update this ticket');
+  }
+
+  private sameId(left: any, right: any) {
+    const leftId = this.idString(left);
+    const rightId = this.idString(right);
+    return Boolean(leftId && rightId && leftId === rightId);
+  }
+
+  private idString(value: any) {
+    if (!value) return '';
+    if (value instanceof Types.ObjectId) return value.toHexString();
+    if (typeof value === 'string') return value;
+    if (typeof value.toHexString === 'function') return value.toHexString();
+    if (value._id) return this.idString(value._id);
+    if (value.id) return this.idString(value.id);
+    return String(value);
+  }
+
+  private createRefNumber(ticketId: Types.ObjectId, date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const suffix = ticketId.toHexString().slice(-6).toUpperCase();
+    return `TCK-${year}${month}${day}-${suffix}`;
   }
 
   private assertAdmin(user: any) {

@@ -57,11 +57,11 @@ export default function AnalyticsPage() {
     }).finally(() => setLoading(false));
   }, [activeClient]);
 
-  if (loading) return <AppShell allowedRoles={['admin', 'master']}><div className="flex justify-center py-20"><Spinner size={32}/></div></AppShell>;
+  if (loading) return <AppShell allowedRoles={['master','admin']}><div className="flex justify-center py-20"><Spinner size={32}/></div></AppShell>;
 
   if (!activeClient) {
     return (
-      <AppShell allowedRoles={['admin', 'master']}>
+      <AppShell allowedRoles={['master','admin']}>
         <PageHeader title="Analytics" subtitle="Performance metrics for the last 30 days" />
         <div className="soft-alert border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">
           Select a client first to view analytics.
@@ -71,7 +71,7 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <AppShell allowedRoles={['admin', 'master']}>
+    <AppShell allowedRoles={['master','admin']}>
       <PageHeader title="Analytics" subtitle="Performance metrics for the last 30 days" />
 
       {error && (

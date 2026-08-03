@@ -7,13 +7,22 @@ import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
 const tagName = (tag) => typeof tag === 'string' ? tag : tag?.name;
+const normalizeSegment = (segment) => ({
+  ...segment,
+  _id: segment?._id || segment?.id,
+  name: String(segment?.name || '').trim(),
+  tags: Array.isArray(segment?.tags) ? segment.tags : [],
+  matchMode: segment?.matchMode === 'all' ? 'all' : 'any',
+});
 
 export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
   const { activeClient } = useClient();
   const router = useRouter();
   const [templates, setTemplates] = useState([]);
   const [tags, setTags] = useState([]);
+  const [segments, setSegments] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
   const [count, setCount] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -21,21 +30,30 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
   const [form, setForm] = useState({ name: '', templateName: '', languageCode: 'en' });
 
   useEffect(() => {
-    if (!activeClient) { setTemplates([]); setTags([]); return; }
+    if (!activeClient) { setTemplates([]); setTags([]); setSegments([]); return; }
     api.get(`/templates?whatsappAccountId=${activeClient._id}`).then(r => setTemplates(r.data)).catch(() => setTemplates([]));
     api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`).then(r => setTags((r.data || []).map(tagName).filter(Boolean))).catch(() => setTags([]));
+    api.get(`/contacts/segments?whatsappAccountId=${activeClient._id}`).then(r => setSegments((r.data || []).map(normalizeSegment).filter(segment => segment.name))).catch(() => setSegments([]));
   }, [activeClient]);
 
   useEffect(() => {
     if (!activeClient) { setCount(null); return; }
     const params = new URLSearchParams({ whatsappAccountId: activeClient._id });
-    selectedTags.forEach(t => params.append('tag', t));
+    if (selectedSegmentIds.length) selectedSegmentIds.forEach(id => params.append('segmentId', id));
+    else selectedTags.forEach(t => params.append('tag', t));
     api.get(`/contacts/count?${params.toString()}`)
       .then(r => setCount(r.data.count))
       .catch(() => setCount(null));
-  }, [activeClient, selectedTags]);
+  }, [activeClient, selectedTags, selectedSegmentIds]);
 
-  const toggleTag = (tag) => setSelectedTags(prev => prev.includes(tag) ? prev.filter(item => item !== tag) : [...prev, tag]);
+  const toggleTag = (tag) => {
+    setSelectedSegmentIds([]);
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(item => item !== tag) : [...prev, tag]);
+  };
+  const toggleSegment = (segmentId) => {
+    setSelectedTags([]);
+    setSelectedSegmentIds(prev => prev.includes(segmentId) ? prev.filter(item => item !== segmentId) : [...prev, segmentId]);
+  };
   const selected = templates.find(template => template.name === form.templateName);
 
   const createCampaign = async ({ sendNow = false, schedule = false } = {}) => {
@@ -55,6 +73,7 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
         ...form,
         whatsappAccountId: activeClient._id,
         targetTags: selectedTags,
+        targetSegmentIds: selectedSegmentIds,
         components: [],
         status: schedule ? 'scheduled' : 'draft',
         scheduledAt: schedule ? new Date(scheduledAt).toISOString() : undefined,
@@ -108,7 +127,27 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
 
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold">Target Audience</h3>
-          <p className="mb-3 text-xs text-muted-foreground">Select tags to target opted-in active contacts, or leave empty to send to every opted-in active contact.</p>
+          <p className="mb-3 text-xs text-muted-foreground">Select saved groups or tags to target opted-in active contacts. Leave empty to send to every opted-in active contact.</p>
+
+          {segments.length > 0 && (
+            <>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Groups</p>
+              <div className="mb-4 flex flex-wrap gap-2">
+                {segments.map(segment => (
+                  <button key={segment._id} type="button" onClick={() => toggleSegment(segment._id)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      selectedSegmentIds.includes(segment._id) ? 'border-brand bg-brand text-white' : 'border-border hover:bg-accent hover:text-accent-foreground'
+                    }`}>
+                    {selectedSegmentIds.includes(segment._id) && <span className="mr-1">+</span>}
+                    {segment.name}
+                    <span className="ml-1 opacity-75">({segment.matchMode === 'all' ? 'all' : 'any'}: {segment.tags.length})</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Tags</p>
           <div className="mb-4 flex flex-wrap gap-2">
             {tags.map(tag => (
               <button key={tag} type="button" onClick={() => toggleTag(tag)}
@@ -121,9 +160,14 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
             ))}
             {activeClient && tags.length === 0 && <p className="text-xs text-muted-foreground">No tags found. All opted-in active contacts will be targeted.</p>}
           </div>
+          {(selectedSegmentIds.length > 0 || selectedTags.length > 0) && (
+            <Button variant="outline" size="sm" className="mb-4" onClick={() => { setSelectedSegmentIds([]); setSelectedTags([]); }}>
+              Clear Audience
+            </Button>
+          )}
           <div className={`rounded-lg border px-4 py-2.5 text-sm ${count === 0 ? 'border-red-200 bg-red-50' : 'border-brand/20 bg-brand/5'}`}>
             <span className={`font-semibold ${count === 0 ? 'text-red-600' : 'text-brand'}`}>{count ?? '...'}</span>
-            <span className="text-muted-foreground"> contacts match this segment</span>
+            <span className="text-muted-foreground"> contacts match this audience</span>
           </div>
         </Card>
 

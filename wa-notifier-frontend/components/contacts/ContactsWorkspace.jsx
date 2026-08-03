@@ -1,13 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
-import { CheckCircle2, FileText, Pencil, Plus, Search, Send, Tag, Trash2, Upload, X } from 'lucide-react';
+import { CheckCircle2, Clock, Download, Pencil, Plus, Search, Send, Tag, Trash2, Upload, Users, X } from 'lucide-react';
 
 const blank = { name: '', phone: '', tags: [] };
 const blankTag = { name: '', color: '#3b82f6', description: '' };
+const blankGroup = { name: '', description: '' };
 
 function parseCSVLine(line) {
   const result = [];
@@ -81,6 +84,44 @@ function normalizeTag(tag) {
   };
 }
 
+function normalizeSegment(segment) {
+  return {
+    ...segment,
+    _id: segment?._id || segment?.id,
+    name: String(segment?.name || '').trim(),
+    description: segment?.description || '',
+    tags: Array.isArray(segment?.tags) ? segment.tags : [],
+    matchMode: segment?.matchMode === 'all' ? 'all' : 'any',
+  };
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function exportContactsCsv(items, filename = 'contacts-export.csv') {
+  const headers = ['phone', 'name', 'tags', 'status'];
+  const lines = [
+    headers.join(','),
+    ...items.map((contact) => [
+      contact.phone,
+      contact.name,
+      (contact.tags || []).join(';'),
+      contact.isOptedOut ? 'opted_out' : 'active',
+    ].map(csvCell).join(',')),
+  ];
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function bodyText(template) {
   return template?.components?.find((component) => component?.type === 'BODY')?.text || '';
 }
@@ -92,10 +133,20 @@ function bodyPlaceholderCount(template) {
 
 export default function ContactsWorkspace() {
   const { activeClient } = useClient();
+  const pathname = usePathname();
+  const importHistoryHref = `${String(pathname || '/client/contacts').replace(/\/$/, '')}/import-history`;
   const [contacts, setContacts] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tags, setTags] = useState([]);
+  const [segments, setSegments] = useState([]);
   const [tag, setTag] = useState('');
+  const [segmentTags, setSegmentTags] = useState([]);
+  const [segmentMatchMode, setSegmentMatchMode] = useState('any');
+  const [selectedSegmentId, setSelectedSegmentId] = useState('');
+  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+  const [groupForm, setGroupForm] = useState(blankGroup);
+  const [groupSaving, setGroupSaving] = useState(false);
+  const [groupError, setGroupError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [modal, setModal] = useState(false);
@@ -123,10 +174,6 @@ export default function ContactsWorkspace() {
   const [importPreviewStatusFilter, setImportPreviewStatusFilter] = useState('all');
   const [importPreviewSort, setImportPreviewSort] = useState({ key: 'row', direction: 'asc' });
   const [importResult, setImportResult] = useState(null);
-  const [importHistory, setImportHistory] = useState([]);
-  const [importHistorySearch, setImportHistorySearch] = useState('');
-  const [importHistoryFilter, setImportHistoryFilter] = useState('all');
-  const [importHistorySort, setImportHistorySort] = useState({ key: 'date', direction: 'desc' });
   const [formError, setFormError] = useState('');
   const [csvError, setCsvError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -139,7 +186,10 @@ export default function ContactsWorkspace() {
   const [messageError, setMessageError] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [contactSort, setContactSort] = useState({ key: 'name', direction: 'asc' });
+  const [selectedContactIds, setSelectedContactIds] = useState([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const fileRef = useRef();
+  const selectAllRef = useRef();
 
   const approvedTemplates = useMemo(
     () => templates.filter((template) => String(template.status || '').toLowerCase() === 'approved'),
@@ -152,16 +202,16 @@ export default function ContactsWorkspace() {
     if (!activeClient) return;
     setLoading(true);
     setLoadError('');
-    Promise.all([
-      api.get(`/contacts?whatsappAccountId=${activeClient._id}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`),
+    return Promise.all([
+      api.get(`/contacts?whatsappAccountId=${activeClient._id}`),
       api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`),
+      api.get(`/contacts/segments?whatsappAccountId=${activeClient._id}`).catch(() => ({ data: [] })),
       api.get(`/templates?whatsappAccountId=${activeClient._id}`),
-      api.get(`/contacts/import/history?whatsappAccountId=${activeClient._id}`).catch(() => ({ data: [] })),
-    ]).then(([contactsRes, tagsRes, templatesRes, historyRes]) => {
+    ]).then(([contactsRes, tagsRes, segmentsRes, templatesRes]) => {
       setContacts(asArray(contactsRes.data).map(normalizeContact));
       setTags(asArray(tagsRes.data).map(normalizeTag).filter((tagItem) => tagItem.name));
+      setSegments(asArray(segmentsRes.data).map(normalizeSegment).filter((segment) => segment.name));
       setTemplates(asArray(templatesRes.data));
-      setImportHistory(asArray(historyRes.data));
     })
       .catch((err) => {
         setLoadError(err?.response?.data?.message || 'Could not load contacts for the selected client.');
@@ -169,7 +219,11 @@ export default function ContactsWorkspace() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [activeClient, tag]);
+  useEffect(() => { load(); }, [activeClient]);
+
+  useEffect(() => {
+    setSelectedContactIds((current) => current.filter((id) => contacts.some((contact) => contact._id === id)));
+  }, [contacts]);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -208,9 +262,112 @@ export default function ContactsWorkspace() {
     try {
       await api.delete(`/contacts/${id}`);
       setContacts((prev) => prev.filter((contact) => contact._id !== id));
+      setSelectedContactIds((prev) => prev.filter((contactId) => contactId !== id));
     } catch {
       alert('Could not delete contact. Please try again.');
     }
+  };
+
+  const deleteSelectedContacts = async () => {
+    if (!selectedContactIds.length) return;
+    if (!confirm(`Delete ${selectedContactIds.length} selected contact${selectedContactIds.length === 1 ? '' : 's'}?`)) return;
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(selectedContactIds.map((id) => api.delete(`/contacts/${id}`)));
+      const deletedIds = selectedContactIds.filter((_, index) => results[index].status === 'fulfilled');
+      const failedCount = results.length - deletedIds.length;
+      setContacts((prev) => prev.filter((contact) => !deletedIds.includes(contact._id)));
+      setSelectedContactIds((prev) => prev.filter((id) => !deletedIds.includes(id)));
+      if (failedCount) alert(`${failedCount} contact${failedCount === 1 ? '' : 's'} could not be deleted. Please try again.`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const clearSegment = () => {
+    setTag('');
+    setSegmentTags([]);
+    setSelectedSegmentId('');
+    setSegmentMatchMode('any');
+    setGroupError('');
+  };
+
+  const toggleSegmentTag = (tagName) => {
+    setTag('');
+    setSelectedSegmentId('');
+    setGroupError('');
+    setSegmentTags((current) => (
+      current.includes(tagName)
+        ? current.filter((name) => name !== tagName)
+        : [...current, tagName]
+    ));
+  };
+
+  const applySegment = (segmentId) => {
+    setSelectedSegmentId(segmentId);
+    setTag('');
+    setGroupError('');
+    const segment = segments.find((item) => item._id === segmentId);
+    if (!segment) {
+      setSegmentTags([]);
+      setSegmentMatchMode('any');
+      return;
+    }
+    setSegmentTags(segment.tags || []);
+    setSegmentMatchMode(segment.matchMode || 'any');
+    setGroupForm((prev) => ({ ...prev, name: segment.name }));
+  };
+
+  const createGroup = async () => {
+    if (!activeClient || !segmentTags.length) return;
+    const name = groupForm.name.trim();
+    if (!name) {
+      setGroupError('Enter a group name before saving.');
+      return;
+    }
+    setGroupSaving(true);
+    setGroupError('');
+    try {
+      const { data } = await api.post('/contacts/segments', {
+        whatsappAccountId: activeClient._id,
+        name,
+        description: groupForm.description,
+        tags: segmentTags,
+        matchMode: segmentMatchMode,
+      });
+      const saved = normalizeSegment(data);
+      setSegments((current) => [saved, ...current.filter((item) => item._id !== saved._id)]);
+      setSelectedSegmentId(saved._id);
+      setGroupForm(blankGroup);
+    } catch (err) {
+      setGroupError(err?.response?.data?.message || 'Could not save group.');
+    } finally {
+      setGroupSaving(false);
+    }
+  };
+
+  const deleteGroup = async (segmentId) => {
+    if (!segmentId) return;
+    if (!confirm('Delete this saved group?')) return;
+    try {
+      await api.delete(`/contacts/segments/${segmentId}`);
+      setSegments((current) => current.filter((item) => item._id !== segmentId));
+      if (selectedSegmentId === segmentId) clearSegment();
+    } catch {
+      setGroupError('Could not delete group.');
+    }
+  };
+
+  const exportCurrentSegment = () => {
+    if (!sortedContacts.length) return;
+    const stamp = new Date().toISOString().slice(0, 10);
+    const segmentName = selectedSegmentId
+      ? segments.find((item) => item._id === selectedSegmentId)?.name
+      : segmentTags.length
+        ? segmentTags.join('-')
+        : tag || 'all-contacts';
+    const safeName = String(segmentName || 'contacts').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    exportContactsCsv(sortedContacts, `${safeName || 'contacts'}-${stamp}.csv`);
   };
 
   const openTags = () => {
@@ -389,6 +546,19 @@ export default function ContactsWorkspace() {
         updateExisting: true,
       });
       setImportResult(data);
+      const returnedTags = [
+        ...(data.createdTags || []),
+        ...(data.reactivatedTags || []),
+      ].map((name) => normalizeTag(name)).filter((tagItem) => tagItem.name);
+      if (returnedTags.length) {
+        setTags((current) => {
+          const byName = new Map(current.map((tagItem) => [tagItem.name.toLowerCase(), tagItem]));
+          returnedTags.forEach((tagItem) => {
+            if (!byName.has(tagItem.name.toLowerCase())) byName.set(tagItem.name.toLowerCase(), tagItem);
+          });
+          return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+        });
+      }
       await load();
     } catch (err) {
       setCsvError(err?.response?.data?.message || 'Could not import contacts.');
@@ -411,6 +581,7 @@ export default function ContactsWorkspace() {
 
   const rows = asArray(contacts).map(normalizeContact);
   const query = search.trim().toLowerCase();
+  const activeFilterTags = segmentTags.length ? segmentTags : (tag ? [tag] : []);
   const filtered = rows.filter((contact) => {
     const matchesSearch = !query
       || contact.name.toLowerCase().includes(query)
@@ -419,7 +590,12 @@ export default function ContactsWorkspace() {
     const matchesStatus = statusFilter === 'all'
       || (statusFilter === 'active' && !contact.isOptedOut)
       || (statusFilter === 'opted_out' && contact.isOptedOut);
-    return matchesSearch && matchesStatus;
+    const contactTags = contact.tags || [];
+    const matchesTags = activeFilterTags.length === 0
+      || (segmentMatchMode === 'all'
+        ? activeFilterTags.every((tagName) => contactTags.includes(tagName))
+        : activeFilterTags.some((tagName) => contactTags.includes(tagName)));
+    return matchesSearch && matchesStatus && matchesTags;
   });
   const sortedContacts = sortItems(filtered, contactSort, {
     name: (contact) => contact.name,
@@ -429,32 +605,35 @@ export default function ContactsWorkspace() {
   });
   const contactsPage = usePagination(sortedContacts, {
     initialPageSize: 25,
-    resetKey: `${search}|${tag}|${statusFilter}|${contactSort.key}|${contactSort.direction}`,
+    resetKey: `${search}|${tag}|${segmentTags.join('|')}|${segmentMatchMode}|${statusFilter}|${contactSort.key}|${contactSort.direction}`,
   });
-  const importQuery = importHistorySearch.trim().toLowerCase();
-  const filteredImportHistory = importHistory.filter((item) => {
-    const hasIssues = Number(item.invalidRows || 0) > 0 || Number(item.skippedCount || 0) > 0;
-    const matchesSearch = !importQuery
-      || String(item.fileName || '').toLowerCase().includes(importQuery)
-      || String(item._id || '').toLowerCase().includes(importQuery);
-    const matchesFilter = importHistoryFilter === 'all'
-      || (importHistoryFilter === 'created' && Number(item.createdCount || 0) > 0)
-      || (importHistoryFilter === 'updated' && Number(item.updatedCount || 0) > 0)
-      || (importHistoryFilter === 'issues' && hasIssues);
-    return matchesSearch && matchesFilter;
-  });
-  const sortedImportHistory = sortItems(filteredImportHistory, importHistorySort, {
-    file: (item) => item.fileName,
-    created: (item) => item.createdCount || 0,
-    updated: (item) => item.updatedCount || 0,
-    invalid: (item) => item.invalidRows || 0,
-    skipped: (item) => item.skippedCount || 0,
-    date: (item) => item.createdAt,
-  });
-  const importHistoryPage = usePagination(sortedImportHistory, {
-    initialPageSize: 5,
-    resetKey: `${importHistorySearch}|${importHistoryFilter}|${importHistorySort.key}|${importHistorySort.direction}`,
-  });
+  const selectedContactSet = useMemo(() => new Set(selectedContactIds), [selectedContactIds]);
+  const currentPageContactIds = contactsPage.pageItems.map((contact) => contact._id).filter(Boolean);
+  const allPageContactsSelected = currentPageContactIds.length > 0 && currentPageContactIds.every((id) => selectedContactSet.has(id));
+  const somePageContactsSelected = currentPageContactIds.some((id) => selectedContactSet.has(id));
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = somePageContactsSelected && !allPageContactsSelected;
+    }
+  }, [allPageContactsSelected, somePageContactsSelected]);
+
+  const toggleContactSelection = (contactId) => {
+    setSelectedContactIds((current) => (
+      current.includes(contactId)
+        ? current.filter((id) => id !== contactId)
+        : [...current, contactId]
+    ));
+  };
+
+  const toggleCurrentPageSelection = () => {
+    setSelectedContactIds((current) => {
+      const next = new Set(current);
+      if (allPageContactsSelected) currentPageContactIds.forEach((id) => next.delete(id));
+      else currentPageContactIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+  };
   const tagColorOptions = Array.from(new Set(tags.map((tagItem) => tagItem.color).filter(Boolean))).sort();
   const tagQuery = tagSearch.trim().toLowerCase();
   const filteredTags = tags.filter((tagItem) => {
@@ -511,8 +690,18 @@ export default function ContactsWorkspace() {
             <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing || !activeClient}>
               <Upload size={15} />{importing ? 'Importing...' : 'Import CSV'}
             </Button>
+            {activeClient ? (
+              <Link href={importHistoryHref}>
+                <Button variant="outline"><Clock size={15} />Import History</Button>
+              </Link>
+            ) : (
+              <Button variant="outline" disabled><Clock size={15} />Import History</Button>
+            )}
             <Button variant="outline" onClick={openTags} disabled={!activeClient}>
               <Tag size={15} />Manage Tags
+            </Button>
+            <Button variant="outline" onClick={() => setGroupPanelOpen((open) => !open)} disabled={!activeClient}>
+              <Users size={15} />Create Group
             </Button>
             <Button onClick={() => { setForm(blank); setFormError(''); setModal(true); }} disabled={!activeClient}>
               <Plus size={15} />Add Contact
@@ -536,57 +725,81 @@ export default function ContactsWorkspace() {
         </div>
       )}
 
-      {activeClient && importHistory.length > 0 && (
-        <Card className="mb-5 p-0 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-center gap-2">
-              <FileText size={15} className="text-primary" />
-              <h2 className="text-sm font-semibold">Import History</h2>
+      {activeClient && groupPanelOpen && (
+        <Card className="mb-5 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="mb-3 flex items-center gap-2">
+                <Users size={15} className="text-primary" />
+                <h2 className="text-sm font-semibold">Contact Groups</h2>
+                <Badge label={`${filtered.length} shown`} color="blue" />
+              </div>
+              <div className="grid gap-3 md:grid-cols-[1fr_140px_140px]">
+                <Select value={selectedSegmentId} onChange={(e) => applySegment(e.target.value)}>
+                  <option value="">Saved groups</option>
+                  {segments.map((segment) => (
+                    <option key={segment._id} value={segment._id}>
+                      {segment.name} ({segment.tags.length})
+                    </option>
+                  ))}
+                </Select>
+                <Select value={segmentMatchMode} onChange={(e) => { setSelectedSegmentId(''); setSegmentMatchMode(e.target.value); }}>
+                  <option value="any">Any tag</option>
+                  <option value="all">All tags</option>
+                </Select>
+                <Button variant="outline" onClick={exportCurrentSegment} disabled={!sortedContacts.length}>
+                  <Download size={14} />Export CSV
+                </Button>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {tags.map((tagItem) => {
+                  const selected = segmentTags.includes(tagItem.name);
+                  return (
+                    <button
+                      key={tagItem._id}
+                      type="button"
+                      onClick={() => toggleSegmentTag(tagItem.name)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        selected ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      }`}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tagItem.color }} />
+                      {tagItem.name}
+                    </button>
+                  );
+                })}
+                {!tags.length && <span className="text-xs text-muted-foreground">Create tags first to build groups.</span>}
+              </div>
             </div>
-            <span className="text-xs text-muted-foreground">{importHistory.length} recent imports</span>
-          </div>
-          <div className="grid gap-3 border-b border-border p-4 md:grid-cols-[1fr_180px]">
-            <Input placeholder="Search file name..." value={importHistorySearch} onChange={(e) => setImportHistorySearch(e.target.value)} />
-            <Select value={importHistoryFilter} onChange={(e) => setImportHistoryFilter(e.target.value)}>
-              <option value="all">All outcomes</option>
-              <option value="created">Created rows</option>
-              <option value="updated">Updated rows</option>
-              <option value="issues">Has issues</option>
-            </Select>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <SortableTh label="File" sortKey="file" sort={importHistorySort} onSort={setImportHistorySort} />
-                  <SortableTh label="Created" sortKey="created" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
-                  <SortableTh label="Updated" sortKey="updated" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
-                  <SortableTh label="Invalid" sortKey="invalid" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
-                  <SortableTh label="Skipped" sortKey="skipped" sort={importHistorySort} onSort={setImportHistorySort} align="right" />
-                  <SortableTh label="Date" sortKey="date" sort={importHistorySort} onSort={setImportHistorySort} />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {!sortedImportHistory.length && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No imports match these filters.</td></tr>
+
+            <div className="w-full space-y-2 lg:w-80">
+              <Input
+                value={groupForm.name}
+                onChange={(e) => setGroupForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Group name"
+              />
+              <Input
+                value={groupForm.description}
+                onChange={(e) => setGroupForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Description"
+              />
+              {groupError && <p className="text-xs text-red-600 dark:text-red-400">{groupError}</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={createGroup} disabled={groupSaving || !segmentTags.length}>
+                  <Plus size={14} />{groupSaving ? 'Saving...' : 'Save Group'}
+                </Button>
+                <Button variant="outline" onClick={clearSegment} disabled={!segmentTags.length && !tag && !selectedSegmentId}>
+                  <X size={14} />Clear
+                </Button>
+                {selectedSegmentId && (
+                  <Button variant="danger" onClick={() => deleteGroup(selectedSegmentId)}>
+                    <Trash2 size={14} />Delete
+                  </Button>
                 )}
-                {importHistoryPage.pageItems.map((item) => (
-                  <tr key={item._id}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{item.fileName || 'contacts.csv'}</p>
-                      <p className="text-xs text-muted-foreground">{item.totalRows || 0} rows scanned</p>
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">{item.createdCount || 0}</td>
-                    <td className="px-4 py-3 text-right">{item.updatedCount || 0}</td>
-                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">{item.invalidRows || 0}</td>
-                    <td className="px-4 py-3 text-right">{item.skippedCount || 0}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN') : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
-          <PaginationControls {...importHistoryPage} onPageChange={importHistoryPage.setPage} onPageSizeChange={importHistoryPage.setPageSize} />
         </Card>
       )}
 
@@ -600,7 +813,7 @@ export default function ContactsWorkspace() {
             className="pl-8"
           />
         </div>
-        <Select value={tag} onChange={(e) => setTag(e.target.value)}>
+        <Select value={tag} onChange={(e) => { setSegmentTags([]); setSelectedSegmentId(''); setTag(e.target.value); }}>
           <option value="">All tags</option>
           {tags.map((tagItem) => <option key={tagItem._id} value={tagItem.name}>{tagItem.name}</option>)}
         </Select>
@@ -615,10 +828,34 @@ export default function ContactsWorkspace() {
 
       {!loading && (
         <Card className="p-0 overflow-hidden">
+          {selectedContactIds.length > 0 && (
+            <div className="flex flex-col gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <span>{selectedContactIds.length} contact{selectedContactIds.length === 1 ? '' : 's'} selected</span>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSelectedContactIds([])} disabled={bulkDeleting}>
+                  <X size={13} />Clear Selection
+                </Button>
+                <Button variant="danger" size="sm" onClick={deleteSelectedContacts} disabled={bulkDeleting}>
+                  <Trash2 size={13} />{bulkDeleting ? 'Deleting...' : 'Delete Selected'}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allPageContactsSelected}
+                      onChange={toggleCurrentPageSelection}
+                      disabled={currentPageContactIds.length === 0}
+                      aria-label="Select all contacts on this page"
+                      className="h-4 w-4 rounded border-input accent-brand"
+                    />
+                  </th>
                   <SortableTh label="Name" sortKey="name" sort={contactSort} onSort={setContactSort} />
                   <SortableTh label="Phone" sortKey="phone" sort={contactSort} onSort={setContactSort} />
                   <SortableTh label="Tags" sortKey="tags" sort={contactSort} onSort={setContactSort} />
@@ -628,10 +865,19 @@ export default function ContactsWorkspace() {
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.length === 0 && (
-                  <tr><td colSpan={5} className="text-center py-12 text-[var(--muted-text)]">No contacts found</td></tr>
+                  <tr><td colSpan={6} className="text-center py-12 text-[var(--muted-text)]">No contacts found</td></tr>
                 )}
                 {contactsPage.pageItems.map((contact) => (
                   <tr key={contact._id} className="table-row-hover">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedContactSet.has(contact._id)}
+                        onChange={() => toggleContactSelection(contact._id)}
+                        aria-label={`Select ${contact.name || contact.phone}`}
+                        className="h-4 w-4 rounded border-input accent-brand"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium">{contact.name || '-'}</td>
                     <td className="px-4 py-3 text-[var(--muted-text)]">{contact.phone}</td>
                     <td className="px-4 py-3">
@@ -713,7 +959,7 @@ export default function ContactsWorkspace() {
                 {importHeaders.map((header) => <option key={header} value={header}>{header}</option>)}
               </Select>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">Tags can be separated with comma, semicolon, or pipe. Only tags already created in Manage Tags will be attached.</p>
+            <p className="mt-2 text-xs text-muted-foreground">Tags can be separated with comma, semicolon, or pipe. Missing tags are created automatically during import.</p>
           </div>
 
           {importPreview && (
@@ -755,18 +1001,24 @@ export default function ContactsWorkspace() {
                       <SortableTh label="Row" sortKey="row" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
                       <SortableTh label="Phone" sortKey="phone" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
                       <SortableTh label="Name" sortKey="name" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
+                      <th className="px-3 py-2 font-semibold">Tags</th>
                       <SortableTh label="Status" sortKey="status" sort={importPreviewSort} onSort={setImportPreviewSort} className="px-3 py-2" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {!sortedPreviewRows.length && (
-                      <tr><td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">No preview rows match these filters.</td></tr>
+                      <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">No preview rows match these filters.</td></tr>
                     )}
                     {previewRowsPage.pageItems.map((row) => (
                       <tr key={`${row.rowNumber}-${row.phone || row.originalPhone}`}>
                         <td className="px-3 py-2">{row.rowNumber}</td>
                         <td className="px-3 py-2 font-mono text-xs">{row.phone || row.originalPhone || '-'}</td>
                         <td className="px-3 py-2">{row.name || '-'}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            {(row.tags || []).length ? row.tags.map((tagItem) => <Badge key={tagItem} label={tagItem} color="blue" />) : <span className="text-xs text-muted-foreground">-</span>}
+                          </div>
+                        </td>
                         <td className="px-3 py-2">
                           <Badge
                             label={row.status === 'new' ? 'New' : row.status === 'existing' ? 'Update' : row.status === 'invalid' ? 'Invalid' : 'Duplicate'}
@@ -815,6 +1067,12 @@ export default function ContactsWorkspace() {
               <p className="mt-1">
                 Created {importResult.createdCount || 0}, updated {importResult.updatedCount || 0}, skipped {importResult.skippedCount || 0}.
               </p>
+              {(importResult.createdTags?.length > 0 || importResult.reactivatedTags?.length > 0) && (
+                <p className="mt-1">
+                  Tags created: {(importResult.createdTags || []).join(', ') || 'none'}
+                  {importResult.reactivatedTags?.length > 0 ? `; reactivated: ${importResult.reactivatedTags.join(', ')}` : ''}
+                </p>
+              )}
             </div>
           )}
         </div>

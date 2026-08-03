@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Contact, ContactDocument } from './contact.schema';
 import { ContactTag, ContactTagDocument } from './contact-tag.schema';
 import { ContactImport, ContactImportDocument } from './contact-import.schema';
+import { ContactSegment, ContactSegmentDocument } from './contact-segment.schema';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
 import { resolveWhatsAppAccountId, toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
 
@@ -13,6 +14,7 @@ export class ContactsService {
     @InjectModel(Contact.name) private model: Model<ContactDocument>,
     @InjectModel(ContactTag.name) private tagModel: Model<ContactTagDocument>,
     @InjectModel(ContactImport.name) private importModel: Model<ContactImportDocument>,
+    @InjectModel(ContactSegment.name) private segmentModel: Model<ContactSegmentDocument>,
     private clients: WhatsAppAccountsService,
   ) {}
 
@@ -43,19 +45,25 @@ export class ContactsService {
     const valid = contacts
       .filter(c => c.phone && String(c.phone).trim().length > 0)
       .map(c => ({ ...c, phone: String(c.phone).trim() }));
-    const allowed = await this.allowedTagSet(whatsappAccountId);
+    const tagResult = await this.ensureTags(whatsappAccountId, valid.flatMap((contact) => contact.tags || []));
+    const allowed = tagResult.allowed;
 
     if (valid.length === 0) return { upsertedCount: 0, modifiedCount: 0, skipped: contacts.length };
 
     const ops = valid.map(c => ({
       updateOne: {
-        filter: { whatsappAccountId: accountObjectId, phone: c.phone },
+        filter: { ...this.whatsappAccountIdQuery(whatsappAccountId), phone: c.phone },
         update: { $set: { ...c, tags: this.filterAllowedTags(c.tags || [], allowed), whatsappAccountId: accountObjectId, tenantId: account?.tenantId } },
         upsert: true,
       },
     }));
     const result = await this.model.bulkWrite(ops);
-    return { ...result, skipped: contacts.length - valid.length };
+    return {
+      ...result,
+      skipped: contacts.length - valid.length,
+      createdTags: tagResult.createdTags,
+      reactivatedTags: tagResult.reactivatedTags,
+    };
   }
 
   async previewImport(
@@ -82,13 +90,14 @@ export class ContactsService {
     const account = await this.clients.findOne(whatsappAccountId);
     const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
     const analysis = await this.analyzeImport(whatsappAccountId, contacts);
-    const allowed = await this.allowedTagSet(whatsappAccountId);
     const updateExisting = metadata.updateExisting !== false;
     const importable = analysis.rows.filter((row) => row.status === 'new' || (row.status === 'existing' && updateExisting));
+    const tagResult = await this.ensureTags(whatsappAccountId, importable.flatMap((row) => row.tags || []));
+    const allowed = tagResult.allowed;
 
     const ops = importable.map((row) => ({
       updateOne: {
-        filter: { whatsappAccountId: accountObjectId, phone: row.phone },
+        filter: { ...this.whatsappAccountIdQuery(whatsappAccountId), phone: row.phone },
         update: {
           $set: {
             phone: row.phone,
@@ -139,6 +148,8 @@ export class ContactsService {
       duplicateRows: analysis.summary.duplicateRows,
       invalidReport: analysis.invalidReport.slice(0, 100),
       duplicateReport: analysis.duplicateReport.slice(0, 100),
+      createdTags: tagResult.createdTags,
+      reactivatedTags: tagResult.reactivatedTags,
     };
   }
 
@@ -201,6 +212,7 @@ export class ContactsService {
       const saved = await this.tagModel.findByIdAndUpdate(id, next, { new: true });
       if (saved && next.name && next.name !== oldName) {
         await this.renameTagOnContacts(String(existing.whatsappAccountId || (existing as any).clientId), oldName, next.name);
+        await this.renameTagOnSegments(String(existing.whatsappAccountId || (existing as any).clientId), oldName, next.name);
       }
       return saved;
     } catch (err) {
@@ -213,18 +225,101 @@ export class ContactsService {
     const existing = await this.tagModel.findById(id);
     if (!existing) throw new NotFoundException('Tag not found');
     await this.model.updateMany(this.whatsappAccountIdQuery(String(existing.whatsappAccountId || (existing as any).clientId)), { $pull: { tags: existing.name } });
+    await this.segmentModel.updateMany(this.whatsappAccountIdQuery(String(existing.whatsappAccountId || (existing as any).clientId)), { $pull: { tags: existing.name } });
     return this.tagModel.findByIdAndDelete(id);
   }
 
-  countBySegment(whatsappAccountId: string, tags: string[]) {
+  async getSegments(whatsappAccountId: string) {
+    return this.segmentModel
+      .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), isActive: true })
+      .sort({ createdAt: -1 });
+  }
+
+  async createSegment(dto: { whatsappAccountId?: string; clientId?: string; name: string; description?: string; tags: string[]; matchMode?: 'any' | 'all' }) {
+    const whatsappAccountId = String(resolveWhatsAppAccountId(dto));
+    const account = await this.clients.findOne(whatsappAccountId);
+    const name = String(dto.name || '').trim().replace(/\s+/g, ' ');
+    if (!name) throw new BadRequestException('Group name is required');
+    const allowed = await this.allowedTagSet(whatsappAccountId);
+    const tags = this.filterAllowedTags(dto.tags || [], allowed);
+    if (!tags.length) throw new BadRequestException('Select at least one existing tag to create a group');
+
+    try {
+      return await this.segmentModel.create({
+        whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
+        tenantId: account?.tenantId,
+        name,
+        description: dto.description,
+        tags,
+        matchMode: dto.matchMode === 'all' ? 'all' : 'any',
+        isActive: true,
+      });
+    } catch (err) {
+      if (err?.code === 11000) throw new BadRequestException('A group with this name already exists for this WhatsApp account');
+      throw err;
+    }
+  }
+
+  async updateSegment(id: string, dto: Partial<ContactSegment>) {
+    const existing = await this.segmentModel.findById(id);
+    if (!existing) throw new NotFoundException('Group not found');
+    const next: Partial<ContactSegment> = { ...dto };
+    if (dto.name !== undefined) {
+      const name = String(dto.name || '').trim().replace(/\s+/g, ' ');
+      if (!name) throw new BadRequestException('Group name is required');
+      next.name = name;
+    }
+    if (dto.tags !== undefined) {
+      next.tags = this.filterAllowedTags(dto.tags, await this.allowedTagSet(String(existing.whatsappAccountId || (existing as any).clientId)));
+    }
+    if (dto.matchMode !== undefined) next.matchMode = dto.matchMode === 'all' ? 'all' : 'any';
+    try {
+      return await this.segmentModel.findByIdAndUpdate(id, next, { new: true });
+    } catch (err) {
+      if (err?.code === 11000) throw new BadRequestException('A group with this name already exists for this WhatsApp account');
+      throw err;
+    }
+  }
+
+  removeSegment(id: string) {
+    return this.segmentModel.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  }
+
+  async countBySegmentIds(whatsappAccountId: string, segmentIds: string[]) {
+    return (await this.findBySegmentIds(whatsappAccountId, segmentIds)).length;
+  }
+
+  countBySegment(whatsappAccountId: string, tags: string[], matchMode: 'any' | 'all' = 'any') {
     const q: any = { ...this.whatsappAccountIdQuery(whatsappAccountId), isOptedOut: false, isActive: true };
-    if (tags?.length) q.tags = { $in: tags };
+    if (tags?.length) q.tags = matchMode === 'all' ? { $all: tags } : { $in: tags };
     return this.model.countDocuments(q);
   }
 
-  findBySegment(whatsappAccountId: string, tags: string[]) {
+  async findBySegmentIds(whatsappAccountId: string, segmentIds: string[]) {
+    const ids = (segmentIds || []).filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    if (!ids.length) return [];
+    const segments = await this.segmentModel.find({
+      ...this.whatsappAccountIdQuery(whatsappAccountId),
+      _id: { $in: ids },
+      isActive: true,
+    });
+    const groupQueries = segments
+      .filter((segment) => Array.isArray(segment.tags) && segment.tags.length > 0)
+      .map((segment) => ({
+        tags: segment.matchMode === 'all' ? { $all: segment.tags } : { $in: segment.tags },
+      }));
+    if (!groupQueries.length) return [];
+    return this.model.find({
+      ...this.whatsappAccountIdQuery(whatsappAccountId),
+      isOptedOut: false,
+      isActive: true,
+      $or: groupQueries,
+    });
+  }
+
+  findBySegment(whatsappAccountId: string, tags: string[], matchMode: 'any' | 'all' = 'any') {
     const q: any = { ...this.whatsappAccountIdQuery(whatsappAccountId), isOptedOut: false, isActive: true };
-    if (tags?.length) q.tags = { $in: tags };
+    if (tags?.length) q.tags = matchMode === 'all' ? { $all: tags } : { $in: tags };
     return this.model.find(q);
   }
 
@@ -247,7 +342,7 @@ export class ContactsService {
 
     const validPhoneSet = new Set(prepared.filter((row) => this.isValidPhone(row.phone)).map((row) => row.phone));
     const existing = validPhoneSet.size
-      ? await this.model.find({ whatsappAccountId: accountObjectId, phone: { $in: Array.from(validPhoneSet) } }).select('phone name')
+      ? await this.model.find({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone: { $in: Array.from(validPhoneSet) } }).select('phone name')
       : [];
     const existingByPhone = new Map(existing.map((contact) => [contact.phone, contact]));
     const seen = new Set<string>();
@@ -344,6 +439,56 @@ export class ContactsService {
     return this.filterAllowedTags(tags, await this.allowedTagSet(whatsappAccountId));
   }
 
+  private async ensureTags(whatsappAccountId: string, tags: string[]) {
+    await this.ensureLegacyTags(whatsappAccountId);
+    const cleanByNormalized = new Map(
+      tags
+        .map((tag) => this.cleanTagName(tag))
+        .filter(Boolean)
+        .map((name) => [this.normalizeTag(name), name]),
+    );
+
+    if (!cleanByNormalized.size) {
+      return { allowed: await this.allowedTagSet(whatsappAccountId), createdTags: [], reactivatedTags: [] };
+    }
+
+    const account = await this.clients.findOne(whatsappAccountId);
+    const normalizedNames = Array.from(cleanByNormalized.keys());
+    const existingTags = await this.tagModel
+      .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), normalizedName: { $in: normalizedNames } })
+      .select('normalizedName isActive');
+    const existing = new Set(existingTags.map((tag) => tag.normalizedName));
+
+    const inactiveNames = existingTags
+      .filter((tag) => !tag.isActive)
+      .map((tag) => tag.normalizedName);
+    if (inactiveNames.length) {
+      await this.tagModel.updateMany(
+        { ...this.whatsappAccountIdQuery(whatsappAccountId), normalizedName: { $in: inactiveNames } },
+        { $set: { isActive: true } },
+      );
+    }
+
+    const missing = normalizedNames.filter((normalizedName) => !existing.has(normalizedName));
+    const createdTags = missing.map((normalizedName) => cleanByNormalized.get(normalizedName)).filter(Boolean) as string[];
+    const reactivatedTags = inactiveNames.map((normalizedName) => cleanByNormalized.get(normalizedName)).filter(Boolean) as string[];
+    if (missing.length) {
+      await this.tagModel.insertMany(missing.map((normalizedName) => ({
+        whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
+        tenantId: account?.tenantId,
+        name: cleanByNormalized.get(normalizedName),
+        normalizedName,
+        color: '#3b82f6',
+      })), { ordered: false }).catch((err) => {
+        const duplicateOnly = err?.code === 11000
+          || (Array.isArray(err?.writeErrors) && err.writeErrors.every((item: any) => item?.code === 11000));
+        if (!duplicateOnly) throw err;
+      });
+    }
+
+    return { allowed: await this.allowedTagSet(whatsappAccountId), createdTags, reactivatedTags };
+  }
+
   private async ensureLegacyTags(whatsappAccountId: string) {
     const existing = await this.tagModel.countDocuments(this.whatsappAccountIdQuery(whatsappAccountId));
     if (existing > 0) return;
@@ -368,6 +513,25 @@ export class ContactsService {
 
   private renameTagOnContacts(whatsappAccountId: string, oldName: string, newName: string) {
     return this.model.updateMany(
+      { ...this.whatsappAccountIdQuery(whatsappAccountId), tags: oldName },
+      [{
+        $set: {
+          tags: {
+            $setUnion: [{
+              $map: {
+                input: '$tags',
+                as: 'tag',
+                in: { $cond: [{ $eq: ['$$tag', oldName] }, newName, '$$tag'] },
+              },
+            }, []],
+          },
+        },
+      }],
+    );
+  }
+
+  private renameTagOnSegments(whatsappAccountId: string, oldName: string, newName: string) {
+    return this.segmentModel.updateMany(
       { ...this.whatsappAccountIdQuery(whatsappAccountId), tags: oldName },
       [{
         $set: {

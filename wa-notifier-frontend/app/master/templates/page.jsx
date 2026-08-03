@@ -5,7 +5,7 @@ import TemplatesWorkspace from '@/components/templates/TemplatesWorkspace';
 
 export default function TemplatesPage() {
   return (
-    <AppShell allowedRoles={['admin', 'master']}>
+    <AppShell allowedRoles={['master', 'admin']}>
       <TemplatesWorkspace />
     </AppShell>
   );

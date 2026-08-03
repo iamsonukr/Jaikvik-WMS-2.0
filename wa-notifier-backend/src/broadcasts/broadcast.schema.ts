@@ -13,6 +13,7 @@ export class Broadcast {
   @Prop({ required: true }) languageCode: string;
   @Prop([Object]) components: any[];     // header / body / button params
   @Prop([String]) targetTags: string[];  // empty = all contacts
+  @Prop({ type: [MongooseSchema.Types.ObjectId], ref: 'ContactSegment', default: [] }) targetSegmentIds: Types.ObjectId[];
   @Prop({ default: 'draft' }) status: string; // draft | scheduled | running | paused | canceled | done | failed
   @Prop() scheduledAt: Date;
   @Prop() startedAt: Date;

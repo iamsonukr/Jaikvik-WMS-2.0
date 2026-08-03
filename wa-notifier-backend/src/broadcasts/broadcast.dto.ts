@@ -8,6 +8,7 @@ export class CreateBroadcastDto {
   @IsString() languageCode: string;
   @IsOptional() @IsArray() components?: any[];
   @IsOptional() @IsArray() targetTags?: string[];
+  @IsOptional() @IsArray() targetSegmentIds?: string[];
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsDateString() scheduledAt?: string;
 }
@@ -18,6 +19,7 @@ export class UpdateBroadcastDto {
   @IsOptional() @IsString() languageCode?: string;
   @IsOptional() @IsArray() components?: any[];
   @IsOptional() @IsArray() targetTags?: string[];
+  @IsOptional() @IsArray() targetSegmentIds?: string[];
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsDateString() scheduledAt?: string;
 }

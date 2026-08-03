@@ -16,11 +16,13 @@ const text = (value) => String(value || '').toLowerCase();
 const statusColor = { open: 'yellow', assigned: 'blue', pending: 'yellow', resolved: 'green', closed: 'gray' };
 const priorityColor = { low: 'gray', normal: 'blue', high: 'yellow', urgent: 'red' };
 const statusOptions = ['open', 'assigned', 'pending', 'resolved', 'closed'];
+const clientMutableStatuses = ['open', 'closed'];
 const priorityOptions = ['low', 'normal', 'high', 'urgent'];
 
 const blankTicket = { tenantId: '', subject: '', category: 'general', priority: 'normal', message: '' };
 
 const idOf = (value) => String(value?._id || value?.id || value || '');
+const ticketRef = (ticket) => ticket?.refNumber || (ticket?._id ? `TCK-${String(ticket._id).slice(-8).toUpperCase()}` : '-');
 const nameOf = (user) => user?.name || user?.email || 'Unknown';
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString('en-IN') : '-';
 
@@ -114,6 +116,7 @@ export default function TicketsWorkspace({ mode }) {
   }, [activeId, loadDetail]);
 
   const sortedTickets = useMemo(() => sortItems(tickets, sort, {
+    ref: (ticket) => ticketRef(ticket),
     subject: (ticket) => ticket.subject,
     client: (ticket) => ticket.tenantId?.name,
     status: (ticket) => ticket.status,
@@ -150,6 +153,12 @@ export default function TicketsWorkspace({ mode }) {
     })),
   ], [masters]);
 
+  const statusEditOptions = useMemo(() => {
+    if (!isClient) return statusOptions;
+    const current = active?.status ? [active.status] : [];
+    return Array.from(new Set([...current, ...clientMutableStatuses]));
+  }, [active?.status, isClient]);
+
   const openCreate = () => {
     setForm(blankTicket);
     setCreateOpen(true);
@@ -168,11 +177,15 @@ export default function TicketsWorkspace({ mode }) {
     }
     setCreating(true);
     try {
-      const { data } = await api.post('/tickets', {
-        ...form,
+      const payload = {
         subject: form.subject.trim(),
+        category: form.category.trim() || 'general',
+        priority: form.priority,
         message: form.message.trim(),
-      });
+      };
+      if (isAdmin) payload.tenantId = form.tenantId;
+
+      const { data } = await api.post('/tickets', payload);
       setCreateOpen(false);
       setForm(blankTicket);
       await loadTickets();
@@ -261,7 +274,7 @@ export default function TicketsWorkspace({ mode }) {
       <div className="grid min-h-[620px] gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
         <Card className="overflow-hidden p-0">
           <div className={`grid gap-3 border-b border-border p-4 ${isAdmin ? 'lg:grid-cols-[1fr_150px_150px_190px]' : 'lg:grid-cols-[1fr_150px_150px]'}`}>
-            <Input placeholder="Search subject, category, message..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Search ref, subject, category, message..." value={search} onChange={(e) => setSearch(e.target.value)} />
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">All statuses</option>
               {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
@@ -289,6 +302,7 @@ export default function TicketsWorkspace({ mode }) {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
+                      <SortableTh label="Ref" sortKey="ref" sort={sort} onSort={setSort} />
                       <SortableTh label="Subject" sortKey="subject" sort={sort} onSort={setSort} />
                       <SortableTh label="Client" sortKey="client" sort={sort} onSort={setSort} />
                       <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
@@ -304,6 +318,7 @@ export default function TicketsWorkspace({ mode }) {
                         onClick={() => setActiveId(ticket._id)}
                         className={`cursor-pointer table-row-hover ${activeId === ticket._id ? 'bg-primary/5' : ''}`}
                       >
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-muted-foreground">{ticketRef(ticket)}</td>
                         <td className="px-4 py-3">
                           <p className="font-medium">{ticket.subject}</p>
                           <p className="max-w-xs truncate text-xs text-muted-foreground">{ticket.lastMessagePreview || ticket.category}</p>
@@ -342,7 +357,7 @@ export default function TicketsWorkspace({ mode }) {
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-semibold">{active.subject}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {active.tenantId?.name || 'Client'} - Created {fmtDateTime(active.createdAt)}
+                      {ticketRef(active)} - {active.tenantId?.name || 'Client'} - Created {fmtDateTime(active.createdAt)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -352,7 +367,11 @@ export default function TicketsWorkspace({ mode }) {
                 </div>
                 <div className={`grid gap-3 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                   <Select label="Status" value={active.status} disabled={updating} onChange={(e) => updateTicket({ status: e.target.value })}>
-                    {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                    {statusEditOptions.map((status) => (
+                      <option key={status} value={status} disabled={isClient && !clientMutableStatuses.includes(status)}>
+                        {status}
+                      </option>
+                    ))}
                   </Select>
                   <Select label="Priority" value={active.priority} disabled={updating || isClient} onChange={(e) => updateTicket({ priority: e.target.value })}>
                     {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}

@@ -11,6 +11,7 @@ export class Ticket {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant', required: true }) tenantId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true }) createdBy: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null }) assignedTo?: Types.ObjectId | null;
+  @Prop({ trim: true }) refNumber?: string;
   @Prop({ required: true, trim: true }) subject: string;
   @Prop({ default: 'general', trim: true }) category: string;
   @Prop({ default: 'normal', enum: TICKET_PRIORITIES }) priority: string;
@@ -26,4 +27,5 @@ export const TicketSchema = SchemaFactory.createForClass(Ticket);
 TicketSchema.index({ tenantId: 1, status: 1, updatedAt: -1 });
 TicketSchema.index({ assignedTo: 1, status: 1, updatedAt: -1 });
 TicketSchema.index({ priority: 1, status: 1 });
-TicketSchema.index({ subject: 'text', category: 'text', lastMessagePreview: 'text' });
+TicketSchema.index({ refNumber: 1 }, { unique: true, sparse: true });
+TicketSchema.index({ refNumber: 'text', subject: 'text', category: 'text', lastMessagePreview: 'text' });

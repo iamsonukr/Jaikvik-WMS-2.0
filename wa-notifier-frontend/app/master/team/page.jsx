@@ -1,12 +1,12 @@
 'use client';
 
-import ContactsWorkspace from '@/components/contacts/ContactsWorkspace';
+import TeamWorkspace from '@/components/team/TeamWorkspace';
 import AppShell from '@/components/layout/AppShell';
 
-export default function ContactsPage() {
+export default function TeamPage() {
   return (
     <AppShell allowedRoles={['master', 'admin']}>
-      <ContactsWorkspace />
+      <TeamWorkspace />
     </AppShell>
   );
 }

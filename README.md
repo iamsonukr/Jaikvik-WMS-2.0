@@ -159,14 +159,54 @@ The verify token must match `META_VERIFY_TOKEN` in the backend environment.
 WhatsApp Business is best for manual one-to-one customer chats. Jaikvik WMS is built for serious business messaging operations: multi-client control, segmented broadcasts, template messaging, automation, team inbox workflows, delivery tracking, and analytics.
 
 
-| Feature                                  | Owner | User |
-|------------------------------------------|:-----:|:----:|
-| Connect/setup WhatsApp account           |  ✅   |  ❌  |
-| Edit/delete WhatsApp account             |  ✅   |  ❌  |
-| Subscribe webhooks / register phone      |  ✅   |  ❌  |
-| Update company/billing profile           |  ✅   |  ❌  |
-| Buy/verify subscription plan             |  ✅   |  ❌  |
-| Invite team members                      |  ✅   |  ❌  |
-| Change team roles                        |  ✅   |  ❌  |
-| Disable/remove team members              |  ✅   |  ❌  |
-| Reset team member password               |  ✅   |  ❌  |
++-----------------------------------------------+-------+------+--------+-------+
+| Feature                                       | Owner | User | Master | Admin |
++-----------------------------------------------+-------+------+--------+-------+
+| Connect/setup WhatsApp account                |  ✅   |  ❌  |   ✅   |  ✅   |
+| Edit/delete WhatsApp account                  |  ✅   |  ❌  |   ✅   |  ✅   |
+| Subscribe webhooks / register phone           |  ✅   |  ❌  |   ✅   |  ✅   |
+| View WhatsApp accounts                        |  ✅   |  ✅  |   ✅   |  ✅   |
+| Switch between WhatsApp accounts              |  ✅   |  ✅* |   ✅   |  ✅   |
+| Update company/billing profile                |  ✅   |  ❌  |   ✅   |  ✅   |
+| Buy/verify subscription plan                  |  ✅   |  ❌  |   ❌   |  ✅   |
+| View current plan                             |  ✅   |  ✅  |   ✅   |  ✅   |
+| Manage plans/pricing                          |  ❌   |  ❌  |   ✅   |  ✅   |
+| Assign/change client subscription             |  ❌   |  ❌  |   ✅   |  ✅   |
+| Recharge wallet                               |  ✅   |  ❌  |   ❌   |  ✅   |
+| View wallet balance/ledger                    |  ✅   |  ✅  |   ✅   |  ✅   |
+| Manually adjust wallet                        |  ❌   |  ❌  |   ✅   |  ✅   |
+| Reverse wallet transaction                    |  ❌   |  ❌  |   ✅   |  ✅   |
+| View payments/invoices                        |  ✅   |  ✅  |   ✅   |  ✅   |
+| Manage payment records                        |  ❌   |  ❌  |   ✅   |  ✅   |
+| Invite team members                           |  ✅   |  ❌  |   ❌   |  ✅   |
+| Change team roles                             |  ✅   |  ❌  |   ❌   |  ✅   |
+| Disable/remove team members                   |  ✅   |  ❌  |   ❌   |  ✅   |
+| Reset team member password                    |  ✅   |  ❌  |   ❌   |  ✅   |
+| View team members                             |  ✅   |  ✅  |   ✅   |  ✅   |
+| Create/import contacts                        |  ✅   |  ✅  |   ✅   |  ✅   |
+| Delete contacts / bulk delete                 |  ✅   |  ✅  |   ✅   |  ✅   |
+| Manage contact tags/groups                    |  ✅   |  ✅  |   ✅   |  ✅   |
+| Export contacts/segments                      |  ✅   |  ✅  |   ✅   |  ✅   |
+| Create/edit chatbot rules                     |  ✅   |  ✅  |   ✅   |  ✅   |
+| Sync/create templates                         |  ✅   |  ✅  |   ✅   |  ✅   |
+| Create broadcasts/campaigns                   |  ✅   |  ✅  |   ✅   |  ✅   |
+| Send/schedule broadcasts                      |  ✅   |  ✅  |   ✅   |  ✅   |
+| Pause/cancel broadcasts                       |  ✅   |  ✅  |   ✅   |  ✅   |
+| View broadcast logs/analytics                 |  ✅   |  ✅  |   ✅   |  ✅   |
+| View inbox conversations                      |  ✅   |  ✅  |   ✅   |  ✅   |
+| Reply/send templates in inbox                 |  ✅   |  ✅  |   ✅   |  ✅   |
+| Assign inbox chat to team member              |  ✅   |  ✅  |   ✅   |  ✅   |
+| Resolve inbox thread                          |  ✅   |  ✅  |   ✅   |  ✅   |
+| View notifications                            |  ✅   |  ✅  |   ✅   |  ✅   |
+| Create support ticket                         |  ✅   |  ✅  |   ❌   |  ✅   |
+| Reply to assigned support ticket              |  ✅   |  ✅  |   ✅   |  ✅   |
+| Assign support tickets                        |  ❌   |  ❌  |   ✅   |  ✅   |
+| View all support tickets                      |  ❌   |  ❌  |   ✅*  |  ✅   |
+| Manage admin/master staff                     |  ❌   |  ❌  |   ❌   |  ✅   |
+| View audit logs                               |  ❌   |  ❌  |   ✅   |  ✅   |
+| Manage tenants/clients                        |  ❌   |  ❌  |   ✅   |  ✅   |
++-----------------------------------------------+-------+------+--------+-------+
+
+* Notes:
+  - User can switch only between WhatsApp accounts they have been granted access to.
+  - Master can view all support tickets across all assigned tenants/clients.

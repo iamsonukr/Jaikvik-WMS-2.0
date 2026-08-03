@@ -21,21 +21,28 @@ export default function DashboardPage() {
       setStats(null); setDaily([]); setRecent([]); setAlerts([]);
       return;
     }
-    const cid = activeClient._id;
-    setLoading(true);
-    Promise.all([
-      api.get(`/analytics/overview?whatsappAccountId=${cid}`),
-      api.get(`/analytics/daily?whatsappAccountId=${cid}&days=14`),
-      api.get(`/broadcasts?whatsappAccountId=${cid}`),
-      api.get(`/alerts?whatsappAccountId=${cid}`),
-    ]).then(([s, d, b, a]) => {
-      setStats(s.data);
-      setDaily(d.data);
-      setRecent(b.data.slice(0, 5));
-      setAlerts(a.data);
-    }).catch(() => {
-      setStats(null); setDaily([]); setRecent([]); setAlerts([]);
-    }).finally(() => setLoading(false));
+
+    const load = (silent = false) => {
+      const cid = activeClient._id;
+      if (!silent) setLoading(true);
+      Promise.all([
+        api.get(`/analytics/overview?whatsappAccountId=${cid}`),
+        api.get(`/analytics/daily?whatsappAccountId=${cid}&days=14`),
+        api.get(`/broadcasts?whatsappAccountId=${cid}`),
+        api.get(`/alerts?whatsappAccountId=${cid}`),
+      ]).then(([s, d, b, a]) => {
+        setStats(s.data);
+        setDaily(d.data);
+        setRecent(b.data.slice(0, 5));
+        setAlerts(a.data);
+      }).catch(() => {
+        setStats(null); setDaily([]); setRecent([]); setAlerts([]);
+      }).finally(() => { if (!silent) setLoading(false); });
+    };
+
+    load();
+    const interval = setInterval(() => load(true), 15000);
+    return () => clearInterval(interval);
   }, [activeClient]);
 
   return (
@@ -105,11 +112,11 @@ export default function DashboardPage() {
 
             <Card className="lg:col-span-3">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <h3 className="text-sm font-semibold">Priority Alerts</h3>
+                <h3 className="text-sm font-semibold">Priority Notifications</h3>
                 <Link href="/client/alerts"><Button size="sm" variant="ghost">View all</Button></Link>
               </div>
               <div className="divide-y divide-[var(--dark-border)]">
-                {alerts.length === 0 && <p className="p-4 text-sm text-[var(--muted-text)]">No priority alerts right now.</p>}
+                {alerts.length === 0 && <p className="p-4 text-sm text-[var(--muted-text)]">No priority notifications right now.</p>}
                 {alerts.slice(0, 5).map(alert => (
                   <div key={alert.id} className="flex items-start gap-3 px-4 py-3">
                     <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
@@ -119,7 +126,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold">{alert.title || 'Alert'}</p>
+                        <p className="text-sm font-semibold">{alert.title || 'Notification'}</p>
                         <span className="rounded-full border border-[var(--dark-border)] px-2 py-0.5 text-[11px] text-[var(--muted-text)]">
                           {alert.severity || 'info'}
                         </span>

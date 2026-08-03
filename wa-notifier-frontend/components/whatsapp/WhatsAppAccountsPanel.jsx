@@ -318,7 +318,7 @@ export default function WhatsAppAccountsPanel() {
         footer={(
           <>
             <Button variant="outline" onClick={() => setRemoveTarget(null)}>Cancel</Button>
-            <Button variant="danger" onClick={confirmRemove} disabled={removing}>{removing ? 'Removing…' : 'Remove'}</Button>
+            <Button variant="danger" onClick={confirmRemove} dis  abled={removing}>{removing ? 'Removing…' : 'Remove'}</Button>
           </>
         )}
       >

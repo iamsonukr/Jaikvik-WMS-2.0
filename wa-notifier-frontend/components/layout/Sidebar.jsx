@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -11,22 +12,27 @@ import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
 import { normalizeRole } from '@/lib/roles';
 import { Avatar, AvatarFallback, SearchableSelect } from '@/components/ui';
+import api from '@/lib/api';
 
 // Messaging Tools — the original operational dashboard (send campaigns,
 // manage contacts/templates, shared inbox). Lives under /master/*.
 // Admin (supreme) and Master (runs campaigns for any client) both get this.
-const messagingNav = [
+const masterCompanyNav = [
   { href: '/master/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/master/alerts',      label: 'Notifications', icon: Bell },
   { href: '/master/broadcasts',  label: 'Broadcasts',  icon: Megaphone },
   { href: '/master/inbox',       label: 'Inbox',       icon: Inbox },
-  { href: '/master/tickets',     label: 'Tickets',     icon: LifeBuoy },
   { href: '/master/contacts',    label: 'Contacts',    icon: UserCircle },
   { href: '/master/templates',   label: 'Templates',   icon: FileText },
   { href: '/master/chatbot',     label: 'Chatbot',     icon: Bot },
   { href: '/master/analytics',   label: 'Analytics',   icon: BarChart2 },
+];
+
+const masterGlobalNav = [
   { href: '/master/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle },
   { href: '/master/plans',       label: 'Plans',       icon: CreditCard },
   { href: '/master/wallet',      label: 'Wallet',      icon: Wallet },
+  { href: '/master/tickets',     label: 'Support & Tickets', icon: LifeBuoy },
   { href: '/master/settings',    label: 'Settings',    icon: Settings },
 ];
 
@@ -42,9 +48,9 @@ const controlPanelNav = [
   { href: '/admin/plans',       label: 'Plans',          icon: Tags },
   { href: '/admin/wallets',     label: 'Wallets',        icon: Wallet },
   { href: '/admin/payments',    label: 'Payments',       icon: CreditCard },
-  { href: '/admin/tickets',     label: 'Tickets',        icon: LifeBuoy },
   { href: '/admin/staff',       label: 'Staff & Roles',  icon: UsersRound, adminOnly: true },
   { href: '/admin/audit-logs',  label: 'Audit Logs',     icon: ScrollText },
+  { href: '/admin/tickets',     label: 'Support & Tickets', icon: LifeBuoy },
   { href: '/admin/settings',    label: 'Settings',       icon: Settings },
 ];
 
@@ -62,41 +68,93 @@ const adminOperationsNav = [
 // make sense from a tenant's own point of view.
 const clientNav = [
   { href: '/client/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/client/alerts',      label: 'Alerts',      icon: Bell },
-  { href: '/client/tickets',     label: 'Tickets',     icon: LifeBuoy },
-  { href: '/client/broadcasts',  label: 'Broadcasts',  icon: Megaphone },
-  { href: '/client/inbox',       label: 'Inbox',       icon: Inbox },
-  { href: '/client/contacts',    label: 'Contacts',    icon: UserCircle },
-  { href: '/client/templates',   label: 'Templates',   icon: FileText },
-  { href: '/client/chatbot',     label: 'Chatbot',     icon: Bot },
+  { href: '/client/alerts',      label: 'Notifications', icon: Bell, badgeKey: 'notifications' },
+  { href: '/client/broadcasts',  label: 'Broadcasts',  icon: Megaphone, badgeKey: 'broadcasts' },
+  { href: '/client/inbox',       label: 'Inbox',       icon: Inbox, badgeKey: 'inbox' },
+  { href: '/client/contacts',    label: 'Contacts',    icon: UserCircle, badgeKey: 'contacts' },
+  { href: '/client/templates',   label: 'Templates',   icon: FileText, badgeKey: 'templates' },
+  { href: '/client/chatbot',     label: 'Chatbot',     icon: Bot, badgeKey: 'chatbot' },
   { href: '/client/analytics',   label: 'Analytics',   icon: BarChart2 },
-  { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true },
-  { href: '/client/team',        label: 'Team',        icon: Users },
-  { href: '/client/plans',      label: 'Plans',       icon: CreditCard },
-  { href: '/client/wallet',      label: 'Wallet',      icon: Wallet },
-  { href: '/client/payments',    label: 'Payments',    icon: Receipt },
+  { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true, badgeKey: 'whatsapp' },
+  { href: '/client/team',        label: 'Team',        icon: Users, badgeKey: 'team' },
+  { href: '/client/plans',      label: 'Plans',       icon: CreditCard, badgeKey: 'plans' },
+  { href: '/client/wallet',      label: 'Wallet',      icon: Wallet, badgeKey: 'wallet' },
+  { href: '/client/payments',    label: 'Payments',    icon: Receipt, badgeKey: 'payments' },
+  { href: '/client/tickets',     label: 'Support & Tickets', icon: LifeBuoy, badgeKey: 'tickets' },
   { href: '/client/settings',    label: 'Settings',    icon: Settings },
 ];
 
 const ROLE_LABEL = { admin: 'Admin', master: 'Master', client_owner: 'Client', client_user: 'Client' };
 
-function NavGroup({ title, items, pathname, onClose, collapsed = false }) {
+function formatBadgeValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'number') {
+    if (value >= 100000) return `${Math.round(value / 100000)}L`;
+    if (value >= 1000) return `${Math.round(value / 1000)}k`;
+    return String(value);
+  }
+  return String(value);
+}
+
+function formatWalletBadge(value) {
+  if (value === null || value === undefined) return '';
+  const amount = Number(value || 0);
+  if (amount >= 100000) return `Rs ${Math.round(amount / 100000)}L`;
+  if (amount >= 1000) return `Rs ${Math.round(amount / 1000)}k`;
+  return `Rs ${Math.round(amount)}`;
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.data)) return value.data;
+  return [];
+}
+
+function daysUntil(value) {
+  if (!value) return null;
+  const diff = new Date(value).getTime() - Date.now();
+  if (!Number.isFinite(diff)) return null;
+  return Math.ceil(diff / 86400000);
+}
+
+function NavBadge({ value, collapsed = false, tone = 'neutral' }) {
+  const label = formatBadgeValue(value);
+  if (!label) return null;
+  const toneClass = tone === 'danger'
+    ? 'bg-red-500 text-white'
+    : tone === 'warning'
+      ? 'bg-amber-400 text-slate-950'
+      : 'bg-white/12 text-white ring-1 ring-white/10';
   return (
-    <div className="mb-4">
+    <span
+      className={`${toneClass} ${collapsed
+        ? 'absolute right-1.5 top-1.5 min-w-4 rounded-full px-1 text-center text-[9px] leading-4'
+        : 'ml-auto max-w-[72px] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold leading-4'}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function NavGroup({ title, items, pathname, onClose, collapsed = false, badges = {}, bordered = false }) {
+  return (
+    <div className={`mb-4 ${bordered ? 'rounded-xl border border-white/10 bg-white/[0.025] p-2 shadow-sm shadow-black/10' : ''}`}>
       {title && !collapsed && <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--menu-text)]/70">{title}</p>}
       <div className="space-y-0.5">
-        {items.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon, badgeKey }) => {
           const active = pathname === href || pathname.startsWith(href + '/');
+          const badge = badgeKey ? badges[badgeKey] : null;
           return (
             <Link key={href} href={href}
               onClick={onClose}
-              title={collapsed ? label : undefined}
+              title={collapsed ? `${label}${badge?.label ? `: ${badge.label}` : ''}` : undefined}
               className={`group relative flex items-center rounded-lg text-sm font-medium transition-all duration-150
                 ${collapsed ? 'h-11 justify-center px-0' : 'gap-3 px-3 py-2.5'}
                 ${active ? 'bg-brand-gradient text-white shadow-lg shadow-brand/20' : 'text-[var(--menu-text)] hover:bg-white/[0.07] hover:text-[var(--menu-text)]'}`}>
               <Icon size={17} className={active ? '' : 'transition-transform duration-150 group-hover:scale-110'} />
               <span className={collapsed ? 'sr-only' : ''}>{label}</span>
-              {active && !collapsed && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/80" />}
+              {badge ? <NavBadge value={badge.value} tone={badge.tone} collapsed={collapsed} /> : active && !collapsed && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/80" />}
             </Link>
           );
         })}
@@ -109,6 +167,7 @@ export default function Sidebar({ open = false, onClose = () => {}, collapsed = 
   const pathname               = usePathname();
   const { user, logout }       = useAuth();
   const { clients, activeClient, selectClient } = useClient();
+  const [clientBadges, setClientBadges] = useState({});
 
   const role = normalizeRole(user?.role);
   const isAdmin = role === 'admin';
@@ -127,6 +186,88 @@ export default function Sidebar({ open = false, onClose = () => {}, collapsed = 
   // their own WhatsApp numbers when their plan allows more than one.
   const showClientSwitcher = ((isAdmin || isMaster) && clients.length > 0) || (isClient && clients.length > 1);
   const showClientCompany = isClient && activeClient && !showClientSwitcher;
+
+  useEffect(() => {
+    if (!isClient || !activeClient?._id) {
+      setClientBadges({});
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadClientBadges = async () => {
+      const accountId = activeClient._id;
+      const [
+        alertsRes,
+        threadsRes,
+        walletRes,
+        contactsRes,
+        broadcastsRes,
+        templatesRes,
+        chatbotRes,
+        teamRes,
+        paymentsRes,
+        ticketsRes,
+        subscriptionRes,
+      ] = await Promise.all([
+        api.get(`/alerts?whatsappAccountId=${accountId}`).catch(() => ({ data: [] })),
+        api.get(`/inbox/threads?whatsappAccountId=${accountId}`).catch(() => ({ data: [] })),
+        api.get('/wallet/me').catch(() => ({ data: null })),
+        api.get(`/contacts/count?whatsappAccountId=${accountId}`).catch(() => ({ data: null })),
+        api.get(`/broadcasts?whatsappAccountId=${accountId}`).catch(() => ({ data: [] })),
+        api.get(`/templates?whatsappAccountId=${accountId}`).catch(() => ({ data: [] })),
+        api.get(`/chatbot?whatsappAccountId=${accountId}`).catch(() => ({ data: [] })),
+        api.get('/auth/team').catch(() => ({ data: [] })),
+        api.get('/payments/me').catch(() => ({ data: [] })),
+        api.get('/tickets').catch(() => ({ data: [] })),
+        api.get('/subscriptions/me').catch(() => ({ data: null })),
+      ]);
+      if (cancelled) return;
+
+      const alerts = asArray(alertsRes.data);
+      const threads = asArray(threadsRes.data);
+      const broadcasts = asArray(broadcastsRes.data);
+      const templates = asArray(templatesRes.data);
+      const chatbotRules = asArray(chatbotRes.data);
+      const team = asArray(teamRes.data);
+      const payments = asArray(paymentsRes.data);
+      const tickets = asArray(ticketsRes.data);
+      const activeThreads = threads.filter((thread) => String(thread.threadStatus || 'open').toLowerCase() !== 'resolved');
+      const balance = walletRes.data?.balance;
+      const contactsCount = Number(contactsRes.data?.count || 0);
+      const activeBroadcasts = broadcasts.filter((broadcast) => !['done', 'canceled'].includes(String(broadcast.status || '').toLowerCase()));
+      const approvedTemplates = templates.filter((template) => String(template.status || '').toUpperCase() === 'APPROVED');
+      const activeRules = chatbotRules.filter((rule) => rule.isActive !== false);
+      const activeTeam = team.filter((member) => member.isActive !== false);
+      const openTickets = tickets.filter((ticket) => !['resolved', 'closed'].includes(String(ticket.status || '').toLowerCase()));
+      const subscription = subscriptionRes.data;
+      const planDays = daysUntil(subscription?.endDate);
+      const planBadge = subscription?.planId?.name
+        || subscription?.planName
+        || (planDays !== null ? `${Math.max(planDays, 0)}d` : null);
+
+      setClientBadges({
+        notifications: { value: alerts.length, label: `${alerts.length} notifications`, tone: alerts.some((alert) => alert.severity === 'critical') ? 'danger' : alerts.length ? 'warning' : 'neutral' },
+        broadcasts: { value: activeBroadcasts.length, label: `${activeBroadcasts.length} active campaigns`, tone: activeBroadcasts.some((broadcast) => String(broadcast.status || '').toLowerCase() === 'failed') ? 'danger' : 'neutral' },
+        inbox: { value: activeThreads.length, label: `${activeThreads.length} open conversations`, tone: 'neutral' },
+        contacts: { value: contactsCount, label: `${contactsCount} contacts`, tone: 'neutral' },
+        templates: { value: approvedTemplates.length, label: `${approvedTemplates.length} approved templates`, tone: approvedTemplates.length ? 'neutral' : 'warning' },
+        chatbot: { value: activeRules.length, label: `${activeRules.length} active rules`, tone: 'neutral' },
+        whatsapp: { value: clients.length, label: `${clients.length} WhatsApp accounts`, tone: clients.length ? 'neutral' : 'warning' },
+        team: { value: activeTeam.length, label: `${activeTeam.length} active team members`, tone: 'neutral' },
+        plans: planBadge ? { value: planBadge, label: subscription?.endDate ? `${planBadge} plan` : 'Current plan', tone: planDays !== null && planDays <= 7 ? 'warning' : 'neutral' } : null,
+        wallet: balance !== undefined && balance !== null ? { value: formatWalletBadge(balance), label: formatWalletBadge(balance), tone: Number(balance || 0) <= 0 ? 'danger' : Number(balance || 0) < 500 ? 'warning' : 'neutral' } : null,
+        payments: { value: payments.length, label: `${payments.length} payments`, tone: 'neutral' },
+        tickets: { value: openTickets.length, label: `${openTickets.length} open tickets`, tone: openTickets.length ? 'warning' : 'neutral' },
+      });
+    };
+
+    loadClientBadges();
+    const interval = setInterval(loadClientBadges, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isClient, activeClient?._id, clients.length]);
 
   return (
     <aside
@@ -208,8 +349,27 @@ export default function Sidebar({ open = false, onClose = () => {}, collapsed = 
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {isClient && <NavGroup items={clientNavForRole} pathname={pathname} onClose={onClose} collapsed={collapsed} />}
-        {isMaster && <NavGroup items={messagingNav} pathname={pathname} onClose={onClose} collapsed={collapsed} />}
+        {isClient && <NavGroup items={clientNavForRole} pathname={pathname} onClose={onClose} collapsed={collapsed} badges={clientBadges} />}
+        {isMaster && (
+          <>
+            <NavGroup
+              title="Company Workspace"
+              items={masterCompanyNav}
+              pathname={pathname}
+              onClose={onClose}
+              collapsed={collapsed}
+              bordered
+            />
+            <NavGroup
+              title="Global Management"
+              items={masterGlobalNav}
+              pathname={pathname}
+              onClose={onClose}
+              collapsed={collapsed}
+              bordered
+            />
+          </>
+        )}
         {isAdmin && <NavGroup title="Control panel" items={controlPanelForRole} pathname={pathname} onClose={onClose} collapsed={collapsed} />}
         {isAdmin && <NavGroup title="Operations" items={adminOperationsNav} pathname={pathname} onClose={onClose} collapsed={collapsed} />}
       </nav>

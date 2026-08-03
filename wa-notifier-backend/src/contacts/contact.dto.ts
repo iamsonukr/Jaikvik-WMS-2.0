@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsMongoId, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsMongoId, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateContactDto {
   @IsOptional() @IsMongoId() whatsappAccountId?: string;
@@ -43,5 +43,22 @@ export class UpdateContactTagDto {
   @IsOptional() @IsString() @MinLength(1) name?: string;
   @IsOptional() @IsString() color?: string;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class CreateContactSegmentDto {
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
+  @IsString() @MinLength(1) name: string;
+  @IsOptional() @IsString() description?: string;
+  @IsArray() tags: string[];
+  @IsOptional() @IsIn(['any', 'all']) matchMode?: 'any' | 'all';
+}
+
+export class UpdateContactSegmentDto {
+  @IsOptional() @IsString() @MinLength(1) name?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsArray() tags?: string[];
+  @IsOptional() @IsIn(['any', 'all']) matchMode?: 'any' | 'all';
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

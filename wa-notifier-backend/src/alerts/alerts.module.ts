@@ -10,6 +10,7 @@ import { RazorpayPayment, RazorpayPaymentSchema } from '../payments/razorpay-pay
 import { Template, TemplateSchema } from '../templates/template.schema';
 import { Broadcast, BroadcastSchema } from '../broadcasts/broadcast.schema';
 import { AccountAlert, AccountAlertSchema } from '../webhooks/account-alert.schema';
+import { Message, MessageSchema } from '../inbox/message.schema';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AccountAlert, AccountAlertSchema } from '../webhooks/account-alert.sche
       { name: Template.name, schema: TemplateSchema },
       { name: Broadcast.name, schema: BroadcastSchema },
       { name: AccountAlert.name, schema: AccountAlertSchema },
+      { name: Message.name, schema: MessageSchema },
     ]),
     WhatsAppAccountsModule,
   ],

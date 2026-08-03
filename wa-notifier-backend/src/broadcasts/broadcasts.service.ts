@@ -42,7 +42,7 @@ export class BroadcastsService {
 
   findOne(id: string) { return this.broadcastModel.findById(id); }
 
-  async create(dto: Omit<Partial<Broadcast>, 'whatsappAccountId' | 'scheduledAt'> & { whatsappAccountId?: string; clientId?: string; scheduledAt?: string | Date }) {
+  async create(dto: Omit<Partial<Broadcast>, 'whatsappAccountId' | 'scheduledAt' | 'targetSegmentIds'> & { whatsappAccountId?: string; clientId?: string; scheduledAt?: string | Date; targetSegmentIds?: string[] }) {
     // Stamp tenantId at creation time (not just at send time) so the field
     // is always populated for reporting/filtering, matching every other
     // tenant-scoped collection in the schema.
@@ -55,6 +55,7 @@ export class BroadcastsService {
     if (!['draft', 'scheduled'].includes(status)) throw new BadRequestException('New campaigns can only be saved as draft or scheduled.');
     return this.broadcastModel.create({
       ...dto,
+      targetSegmentIds: this.normalizeSegmentIds(dto.targetSegmentIds),
       status,
       scheduledAt,
       whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
@@ -62,7 +63,7 @@ export class BroadcastsService {
     });
   }
 
-  async update(id: string, dto: Omit<Partial<Broadcast>, 'scheduledAt'> & { scheduledAt?: string | Date }) {
+  async update(id: string, dto: Omit<Partial<Broadcast>, 'scheduledAt' | 'targetSegmentIds'> & { scheduledAt?: string | Date; targetSegmentIds?: string[] }) {
     const existing = await this.broadcastModel.findById(id);
     if (!existing) throw new NotFoundException();
     if (ACTIVE_BROADCAST_STATUSES.has(existing.status)) {
@@ -74,6 +75,7 @@ export class BroadcastsService {
 
     const next: any = { ...dto };
     if (dto.scheduledAt !== undefined) next.scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt as any) : null;
+    if (dto.targetSegmentIds !== undefined) next.targetSegmentIds = this.normalizeSegmentIds(dto.targetSegmentIds);
     if (dto.status !== undefined) next.status = this.normalizeBroadcastStatus(dto.status);
     if (next.scheduledAt && next.status === 'draft') next.status = 'scheduled';
     if (next.status === 'scheduled' && !next.scheduledAt && !existing.scheduledAt) {
@@ -101,7 +103,7 @@ export class BroadcastsService {
     const whatsappAccountId = this.accountIdOf(broadcast);
     const account = await this.clients.findOne(whatsappAccountId);
     const tenantId = toObjectId(broadcast.tenantId || account.tenantId, 'tenantId');
-    const contacts = await this.contacts.findBySegment(whatsappAccountId, broadcast.targetTags);
+    const contacts = await this.resolveAudienceContacts(broadcast, whatsappAccountId);
     const category = await this.resolveCategory(broadcast);
     const price = await this.resolvePlanPrice(String(tenantId), category);
     const walletBalance = await this.wallet.getBalance(tenantId);
@@ -142,7 +144,7 @@ export class BroadcastsService {
     const whatsappAccountId = this.accountIdOf(broadcast);
     const account = await this.clients.findOne(whatsappAccountId);
     const tenantId = toObjectId(broadcast.tenantId || account.tenantId, 'tenantId');
-    const contacts = await this.contacts.findBySegment(whatsappAccountId, broadcast.targetTags);
+    const contacts = await this.resolveAudienceContacts(broadcast, whatsappAccountId);
     const category = await this.resolveCategory(broadcast);
     const price = await this.resolvePlanPrice(String(tenantId), category);
 
@@ -476,6 +478,16 @@ export class BroadcastsService {
 
   private accountIdOf(broadcast: any) {
     return String(broadcast.whatsappAccountId || broadcast.clientId);
+  }
+
+  private resolveAudienceContacts(broadcast: any, whatsappAccountId: string) {
+    const segmentIds = (broadcast.targetSegmentIds || []).map((id: any) => String(id)).filter(Boolean);
+    if (segmentIds.length) return this.contacts.findBySegmentIds(whatsappAccountId, segmentIds);
+    return this.contacts.findBySegment(whatsappAccountId, broadcast.targetTags || []);
+  }
+
+  private normalizeSegmentIds(ids: string[] = []) {
+    return Array.from(new Set(ids.filter((id) => Types.ObjectId.isValid(id)))).map((id) => new Types.ObjectId(id));
   }
 
   private normalizeBroadcastStatus(status: string) {

@@ -3,9 +3,11 @@ import { ContactsService } from './contacts.service';
 import {
   BulkContactsDto,
   CommitContactImportDto,
+  CreateContactSegmentDto,
   CreateContactDto,
   CreateContactTagDto,
   PreviewContactImportDto,
+  UpdateContactSegmentDto,
   UpdateContactDto,
   UpdateContactTagDto,
 } from './contact.dto';
@@ -40,15 +42,44 @@ export class ContactsController {
   @Delete('tags/:id') removeTag(@Param('id') id: string) { return this.svc.removeTag(id); }
 
   @UseGuards(TenantOwnershipGuard)
-  @Get('count') async count(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string, @Query('tag') tags: string | string[]) {
+  @Get('count') async count(
+    @Query('whatsappAccountId') aid: string,
+    @Query('clientId') cid: string,
+    @Query('tag') tags: string | string[],
+    @Query('segmentId') segmentIds: string | string[],
+    @Query('matchMode') matchMode: 'any' | 'all',
+  ) {
+    if (segmentIds) {
+      const segmentArr = Array.isArray(segmentIds) ? segmentIds : [segmentIds];
+      const count = await this.svc.countBySegmentIds(aid || cid, segmentArr);
+      return { count };
+    }
     const tagArr = tags ? (Array.isArray(tags) ? tags : [tags]) : [];
-    const count = await this.svc.countBySegment(aid || cid, tagArr);
+    const count = await this.svc.countBySegment(aid || cid, tagArr, matchMode);
     return { count };
   }
 
   @UseGuards(TenantOwnershipGuard)
   @Get('import/history') importHistory(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
     return this.svc.importHistory(aid || cid);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Get('segments') getSegments(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
+    return this.svc.getSegments(aid || cid);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('segments') createSegment(@Body() dto: CreateContactSegmentDto) {
+    return this.svc.createSegment(dto);
+  }
+
+  @Patch('segments/:id') updateSegment(@Param('id') id: string, @Body() dto: UpdateContactSegmentDto) {
+    return this.svc.updateSegment(id, dto);
+  }
+
+  @Delete('segments/:id') removeSegment(@Param('id') id: string) {
+    return this.svc.removeSegment(id);
   }
 
   @UseGuards(TenantOwnershipGuard)
