@@ -190,6 +190,32 @@ export class MetaService {
     }
   }
 
+  async getBusinessSystemUsers(businessId: string, accessToken: string) {
+    try {
+      const { data } = await axios.get(
+        `https://graph.facebook.com/${this.version}/${businessId}/system_users`,
+        {
+          params: {
+            fields: 'id,name,role',
+          },
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      return data?.data || [];
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta getBusinessSystemUsers failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        businessId,
+      });
+      throw new BadRequestException(`Could not fetch provider business system users: ${message}`);
+    }
+  }
+
   async attachCreditLineToWaba(creditLineId: string, wabaId: string, currency: string, accessToken: string) {
     try {
       const { data } = await axios.post(

@@ -161,20 +161,54 @@ export class WhatsAppAccountsService {
   }
 
   private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
-    const providerSystemUserId = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ID');
+    const configuredSystemUserId = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ID');
     const providerAccessToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
 
-    if (!providerSystemUserId && !providerAccessToken) return fallbackAccessToken;
-    if (!providerSystemUserId || !providerAccessToken) {
+    if (!configuredSystemUserId && !providerAccessToken) return fallbackAccessToken;
+    if (!providerAccessToken) {
       throw new BadRequestException(
-        'Both META_PROVIDER_SYSTEM_USER_ID and META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN are required for Tech Provider WABA onboarding.',
+        'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required for Tech Provider WABA onboarding.',
       );
     }
 
+    const providerSystemUserId = await this.resolveProviderSystemUserId(providerAccessToken, configuredSystemUserId);
     const tasks = this.parseProviderSystemUserTasks();
     await this.meta.assignSystemUserToWaba(wabaId, providerSystemUserId, providerAccessToken, tasks);
     await this.attachProviderCreditLineIfConfigured(wabaId, providerAccessToken);
     return providerAccessToken;
+  }
+
+  private async resolveProviderSystemUserId(providerAccessToken: string, configuredSystemUserId?: string) {
+    const providerBusinessId = this.cfg.get<string>('META_PROVIDER_BUSINESS_ID');
+    if (!providerBusinessId) {
+      if (!configuredSystemUserId) {
+        throw new BadRequestException(
+          'META_PROVIDER_SYSTEM_USER_ID is required when META_PROVIDER_BUSINESS_ID is not configured.',
+        );
+      }
+      return configuredSystemUserId;
+    }
+
+    const users = await this.meta.getBusinessSystemUsers(providerBusinessId, providerAccessToken);
+    if (!users.length) {
+      throw new BadRequestException('No system users were found in the configured provider business.');
+    }
+
+    if (!configuredSystemUserId && users.length === 1) return users[0].id;
+
+    const selected = configuredSystemUserId
+      ? users.find((user) => String(user.id) === String(configuredSystemUserId))
+      : null;
+    if (selected) return selected.id;
+
+    const available = users
+      .map((user) => `${user.name || 'Unnamed system user'} (${user.id})`)
+      .join(', ');
+    throw new BadRequestException(
+      configuredSystemUserId
+        ? `META_PROVIDER_SYSTEM_USER_ID was not found in META_PROVIDER_BUSINESS_ID. Use one of: ${available}`
+        : `Multiple provider system users found. Set META_PROVIDER_SYSTEM_USER_ID to one of: ${available}`,
+    );
   }
 
   private parseProviderSystemUserTasks() {
