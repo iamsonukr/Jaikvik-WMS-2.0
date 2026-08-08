@@ -18,6 +18,10 @@ function qualityColor(rating) {
   return 'gray';
 }
 
+function boolColor(value) {
+  return value ? 'green' : 'red';
+}
+
 export default function WhatsAppAccountsPanel() {
   const { clients, loading, refreshClients, activeClient } = useClient();
 
@@ -287,6 +291,34 @@ export default function WhatsAppAccountsPanel() {
                 </div>
               ) : (
                 <p className="text-destructive">{diagResult.error || 'Could not fetch phone number status from Meta.'}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Saved token access</p>
+              {diagResult.token ? (
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <p>Valid: <Badge color={boolColor(diagResult.token.isValid)} label={diagResult.token.isValid ? 'Yes' : 'No'} /></p>
+                    <p>Type: <span className="font-medium">{diagResult.token.type || '-'}</span></p>
+                    <p>Management: <Badge color={boolColor(diagResult.token.hasWhatsappBusinessManagement)} label={diagResult.token.hasWhatsappBusinessManagement ? 'Granted' : 'Missing'} /></p>
+                    <p>Messaging: <Badge color={boolColor(diagResult.token.hasWhatsappBusinessMessaging)} label={diagResult.token.hasWhatsappBusinessMessaging ? 'Granted' : 'Missing'} /></p>
+                  </div>
+                  {!!diagResult.token.granularScopes?.length && (
+                    <div className="rounded-md bg-background p-2">
+                      <p className="mb-1 text-xs font-medium text-muted-foreground">Granular scopes</p>
+                      <div className="flex flex-col gap-1">
+                        {diagResult.token.granularScopes.map((scope, index) => (
+                          <p key={`${scope.scope}-${index}`} className="break-all font-mono text-[11px] text-muted-foreground">
+                            {scope.scope}: {scope.targetIds?.length ? scope.targetIds.join(', ') : 'no target IDs'}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-destructive">{diagResult.tokenError || 'Could not debug the saved Meta token.'}</p>
               )}
             </div>
 
