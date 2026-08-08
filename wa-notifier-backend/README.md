@@ -54,6 +54,7 @@ docker compose exec api node seed.js
 | `META_VERIFY_TOKEN` | Webhook verify token | `wa_notifier_verify` |
 | `META_API_VERSION` | Meta API version | `v25.0` |
 | `META_WABA_ACCESS_MODE` | `embedded_signup` for direct Meta Cloud API, `provider_assignment`/`multi_partner` only for advanced partner flows | `embedded_signup` |
+| `META_ENABLE_PROVIDER_ASSIGNMENT` | Must be `true` before backend calls `/{waba-id}/assigned_users` | `false` |
 | `META_PROVIDER_BUSINESS_ID` | Provider business ID used to verify/list provider system users | — |
 | `META_PROVIDER_SYSTEM_USER_ID` | Provider system user ID returned by `/{business-id}/system_users` | — |
 | `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` | Provider system user token used to manage assigned client WABAs | — |
@@ -156,10 +157,10 @@ For direct Meta Cloud API onboarding, keep `META_WABA_ACCESS_MODE` set to
 WABA.
 
 Only for advanced provider-assignment or multi-partner/BSP flows, set
-`META_WABA_ACCESS_MODE` to `provider_assignment` or `multi_partner`, configure a
-provider business system user with access to the Meta app, and set
-`META_PROVIDER_BUSINESS_ID`, `META_PROVIDER_SYSTEM_USER_ID`, and
-`META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN`.
+`META_WABA_ACCESS_MODE` to `provider_assignment` or `multi_partner`, set
+`META_ENABLE_PROVIDER_ASSIGNMENT=true`, configure a provider business system
+user with access to the Meta app, and set `META_PROVIDER_BUSINESS_ID`,
+`META_PROVIDER_SYSTEM_USER_ID`, and `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN`.
 Use the system-user ID returned by
 `GET /{META_PROVIDER_BUSINESS_ID}/system_users`; do not use a personal Facebook
 user ID or a token debugger global user ID.

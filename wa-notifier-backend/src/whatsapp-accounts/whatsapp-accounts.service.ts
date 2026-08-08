@@ -162,6 +162,8 @@ export class WhatsAppAccountsService {
 
   private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
     const accessMode = this.cfg.get<string>('META_WABA_ACCESS_MODE', 'embedded_signup').trim().toLowerCase();
+    const providerAssignmentEnabled = this.cfg.get<string>('META_ENABLE_PROVIDER_ASSIGNMENT', 'false').trim().toLowerCase() === 'true';
+    if (!providerAssignmentEnabled) return fallbackAccessToken;
     if (!['provider_assignment', 'multi_partner'].includes(accessMode)) return fallbackAccessToken;
 
     const configuredSystemUserId = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ID');
