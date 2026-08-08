@@ -12,6 +12,8 @@ import {
   UpdateContactTagDto,
 } from './contact.dto';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
+import { ResourceOwnership } from '../common/decorators/resource-ownership.decorator';
+import { ResourceOwnershipGuard } from '../common/guards/resource-ownership.guard';
 
 // TenantOwnershipGuard is applied per-route (not at the controller level)
 // because it only covers requests that actually carry a clientId — :id-based
@@ -35,10 +37,14 @@ export class ContactsController {
   @UseGuards(TenantOwnershipGuard)
   @Post('tags') createTag(@Body() dto: CreateContactTagDto) { return this.svc.createTag(dto); }
 
+  @ResourceOwnership('contacttags')
+  @UseGuards(ResourceOwnershipGuard)
   @Patch('tags/:id') updateTag(@Param('id') id: string, @Body() dto: UpdateContactTagDto) {
     return this.svc.updateTag(id, dto);
   }
 
+  @ResourceOwnership('contacttags')
+  @UseGuards(ResourceOwnershipGuard)
   @Delete('tags/:id') removeTag(@Param('id') id: string) { return this.svc.removeTag(id); }
 
   @UseGuards(TenantOwnershipGuard)
@@ -74,10 +80,14 @@ export class ContactsController {
     return this.svc.createSegment(dto);
   }
 
+  @ResourceOwnership('contactsegments')
+  @UseGuards(ResourceOwnershipGuard)
   @Patch('segments/:id') updateSegment(@Param('id') id: string, @Body() dto: UpdateContactSegmentDto) {
     return this.svc.updateSegment(id, dto);
   }
 
+  @ResourceOwnership('contactsegments')
+  @UseGuards(ResourceOwnershipGuard)
   @Delete('segments/:id') removeSegment(@Param('id') id: string) {
     return this.svc.removeSegment(id);
   }
@@ -107,6 +117,11 @@ export class ContactsController {
     return this.svc.bulkUpsert(body.whatsappAccountId || body.clientId, body.contacts);
   }
 
+  @ResourceOwnership('contacts')
+  @UseGuards(ResourceOwnershipGuard)
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateContactDto) { return this.svc.update(id, dto); }
+
+  @ResourceOwnership('contacts')
+  @UseGuards(ResourceOwnershipGuard)
   @Delete(':id') remove(@Param('id') id: string) { return this.svc.remove(id); }
 }

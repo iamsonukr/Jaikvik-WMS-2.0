@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { InboxService } from './inbox.service';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ResourceOwnership } from '../common/decorators/resource-ownership.decorator';
+import { ResourceOwnershipGuard } from '../common/guards/resource-ownership.guard';
 
 @Controller('inbox')
 export class InboxController {
@@ -37,8 +39,8 @@ export class InboxController {
     );
   }
 
-  // No clientId on this route (thread id + userId only), so it is not covered
-  // by TenantOwnershipGuard. See the guard's doc comment for this residual gap.
+  @ResourceOwnership('messages')
+  @UseGuards(ResourceOwnershipGuard)
   @Post('assign/:id')
   assign(@Param('id') id: string, @Body() body: { userId: string }) {
     return this.svc.assign(id, body.userId);

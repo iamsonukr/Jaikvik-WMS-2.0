@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { ChatbotService } from './chatbot.service';
 import { CreateChatbotRuleDto, UpdateChatbotRuleDto } from './chatbot.dto';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
+import { ResourceOwnership } from '../common/decorators/resource-ownership.decorator';
+import { ResourceOwnershipGuard } from '../common/guards/resource-ownership.guard';
 
 // This controller was missed in the original tenant-ownership rollout —
 // findAll/create carry a clientId and are now guarded the same way
@@ -17,6 +19,11 @@ export class ChatbotController {
   @UseGuards(TenantOwnershipGuard)
   @Post() create(@Body() dto: CreateChatbotRuleDto) { return this.svc.create(dto); }
 
+  @ResourceOwnership('chatbotrules')
+  @UseGuards(ResourceOwnershipGuard)
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateChatbotRuleDto) { return this.svc.update(id, dto); }
+
+  @ResourceOwnership('chatbotrules')
+  @UseGuards(ResourceOwnershipGuard)
   @Delete(':id') remove(@Param('id') id: string) { return this.svc.remove(id); }
 }

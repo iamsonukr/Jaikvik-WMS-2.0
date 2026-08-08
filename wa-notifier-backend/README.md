@@ -53,6 +53,7 @@ docker compose exec api node seed.js
 | `META_APP_SECRET` | Meta App Secret | — |
 | `META_VERIFY_TOKEN` | Webhook verify token | `wa_notifier_verify` |
 | `META_API_VERSION` | Meta API version | `v25.0` |
+| `META_WABA_ACCESS_MODE` | `embedded_signup` for direct Meta Cloud API, `provider_assignment`/`multi_partner` only for advanced partner flows | `embedded_signup` |
 | `META_PROVIDER_BUSINESS_ID` | Provider business ID used to verify/list provider system users | — |
 | `META_PROVIDER_SYSTEM_USER_ID` | Provider system user ID returned by `/{business-id}/system_users` | — |
 | `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` | Provider system user token used to manage assigned client WABAs | — |
@@ -150,8 +151,13 @@ All routes prefixed `/api/`. JWT Bearer token required except login/register and
 
 ## Tech Provider Embedded Signup
 
-For client-owned WABAs onboarded through Embedded Signup, configure a provider
-business system user with access to the Meta app and set
+For direct Meta Cloud API onboarding, keep `META_WABA_ACCESS_MODE` set to
+`embedded_signup` and use the signup token returned by Meta for that client
+WABA.
+
+Only for advanced provider-assignment or multi-partner/BSP flows, set
+`META_WABA_ACCESS_MODE` to `provider_assignment` or `multi_partner`, configure a
+provider business system user with access to the Meta app, and set
 `META_PROVIDER_BUSINESS_ID`, `META_PROVIDER_SYSTEM_USER_ID`, and
 `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN`.
 Use the system-user ID returned by

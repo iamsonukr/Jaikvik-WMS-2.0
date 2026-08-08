@@ -3,6 +3,8 @@ import { Response } from 'express';
 import { BroadcastsService } from './broadcasts.service';
 import { CreateBroadcastDto, TestBroadcastDto, UpdateBroadcastDto } from './broadcast.dto';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
+import { ResourceOwnership } from '../common/decorators/resource-ownership.decorator';
+import { ResourceOwnershipGuard } from '../common/guards/resource-ownership.guard';
 
 // Only findAll/create carry a clientId directly — the rest operate on a
 // broadcast's own :id (see TenantOwnershipGuard's doc comment for this
@@ -13,9 +15,17 @@ export class BroadcastsController {
 
   @UseGuards(TenantOwnershipGuard)
   @Get()           findAll(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) { return this.svc.findAll(aid || cid); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Get(':id')      findOne(@Param('id') id: string)        { return this.svc.findOne(id); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Get(':id/logs') logs(@Param('id') id: string)           { return this.svc.logs(id); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Get(':id/estimate') estimate(@Param('id') id: string)   { return this.svc.estimate(id); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Get(':id/logs/export')
   async exportLogs(@Param('id') id: string, @Res() res: Response) {
     const { filename, csv } = await this.svc.exportLogsCsv(id);
@@ -25,12 +35,27 @@ export class BroadcastsController {
   }
   @UseGuards(TenantOwnershipGuard)
   @Post()          create(@Body() dto: CreateBroadcastDto)                 { return this.svc.create(dto); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Patch(':id')    update(@Param('id') id: string, @Body() dto: UpdateBroadcastDto) { return this.svc.update(id, dto); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Post(':id/schedule') schedule(@Param('id') id: string, @Body() body: { scheduledAt: string }) { return this.svc.schedule(id, body.scheduledAt); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Post(':id/pause') pause(@Param('id') id: string) { return this.svc.pause(id); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Post(':id/cancel') cancel(@Param('id') id: string) { return this.svc.cancel(id); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Post(':id/duplicate') duplicate(@Param('id') id: string) { return this.svc.duplicate(id); }
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Post(':id/test') test(@Param('id') id: string, @Body() dto: TestBroadcastDto) { return this.svc.sendTest(id, dto.phone); }
+
+  @ResourceOwnership('broadcasts')
+  @UseGuards(ResourceOwnershipGuard)
   @Post(':id/send')
   async send(@Param('id') id: string) {
     // Validate + reserve wallet funds synchronously so an insufficient

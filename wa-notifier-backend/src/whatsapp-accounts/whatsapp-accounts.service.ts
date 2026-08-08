@@ -161,13 +161,15 @@ export class WhatsAppAccountsService {
   }
 
   private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
+    const accessMode = this.cfg.get<string>('META_WABA_ACCESS_MODE', 'embedded_signup').trim().toLowerCase();
+    if (!['provider_assignment', 'multi_partner'].includes(accessMode)) return fallbackAccessToken;
+
     const configuredSystemUserId = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ID');
     const providerAccessToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
 
-    if (!configuredSystemUserId && !providerAccessToken) return fallbackAccessToken;
     if (!providerAccessToken) {
       throw new BadRequestException(
-        'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required for Tech Provider WABA onboarding.',
+        'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required when META_WABA_ACCESS_MODE uses provider assignment.',
       );
     }
 

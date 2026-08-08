@@ -23,6 +23,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { ResourceOwnershipGuard } from './common/guards/resource-ownership.guard';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     // to any authenticated user, same as before this change.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    ResourceOwnershipGuard,
   ],
 })
 export class AppModule {}
