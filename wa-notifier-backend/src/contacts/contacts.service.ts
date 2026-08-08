@@ -6,6 +6,7 @@ import { ContactTag, ContactTagDocument } from './contact-tag.schema';
 import { ContactImport, ContactImportDocument } from './contact-import.schema';
 import { ContactSegment, ContactSegmentDocument } from './contact-segment.schema';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { resolveWhatsAppAccountId, toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class ContactsService {
     @InjectModel(ContactImport.name) private importModel: Model<ContactImportDocument>,
     @InjectModel(ContactSegment.name) private segmentModel: Model<ContactSegmentDocument>,
     private clients: WhatsAppAccountsService,
+    private subscriptions: SubscriptionsService,
   ) {}
 
   findAll(whatsappAccountId: string, tag?: string) {
@@ -52,7 +54,7 @@ export class ContactsService {
 
     const ops = valid.map(c => ({
       updateOne: {
-        filter: { ...this.whatsappAccountIdQuery(whatsappAccountId), phone: c.phone },
+        filter: { whatsappAccountId: accountObjectId, phone: c.phone },
         update: { $set: { ...c, tags: this.filterAllowedTags(c.tags || [], allowed), whatsappAccountId: accountObjectId, tenantId: account?.tenantId } },
         upsert: true,
       },
@@ -97,7 +99,7 @@ export class ContactsService {
 
     const ops = importable.map((row) => ({
       updateOne: {
-        filter: { ...this.whatsappAccountIdQuery(whatsappAccountId), phone: row.phone },
+        filter: { whatsappAccountId: accountObjectId, phone: row.phone },
         update: {
           $set: {
             phone: row.phone,
@@ -180,12 +182,32 @@ export class ContactsService {
     const account = await this.clients.findOne(whatsappAccountId);
     const name = this.cleanTagName(dto.name);
     if (!name) throw new BadRequestException('Tag name is required');
+    const normalizedName = this.normalizeTag(name);
+    const existing = await this.tagModel.findOne({ ...this.whatsappAccountIdQuery(whatsappAccountId), normalizedName });
+    if (existing?.isActive) {
+      throw new BadRequestException('A tag with this name already exists for this WhatsApp account');
+    }
+    await this.assertTagCapacity(whatsappAccountId, account, 1);
+    if (existing) {
+      return this.tagModel.findByIdAndUpdate(
+        existing._id,
+        {
+          name,
+          normalizedName,
+          color: dto.color || existing.color || '#3b82f6',
+          description: dto.description,
+          tenantId: account?.tenantId,
+          isActive: true,
+        },
+        { new: true },
+      );
+    }
     try {
       return await this.tagModel.create({
         whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
         tenantId: account?.tenantId,
         name,
-        normalizedName: this.normalizeTag(name),
+        normalizedName,
         color: dto.color || '#3b82f6',
         description: dto.description,
       });
@@ -462,6 +484,11 @@ export class ContactsService {
     const inactiveNames = existingTags
       .filter((tag) => !tag.isActive)
       .map((tag) => tag.normalizedName);
+    const missing = normalizedNames.filter((normalizedName) => !existing.has(normalizedName));
+    const createdTags = missing.map((normalizedName) => cleanByNormalized.get(normalizedName)).filter(Boolean) as string[];
+    const reactivatedTags = inactiveNames.map((normalizedName) => cleanByNormalized.get(normalizedName)).filter(Boolean) as string[];
+    await this.assertTagCapacity(whatsappAccountId, account, missing.length + inactiveNames.length);
+
     if (inactiveNames.length) {
       await this.tagModel.updateMany(
         { ...this.whatsappAccountIdQuery(whatsappAccountId), normalizedName: { $in: inactiveNames } },
@@ -469,9 +496,6 @@ export class ContactsService {
       );
     }
 
-    const missing = normalizedNames.filter((normalizedName) => !existing.has(normalizedName));
-    const createdTags = missing.map((normalizedName) => cleanByNormalized.get(normalizedName)).filter(Boolean) as string[];
-    const reactivatedTags = inactiveNames.map((normalizedName) => cleanByNormalized.get(normalizedName)).filter(Boolean) as string[];
     if (missing.length) {
       await this.tagModel.insertMany(missing.map((normalizedName) => ({
         whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
@@ -489,10 +513,48 @@ export class ContactsService {
     return { allowed: await this.allowedTagSet(whatsappAccountId), createdTags, reactivatedTags };
   }
 
+  private async assertTagCapacity(whatsappAccountId: string, account: any, addedActiveTags: number) {
+    if (addedActiveTags <= 0 || !account?.tenantId) return;
+
+    const subscription = await this.subscriptions.currentForTenant(String(account.tenantId));
+    const plan = subscription?.planId as any;
+    const limit = this.resolveTagLimit(plan);
+    if (limit === null) return;
+
+    const activeCount = await this.tagModel.countDocuments(this.activeTagCountFilter(whatsappAccountId, account));
+    if (activeCount + addedActiveTags <= limit) return;
+
+    throw new BadRequestException(
+      `Your current plan allows ${limit} custom tag${limit === 1 ? '' : 's'}. Delete unused tags or upgrade the plan to add more.`,
+    );
+  }
+
+  private resolveTagLimit(plan: any): number | null {
+    const raw = plan?.tags ?? plan?.limits?.tags;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const limit = Number(raw);
+    return Number.isFinite(limit) && limit >= 0 ? limit : null;
+  }
+
+  private activeTagCountFilter(whatsappAccountId: string, account: any) {
+    if (account?.tenantId) {
+      return {
+        isActive: true,
+        $or: [
+          { tenantId: account.tenantId },
+          ...this.whatsappAccountIdQuery(whatsappAccountId).$or,
+        ],
+      };
+    }
+    return {
+      ...this.whatsappAccountIdQuery(whatsappAccountId),
+      isActive: true,
+    };
+  }
+
   private async ensureLegacyTags(whatsappAccountId: string) {
     const existing = await this.tagModel.countDocuments(this.whatsappAccountIdQuery(whatsappAccountId));
     if (existing > 0) return;
-
     const account = await this.clients.findOne(whatsappAccountId);
     const legacyTags = await this.model.distinct('tags', this.whatsappAccountIdQuery(whatsappAccountId));
     const clean = Array.from(new Map(

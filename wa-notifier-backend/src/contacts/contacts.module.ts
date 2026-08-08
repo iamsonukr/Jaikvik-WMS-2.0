@@ -7,6 +7,7 @@ import { ContactSegment, ContactSegmentSchema } from './contact-segment.schema';
 import { ContactsService } from './contacts.service';
 import { ContactsController } from './contacts.controller';
 import { WhatsAppAccountsModule } from '../whatsapp-accounts/whatsapp-accounts.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
 
 @Module({
@@ -18,6 +19,7 @@ import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
       { name: ContactSegment.name, schema: ContactSegmentSchema },
     ]),
     WhatsAppAccountsModule,
+    SubscriptionsModule,
   ],
   providers: [ContactsService, TenantOwnershipGuard],
   controllers: [ContactsController],

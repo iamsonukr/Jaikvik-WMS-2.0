@@ -88,6 +88,12 @@ function displaySubscriptionStatus(item) {
   return item.status || 'unknown';
 }
 
+function canModifySubscription(item) {
+  const status = displaySubscriptionStatus(item);
+  const reason = text(item?.cancelReason);
+  return item && !['cancelled', 'expired'].includes(status) && !reason.includes('revoked');
+}
+
 function DetailItem({ label, value, wide = false }) {
   return (
     <div className={wide ? 'sm:col-span-2' : ''}>
@@ -1092,7 +1098,7 @@ export default function TenantDetailPage() {
           ) : (
             <p className="text-sm text-muted-foreground mb-3">No plan assigned yet.</p>
           )}
-          {subscription && (
+          {canModifySubscription(subscription) && (
             <div className="mt-4 flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => openExtendSubscription(subscription)}>
                 <CalendarDays size={14} /> Extend
@@ -1564,7 +1570,7 @@ export default function TenantDetailPage() {
                 )}
                 {subscriptionHistoryPage.pageItems.map((item) => {
                   const status = displaySubscriptionStatus(item);
-                  const canModify = !['cancelled'].includes(item.status);
+                  const canModify = canModifySubscription(item);
                   return (
                     <tr key={item._id} className="table-row-hover">
                       <td className="px-4 py-3">

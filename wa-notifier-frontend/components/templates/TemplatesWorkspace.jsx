@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Badge as BadgeIcon, BookOpen, Eye, FileText, Plus, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Badge as BadgeIcon, BookOpen, Eye, FileText, Globe2, MessageSquare, MousePointerClick, Plus, RefreshCw, Search, Type } from 'lucide-react';
 import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useBasePath } from '@/hooks/useBasePath';
 import { useClient } from '@/hooks/useClient';
@@ -19,6 +19,49 @@ const blankForm = {
   quickReplies: '',
   bodyExamples: '',
 };
+
+const languageOptions = [
+  ['en_US', 'English (US)'],
+  ['en_GB', 'English (UK)'],
+  ['en', 'English'],
+  ['hi', 'Hindi'],
+  ['es', 'Spanish'],
+  ['es_MX', 'Spanish (Mexico)'],
+  ['es_ES', 'Spanish (Spain)'],
+  ['pt_BR', 'Portuguese (Brazil)'],
+  ['pt_PT', 'Portuguese (Portugal)'],
+  ['fr', 'French'],
+  ['de', 'German'],
+  ['it', 'Italian'],
+  ['nl', 'Dutch'],
+  ['ar', 'Arabic'],
+  ['bn', 'Bengali'],
+  ['gu', 'Gujarati'],
+  ['kn', 'Kannada'],
+  ['ml', 'Malayalam'],
+  ['mr', 'Marathi'],
+  ['pa', 'Punjabi'],
+  ['ta', 'Tamil'],
+  ['te', 'Telugu'],
+  ['ur', 'Urdu'],
+  ['id', 'Indonesian'],
+  ['ms', 'Malay'],
+  ['fil', 'Filipino'],
+  ['th', 'Thai'],
+  ['vi', 'Vietnamese'],
+  ['zh_CN', 'Chinese (Simplified)'],
+  ['zh_TW', 'Chinese (Traditional)'],
+  ['ja', 'Japanese'],
+  ['ko', 'Korean'],
+  ['ru', 'Russian'],
+  ['tr', 'Turkish'],
+  ['pl', 'Polish'],
+  ['ro', 'Romanian'],
+  ['uk', 'Ukrainian'],
+  ['fa', 'Persian'],
+  ['he', 'Hebrew'],
+  ['sw', 'Swahili'],
+];
 
 function bodyPlaceholderCount(body) {
   const matches = [...String(body || '').matchAll(/\{\{(\d+)\}\}/g)].map((match) => Number(match[1]));
@@ -70,7 +113,7 @@ function TemplatePreview({ template, examples = [], compact = false }) {
   const reason = templateRejectionReason(template);
 
   return (
-    <div className={`rounded-lg border border-border bg-muted/30 p-3 ${compact ? '' : 'space-y-3'}`}>
+    <div className={`rounded-lg border border-border bg-secondary/45 p-3 ${compact ? '' : 'space-y-3'}`}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{template?.name || 'template_preview'}</p>
@@ -78,7 +121,7 @@ function TemplatePreview({ template, examples = [], compact = false }) {
         </div>
         {template?.status && <StatusBadge status={String(template.status).toLowerCase()} />}
       </div>
-      <div className="max-w-sm rounded-lg bg-background p-3 shadow-sm ring-1 ring-border">
+      <div className="max-w-sm rounded-lg rounded-tr-sm bg-card p-3 shadow-sm ring-1 ring-border">
         {header?.text && <p className="mb-2 text-sm font-semibold">{renderWithExamples(header.text, examples)}</p>}
         <p className="whitespace-pre-wrap text-sm leading-relaxed">{renderWithExamples(body?.text || templateBody(template), examples)}</p>
         {footer?.text && <p className="mt-3 text-xs text-muted-foreground">{renderWithExamples(footer.text, examples)}</p>}
@@ -99,6 +142,20 @@ function TemplatePreview({ template, examples = [], compact = false }) {
         </div>
       )}
     </div>
+  );
+}
+
+function TemplateFormSection({ icon: Icon, title, children }) {
+  return (
+    <section className="rounded-lg border border-border/80 bg-background/75 p-4 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon size={16} />
+        </span>
+        <h3 className="text-sm font-semibold">{title}</h3>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -555,6 +612,8 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
         open={modalOpen}
         onClose={() => !creating && setModalOpen(false)}
         title="New template"
+        className="!max-w-5xl"
+        bodyClassName="bg-muted/20"
         footer={(
           <>
             <Button variant="outline" onClick={() => setModalOpen(false)} disabled={creating}>Cancel</Button>
@@ -564,45 +623,81 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
           </>
         )}
       >
-        <div className="space-y-4">
+        <div className="space-y-5">
           {formError && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
               {formError}
             </div>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Input label="Template name *" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="order_update" />
-                <Select label="Category *" value={form.category} onChange={(e) => set('category', e.target.value)}>
-                  <option value="MARKETING">Marketing</option>
-                  <option value="UTILITY">Utility</option>
-                  <option value="AUTHENTICATION">Authentication</option>
-                </Select>
-              </div>
+              <TemplateFormSection icon={BadgeIcon} title="Template setup">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Input label="Template name *" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="order_update" />
+                  <Select label="Category *" value={form.category} onChange={(e) => set('category', e.target.value)}>
+                    <option value="MARKETING">Marketing</option>
+                    <option value="UTILITY">Utility</option>
+                    <option value="AUTHENTICATION">Authentication</option>
+                  </Select>
+                  <div className="sm:col-span-2">
+                    <Select label="Language code *" value={form.language} onChange={(e) => set('language', e.target.value)}>
+                      {languageOptions.map(([code, label]) => (
+                        <option key={code} value={code}>{label} - {code}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              </TemplateFormSection>
 
-              <Input label="Language code *" value={form.language} onChange={(e) => set('language', e.target.value)} placeholder="en_US" />
-              <Input label="Header text" value={form.headerText} onChange={(e) => set('headerText', e.target.value)} placeholder="New offer from Jaikvik" />
-              <Textarea label="Body *" value={form.body} onChange={(e) => set('body', e.target.value)} placeholder="Hi {{1}}, your order {{2}} is ready." rows={5} />
+              <TemplateFormSection icon={MessageSquare} title="Message content">
+                <div className="space-y-3">
+                  <Input label="Header text" value={form.headerText} onChange={(e) => set('headerText', e.target.value)} placeholder="New offer from Jaikvik" />
+                  <Textarea label="Body *" value={form.body} onChange={(e) => set('body', e.target.value)} placeholder="Hi {{1}}, your order {{2}} is ready." rows={6} className="min-h-[150px]" />
+                  <Input label="Footer text" value={form.footerText} onChange={(e) => set('footerText', e.target.value)} placeholder="Reply STOP to unsubscribe" />
+                </div>
+              </TemplateFormSection>
 
-              {placeholderCount > 0 && (
-                <Input
-                  label={`Body examples * (${placeholderCount})`}
-                  value={form.bodyExamples}
-                  onChange={(e) => set('bodyExamples', e.target.value)}
-                  placeholder="Ravi, #12345"
-                />
+              {(placeholderCount > 0 || form.bodyExamples) && (
+                <TemplateFormSection icon={Type} title="Example values">
+                  <Input
+                    label={`Body examples * (${placeholderCount || 1})`}
+                    value={form.bodyExamples}
+                    onChange={(e) => set('bodyExamples', e.target.value)}
+                    placeholder="Ravi, #12345"
+                  />
+                </TemplateFormSection>
               )}
 
-              <Input label="Footer text" value={form.footerText} onChange={(e) => set('footerText', e.target.value)} placeholder="Reply STOP to unsubscribe" />
-              <Input label="Quick replies" value={form.quickReplies} onChange={(e) => set('quickReplies', e.target.value)} placeholder="Yes, No, Call me" />
+              <TemplateFormSection icon={MousePointerClick} title="Quick replies">
+                <Input label="Button labels" value={form.quickReplies} onChange={(e) => set('quickReplies', e.target.value)} placeholder="Yes, No, Call me" />
+              </TemplateFormSection>
             </div>
 
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Template Preview</p>
-              <TemplatePreview template={formPreviewTemplate} examples={formExampleValues} />
-            </div>
+            <aside className="lg:sticky lg:top-0 lg:self-start">
+              <div className="rounded-lg border border-border/80 bg-background p-4 shadow-card">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Live preview</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">WhatsApp template message</p>
+                  </div>
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-light text-brand-dark">
+                    <Globe2 size={17} />
+                  </span>
+                </div>
+                <TemplatePreview template={formPreviewTemplate} examples={formExampleValues} />
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-border bg-muted/40 p-3">
+                    <p className="text-muted-foreground">Variables</p>
+                    <p className="mt-1 font-semibold">{placeholderCount}</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/40 p-3">
+                    <p className="text-muted-foreground">Replies</p>
+                    <p className="mt-1 font-semibold">{splitCsv(form.quickReplies).length}</p>
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
       </Modal>

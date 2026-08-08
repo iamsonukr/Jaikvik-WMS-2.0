@@ -20,6 +20,20 @@ const referenceCollections = [
     ],
   },
   {
+    name: 'contactimports',
+    indexes: [
+      { keys: { whatsappAccountId: 1, createdAt: -1 }, options: {} },
+      { keys: { tenantId: 1, createdAt: -1 }, options: {} },
+    ],
+  },
+  {
+    name: 'contactsegments',
+    indexes: [
+      { keys: { whatsappAccountId: 1, name: 1 }, options: { unique: true } },
+      { keys: { tenantId: 1, createdAt: -1 }, options: {} },
+    ],
+  },
+  {
     name: 'templates',
     indexes: [
       { keys: { whatsappAccountId: 1, name: 1 }, options: { unique: true } },

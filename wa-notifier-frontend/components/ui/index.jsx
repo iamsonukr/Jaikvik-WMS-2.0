@@ -63,14 +63,14 @@ export function Empty({ icon: Icon, title, description, action }) {
   );
 }
 
-export function Modal({ open, onClose, title, children, footer }) {
+export function Modal({ open, onClose, title, children, footer, className = '', bodyClassName = '' }) {
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose?.(); }}>
-      <DialogContent>
+      <DialogContent className={className}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+        <div className={cn('flex-1 overflow-y-auto px-6 py-4', bodyClassName)}>{children}</div>
         {footer && <DialogFooter>{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>
