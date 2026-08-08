@@ -8,7 +8,7 @@ export class MetaService {
   private readonly version: string;
 
   constructor(private cfg: ConfigService) {
-    this.version = cfg.get('META_API_VERSION', 'v19.0');
+    this.version = cfg.get('META_API_VERSION', 'v25.0');
   }
 
   private base(phoneNumberId: string) {
@@ -153,6 +153,69 @@ export class MetaService {
         wabaId,
       });
       throw new BadRequestException(`Could not subscribe WABA webhooks: ${message}`);
+    }
+  }
+
+  async assignSystemUserToWaba(
+    wabaId: string,
+    systemUserId: string,
+    accessToken: string,
+    tasks: string[] = ['MANAGE'],
+  ) {
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${this.version}/${wabaId}/assigned_users`,
+        null,
+        {
+          params: {
+            user: systemUserId,
+            tasks: JSON.stringify(tasks),
+          },
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      return data;
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta assignSystemUserToWaba failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        wabaId,
+        systemUserId,
+      });
+      throw new BadRequestException(`Could not assign provider system user to WABA: ${message}`);
+    }
+  }
+
+  async attachCreditLineToWaba(creditLineId: string, wabaId: string, currency: string, accessToken: string) {
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${this.version}/${creditLineId}/whatsapp_credit_sharing_and_attach`,
+        null,
+        {
+          params: {
+            waba_id: wabaId,
+            waba_currency: currency,
+          },
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      return data;
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta attachCreditLineToWaba failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        creditLineId,
+        wabaId,
+      });
+      throw new BadRequestException(`Could not attach provider credit line to WABA: ${message}`);
     }
   }
 

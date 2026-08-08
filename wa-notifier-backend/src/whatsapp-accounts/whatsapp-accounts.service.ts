@@ -45,7 +45,8 @@ export class WhatsAppAccountsService {
       throw new BadRequestException('Meta App ID and App Secret are required for Embedded Signup.');
     }
 
-    const accessToken = await this.exchangeSignupCode(dto.code, appId, appSecret, version);
+    const signupAccessToken = await this.exchangeSignupCode(dto.code, appId, appSecret, version);
+    const accessToken = await this.prepareProviderWabaAccess(dto.wabaId, signupAccessToken);
     const phoneInfo = dto.phoneNumberId
       ? await this.getPhoneNumberInfo(dto.phoneNumberId, accessToken, version)
       : await this.getFirstPhoneNumberForWaba(dto.wabaId, accessToken, version);
@@ -159,6 +160,44 @@ export class WhatsAppAccountsService {
     }
   }
 
+  private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
+    const providerSystemUserId = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ID');
+    const providerAccessToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
+
+    if (!providerSystemUserId && !providerAccessToken) return fallbackAccessToken;
+    if (!providerSystemUserId || !providerAccessToken) {
+      throw new BadRequestException(
+        'Both META_PROVIDER_SYSTEM_USER_ID and META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN are required for Tech Provider WABA onboarding.',
+      );
+    }
+
+    const tasks = this.parseProviderSystemUserTasks();
+    await this.meta.assignSystemUserToWaba(wabaId, providerSystemUserId, providerAccessToken, tasks);
+    await this.attachProviderCreditLineIfConfigured(wabaId, providerAccessToken);
+    return providerAccessToken;
+  }
+
+  private parseProviderSystemUserTasks() {
+    const configured = this.cfg.get<string>('META_WABA_SYSTEM_USER_TASKS', 'MANAGE');
+    const tasks = configured
+      .split(',')
+      .map((task) => task.trim().toUpperCase())
+      .filter(Boolean);
+    return tasks.length ? tasks : ['MANAGE'];
+  }
+
+  private async attachProviderCreditLineIfConfigured(wabaId: string, providerAccessToken: string) {
+    const creditLineId = this.cfg.get<string>('META_CREDIT_LINE_ID');
+    if (!creditLineId) return;
+
+    const currency = this.cfg.get<string>('META_WABA_CURRENCY');
+    if (!currency) {
+      throw new BadRequestException('META_WABA_CURRENCY is required when META_CREDIT_LINE_ID is configured.');
+    }
+
+    await this.meta.attachCreditLineToWaba(creditLineId, wabaId, currency, providerAccessToken);
+  }
+
   private async getPhoneNumberInfo(phoneNumberId: string, accessToken: string, version: string) {
     try {
       const { data } = await axios.get(`https://graph.facebook.com/${version}/${phoneNumberId}`, {
@@ -205,13 +244,23 @@ export class WhatsAppAccountsService {
   async subscribeWebhooks(id: string) {
     const account = await this.findOne(id);
     if (!account) throw new NotFoundException();
-    return this.meta.subscribeWaba(account.wabaId, account.accessToken);
+    const accessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
+    await this.persistAccessTokenIfChanged(account, accessToken);
+    return this.meta.subscribeWaba(account.wabaId, accessToken);
   }
 
   async registerPhoneNumber(id: string, pin: string) {
     const account = await this.findOne(id);
     if (!account) throw new NotFoundException();
-    return this.meta.registerPhoneNumber(account.phoneNumberId, account.accessToken, pin);
+    const accessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
+    await this.persistAccessTokenIfChanged(account, accessToken);
+    return this.meta.registerPhoneNumber(account.phoneNumberId, accessToken, pin);
+  }
+
+  private async persistAccessTokenIfChanged(account: WhatsAppAccountDocument, accessToken: string) {
+    if (account.accessToken === accessToken) return;
+    account.accessToken = accessToken;
+    await account.save();
   }
 
   async diagnoseSending(id: string) {

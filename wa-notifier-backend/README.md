@@ -52,7 +52,12 @@ docker compose exec api node seed.js
 | `META_APP_ID` | Meta App ID | — |
 | `META_APP_SECRET` | Meta App Secret | — |
 | `META_VERIFY_TOKEN` | Webhook verify token | `wa_notifier_verify` |
-| `META_API_VERSION` | Meta API version | `v19.0` |
+| `META_API_VERSION` | Meta API version | `v25.0` |
+| `META_PROVIDER_SYSTEM_USER_ID` | Provider business system user ID for Tech Provider Embedded Signup | — |
+| `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` | Provider system user token used to manage assigned client WABAs | — |
+| `META_WABA_SYSTEM_USER_TASKS` | Comma-separated WABA tasks assigned to the provider system user | `MANAGE` |
+| `META_CREDIT_LINE_ID` | Optional provider credit line ID for client WABA billing | — |
+| `META_WABA_CURRENCY` | Currency used when attaching the provider credit line | `INR` |
 | `API_PORT` | Port to listen on | `3001` |
 | `CORS_ORIGIN` | Frontend URL(s) — comma-separated | `*` |
 
@@ -141,6 +146,20 @@ All routes prefixed `/api/`. JWT Bearer token required except login/register and
 2. Set Callback URL: `https://yourdomain.com/api/webhooks/meta`
 3. Set Verify Token: value of `META_VERIFY_TOKEN` in your `.env`
 4. Subscribe to fields: `messages`, `message_deliveries`, `message_reads`
+
+## Tech Provider Embedded Signup
+
+For client-owned WABAs onboarded through Embedded Signup, configure a provider
+business system user with access to the Meta app and set
+`META_PROVIDER_SYSTEM_USER_ID` plus `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN`.
+After exchanging the signup code, the backend assigns that system user to the
+client WABA and stores the provider token for webhook subscription, phone
+registration, templates, and messaging.
+
+If clients pay Meta directly, leave `META_CREDIT_LINE_ID` empty and have them
+add a payment method in their own Meta Business. If you bill clients through
+your provider line of credit, also set `META_CREDIT_LINE_ID` and
+`META_WABA_CURRENCY`.
 
 ## Project Structure
 
