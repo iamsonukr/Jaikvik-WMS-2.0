@@ -38,6 +38,7 @@ const WALLET_TYPE_OPTIONS = Object.keys(WALLET_TYPE_LABEL);
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
+const metaSolutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID;
 const blankAccountForm = {
   name: '',
   wabaId: '',
@@ -969,7 +970,7 @@ export default function TenantDetailPage() {
       redirect_uri: redirectUri,
       fallback_redirect_uri: redirectUri,
       extras: {
-        setup: {},
+        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
         featureType: 'whatsapp_embedded_signup',
         sessionInfoVersion: '3',
       },

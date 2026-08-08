@@ -19,6 +19,7 @@ import { ArrowRight, CheckCircle2, MessageCircle } from 'lucide-react';
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
+const metaSolutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID;
 
 export default function ConnectWhatsAppPage() {
   const router = useRouter();
@@ -263,7 +264,7 @@ export default function ConnectWhatsAppPage() {
       redirect_uri: redirectUri,
       fallback_redirect_uri: redirectUri,
       extras: {
-        setup: {},
+        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
         featureType: 'whatsapp_embedded_signup',
         sessionInfoVersion: '3',
       },

@@ -44,6 +44,10 @@ Note: `NEXT_PUBLIC_API_URL` is baked in at **build time** (Next.js convention fo
 | Variable | Description | Example |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | Full URL of the backend API, including `/api` | `https://api.yourdomain.com/api` |
+| `NEXT_PUBLIC_META_APP_ID` | Meta app ID used by Facebook Login for Business | `100000000000000` |
+| `NEXT_PUBLIC_META_CONFIG_ID` | Facebook Login for Business configuration ID | `900000000000000` |
+| `NEXT_PUBLIC_META_API_VERSION` | Meta Graph API version used by the JS SDK | `v25.0` |
+| `NEXT_PUBLIC_META_SOLUTION_ID` | Optional multi-partner/BSP solution ID passed as `extras.setup.solutionID` during Embedded Signup | `1985687578474211` |
 
 ## Deploying Separately
 
