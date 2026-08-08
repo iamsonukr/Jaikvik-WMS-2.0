@@ -37,8 +37,17 @@ export class MetaService {
       );
       return data;
     } catch (err) {
-      this.logger.error('Meta sendTemplate failed', err?.response?.data);
-      throw err;
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta sendTemplate failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        phoneNumberId,
+        templateName,
+      });
+      throw new BadRequestException(`WhatsApp template failed: ${message}`);
     }
   }
 
@@ -132,6 +141,22 @@ export class MetaService {
       },
     });
     return data?.data || [];
+  }
+
+  async debugAccessToken(inputToken: string) {
+    const appId = this.cfg.get<string>('META_APP_ID');
+    const appSecret = this.cfg.get<string>('META_APP_SECRET');
+    if (!appId || !appSecret) {
+      throw new BadRequestException('Meta App ID and App Secret are required to debug access tokens.');
+    }
+
+    const { data } = await axios.get(`https://graph.facebook.com/${this.version}/debug_token`, {
+      params: {
+        input_token: inputToken,
+        access_token: `${appId}|${appSecret}`,
+      },
+    });
+    return data?.data;
   }
 
   async subscribeWaba(wabaId: string, accessToken: string) {
@@ -263,6 +288,11 @@ export class MetaService {
         subcode: metaError?.error_subcode,
         phoneNumberId,
       });
+      if (metaError?.code === 100 && String(message).includes('Need either permission')) {
+        throw new BadRequestException(
+          'Could not register WhatsApp phone number: the saved Embedded Signup token cannot manage this WABA. Reconnect using a Facebook user with full admin access to the client business/WABA and make sure the Meta login configuration grants whatsapp_business_management.',
+        );
+      }
       throw new BadRequestException(`Could not register WhatsApp phone number: ${message}`);
     }
   }

@@ -315,8 +315,31 @@ export class WhatsAppAccountsService {
       },
       phoneNumber: null,
       wabaPhoneNumbers: [],
+      token: null,
       error: null,
     };
+
+    try {
+      const debug = await this.meta.debugAccessToken(account.accessToken);
+      const scopes = Array.isArray(debug?.scopes) ? debug.scopes : [];
+      const granularScopes = Array.isArray(debug?.granular_scopes) ? debug.granular_scopes : [];
+      result.token = {
+        appId: debug?.app_id,
+        type: debug?.type,
+        isValid: debug?.is_valid,
+        expiresAt: debug?.expires_at,
+        scopes,
+        hasWhatsappBusinessManagement: scopes.includes('whatsapp_business_management'),
+        hasWhatsappBusinessMessaging: scopes.includes('whatsapp_business_messaging'),
+        granularScopes: granularScopes.map((scope) => ({
+          scope: scope.scope,
+          targetIds: scope.target_ids || [],
+        })),
+      };
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      result.tokenError = metaError?.message || err?.message || 'Could not debug the saved Meta token.';
+    }
 
     try {
       result.phoneNumber = await this.meta.getPhoneNumberInfo(account.phoneNumberId, account.accessToken);
