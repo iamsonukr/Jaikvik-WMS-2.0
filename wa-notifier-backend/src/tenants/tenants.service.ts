@@ -58,6 +58,11 @@ export class TenantsService {
     return doc;
   }
 
-  // Never hard-delete — financial/message history must remain attributable.
-  // "Delete" from the admin UI should call setStatus('disabled') instead.
+  async remove(id: string) {
+    const doc = await this.setStatus(id, 'disabled');
+    return { deleted: true, tenant: doc };
+  }
+
+  // Never hard-delete: financial/message history must remain attributable.
+  // Admin delete is a soft delete that disables the tenant.
 }

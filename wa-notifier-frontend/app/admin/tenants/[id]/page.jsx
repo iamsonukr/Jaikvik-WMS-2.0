@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Select, Input, Modal, Badge, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { ArrowLeft, Wallet as WalletIcon, ShieldOff, ShieldCheck, KeyRound, Users, UserPlus, PhoneCall, Building2, MessageCircle, Plus, Pencil, Receipt, CreditCard, CalendarDays, Download, Trash2, RotateCcw } from 'lucide-react';
@@ -105,6 +105,7 @@ function DetailItem({ label, value, wide = false }) {
 
 export default function TenantDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const { user } = useAuth();
   const role = normalizeRole(user?.role);
   const [activeTab, setActiveTab] = useState('details');
@@ -189,6 +190,9 @@ export default function TenantDetailPage() {
   const [detailsForm, setDetailsForm] = useState({});
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsError, setDetailsError] = useState('');
+  const [deleteClientOpen, setDeleteClientOpen] = useState(false);
+  const [deletingClient, setDeletingClient] = useState(false);
+  const [deleteClientError, setDeleteClientError] = useState('');
   const [error, setError] = useState('');
   const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '' });
   const waitTimerRef = useRef(null);
@@ -422,6 +426,20 @@ export default function TenantDetailPage() {
   const setStatus = async (status) => {
     await api.patch(`/tenants/${id}/status`, { status });
     await load();
+  };
+
+  const confirmDeleteClient = async () => {
+    setDeleteClientError('');
+    setDeletingClient(true);
+    try {
+      await api.delete(`/tenants/${id}`);
+      setDeleteClientOpen(false);
+      router.push('/admin/tenants');
+    } catch (err) {
+      setDeleteClientError(err?.response?.data?.message || 'Could not delete client');
+    } finally {
+      setDeletingClient(false);
+    }
   };
 
   const openSubscriptionManager = () => {
@@ -1004,6 +1022,11 @@ export default function TenantDetailPage() {
               ) : (
                 <Button variant="outline" onClick={() => setStatus('active')}><ShieldCheck size={15} /> Activate</Button>
               )
+            )}
+            {role === 'admin' && (
+              <Button variant="danger" onClick={() => { setDeleteClientError(''); setDeleteClientOpen(true); }}>
+                <Trash2 size={15} /> Delete
+              </Button>
             )}
           </>
         }
@@ -1885,6 +1908,24 @@ export default function TenantDetailPage() {
         <p className="text-sm text-muted-foreground">
           Delete <strong>{deleteUserTarget?.name || 'this login'}</strong> ({deleteUserTarget?.email})? This user will immediately lose access.
         </p>
+      </Modal>
+
+      <Modal open={deleteClientOpen} onClose={() => setDeleteClientOpen(false)} title="Delete client"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeleteClientOpen(false)} disabled={deletingClient}>Cancel</Button>
+            <Button variant="danger" onClick={confirmDeleteClient} disabled={deletingClient}>
+              {deletingClient ? 'Deleting...' : 'Delete client'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Delete <strong>{tenant?.name}</strong>? This disables the client login and workspace while preserving billing and message history.
+          </p>
+          {deleteClientError && <p className="text-sm text-red-500">{deleteClientError}</p>}
+        </div>
       </Modal>
 
       <Modal open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Edit client details"

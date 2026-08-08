@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
-import { Building2, Plus, ArrowRight } from 'lucide-react';
+import { Building2, Plus, ArrowRight, Trash2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { normalizeRole } from '@/lib/roles';
 import api from '@/lib/api';
 
 const STATUS_COLOR = { active: 'green', suspended: 'yellow', disabled: 'red' };
@@ -29,8 +31,13 @@ const text = (value) => String(value || '').toLowerCase();
 const fmtDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
 
 export default function TenantsPage() {
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role);
   const [tenants, setTenants] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -55,6 +62,21 @@ export default function TenantsPage() {
       setError(err?.response?.data?.message || 'Could not create client');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteError('');
+    setDeleting(true);
+    try {
+      await api.delete(`/tenants/${deleteTarget._id}`);
+      setDeleteTarget(null);
+      await load();
+    } catch (err) {
+      setDeleteError(err?.response?.data?.message || 'Could not delete client');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -128,7 +150,7 @@ export default function TenantsPage() {
                   <SortableTh label="Plan" sortKey="plan" sort={sort} onSort={setSort} />
                   <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
                   <SortableTh label="Created" sortKey="createdAt" sort={sort} onSort={setSort} />
-                  <th className="px-4 py-3 text-right font-semibold">Open</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -156,10 +178,22 @@ export default function TenantsPage() {
                     <td className="px-4 py-3">{t.planId?.name ? <Badge label={t.planId.name} color="blue" /> : '-'}</td>
                     <td className="px-4 py-3"><Badge label={t.status} color={STATUS_COLOR[t.status] || 'gray'} /></td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDate(t.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Link href={`/admin/tenants/${t._id}`} className="inline-flex items-center justify-end text-primary hover:underline">
-                        Details <ArrowRight size={14} className="ml-1" />
-                      </Link>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        {role === 'admin' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => { setDeleteError(''); setDeleteTarget(t); }}
+                          >
+                            <Trash2 size={13} /> Delete
+                          </Button>
+                        )}
+                        <Link href={`/admin/tenants/${t._id}`} className="inline-flex h-8 items-center justify-end rounded-lg px-2 text-xs font-medium text-primary hover:underline">
+                          Details <ArrowRight size={14} className="ml-1" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -200,6 +234,24 @@ export default function TenantsPage() {
           </div>
           <Textarea label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+      </Modal>
+
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete client"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="danger" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete client'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Delete <strong>{deleteTarget?.name}</strong>? This disables the client login and workspace while preserving billing and message history.
+          </p>
+          {deleteError && <p className="text-sm text-red-500">{deleteError}</p>}
         </div>
       </Modal>
     </AppShell>

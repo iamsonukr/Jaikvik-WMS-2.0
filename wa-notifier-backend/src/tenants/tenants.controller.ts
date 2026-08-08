@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto, UpdateTenantBillingDto, UpdateTenantDto, UpdateTenantStatusDto } from './tenant.dto';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -36,5 +36,11 @@ export class TenantsController {
   @Roles(UserRole.ADMIN) // suspending/disabling a client is a master-admin-level action
   setStatus(@Param('id') id: string, @Body() dto: UpdateTenantStatusDto) {
     return this.svc.setStatus(id, dto.status);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.ADMIN)
+  remove(@Param('id') id: string) {
+    return this.svc.remove(id);
   }
 }

@@ -45,6 +45,7 @@ export class AuthService {
     const user = await this.userModel.findOne({ email: dto.email });
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (!user.isActive) throw new UnauthorizedException('This account has been disabled');
+    await this.assertTenantActive(user);
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
     user.lastLoginAt = new Date();
@@ -259,6 +260,16 @@ export class AuthService {
     const tenant = await this.tenantsService.findOne(tenantId);
     if (!tenant) throw new NotFoundException('Client tenant not found');
     return tenant;
+  }
+
+  private async assertTenantActive(user: UserDocument) {
+    const role = normalizeUserRole(user.role);
+    if (!TENANT_SCOPED_ROLES.includes(role as UserRole)) return;
+    if (!user.tenantId) throw new UnauthorizedException('Client tenant not found');
+
+    const tenant = await this.tenantsService.findOne(String(user.tenantId));
+    if (!tenant) throw new UnauthorizedException('Client tenant not found');
+    if (tenant.status !== 'active') throw new UnauthorizedException('This client has been disabled');
   }
 
   private async findTenantTeamMember(tenantId: string, userId: string) {
