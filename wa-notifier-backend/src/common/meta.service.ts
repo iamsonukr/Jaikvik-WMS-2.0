@@ -155,6 +155,29 @@ export class MetaService {
     return data?.data || [];
   }
 
+  async getWabaInfo(wabaId: string, accessToken: string) {
+    const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${wabaId}`, {
+      params: {
+        fields: 'id,name,owner_business_info,on_behalf_of_business_info,primary_funding_id,status',
+        access_token: accessToken,
+      },
+    });
+    return data;
+  }
+
+  async getAssignedUsers(wabaId: string, accessToken: string, businessId?: string) {
+    const params: Record<string, string> = {
+      fields: 'id,name,role,tasks',
+      access_token: accessToken,
+    };
+    if (businessId) params.business = businessId;
+
+    const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${wabaId}/assigned_users`, {
+      params,
+    });
+    return data?.data || [];
+  }
+
   async debugAccessToken(inputToken: string) {
     const appId = this.cfg.get<string>('META_APP_ID');
     const appSecret = this.cfg.get<string>('META_APP_SECRET');

@@ -337,6 +337,8 @@ export class WhatsAppAccountsService {
         onboardingMode: account.onboardingMode || 'cloud_api',
       },
       phoneNumber: null,
+      waba: null,
+      assignedUsers: [],
       wabaPhoneNumbers: [],
       token: null,
       configuration: {
@@ -381,6 +383,32 @@ export class WhatsAppAccountsService {
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.error = metaError?.message || err?.message || 'Could not fetch phone number status from Meta.';
+    }
+
+    try {
+      result.waba = await this.meta.getWabaInfo(account.wabaId, account.accessToken);
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      result.wabaError = metaError?.message || err?.message || 'Could not fetch WABA details from Meta.';
+    }
+
+    try {
+      const ownerBusinessId = result.waba?.owner_business_info?.id || result.waba?.owner_business_info?.business_id;
+      const providerBusinessId = this.cfg.get<string>('META_PROVIDER_BUSINESS_ID');
+      result.assignedUsers = await this.meta.getAssignedUsers(
+        account.wabaId,
+        account.accessToken,
+        ownerBusinessId || providerBusinessId,
+      );
+      const currentTokenTasks = result.assignedUsers
+        .flatMap((user) => Array.isArray(user.tasks) ? user.tasks : [])
+        .map((task) => String(task).toUpperCase());
+      if (currentTokenTasks.length && !currentTokenTasks.includes('MESSAGING')) {
+        result.warnings.push('The WABA assigned-users list does not show the MESSAGING task. Meta will reject /messages with code 200 until MESSAGING is granted during Embedded Signup.');
+      }
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      result.assignedUsersError = metaError?.message || err?.message || 'Could not fetch WABA assigned users/tasks from Meta.';
     }
 
     try {
