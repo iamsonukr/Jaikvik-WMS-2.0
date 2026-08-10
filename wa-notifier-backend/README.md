@@ -60,7 +60,7 @@ docker compose exec api node seed.js
 | `META_PROVIDER_SYSTEM_USER_ID` | Provider system user ID returned by `/{business-id}/system_users` | — |
 | `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` | Provider system user token used to manage assigned client WABAs | — |
 | `META_WABA_SYSTEM_USER_TASKS` | Comma-separated WABA tasks assigned to the provider system user | `MANAGE` |
-| `META_CREDIT_LINE_ID` | Optional provider credit line ID for client WABA billing | — |
+| `META_CREDIT_LINE_ID` | Provider credit line ID to attach to client WABAs when clients should not pay Meta directly | — |
 | `META_WABA_CURRENCY` | Currency used when attaching the provider credit line | `INR` |
 | `API_PORT` | Port to listen on | `3001` |
 | `CORS_ORIGIN` | Frontend URL(s) — comma-separated | `*` |
@@ -179,9 +179,14 @@ client WABA and stores the provider token for webhook subscription, phone
 registration, templates, and messaging.
 
 If clients pay Meta directly, leave `META_CREDIT_LINE_ID` empty and have them
-add a payment method in their own Meta Business. If you bill clients through
-your provider line of credit, also set `META_CREDIT_LINE_ID` and
-`META_WABA_CURRENCY`.
+add a payment method in their own Meta Business. If clients should send through
+your technical provider credit line, set `META_CREDIT_LINE_ID`,
+`META_WABA_CURRENCY`, and `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN`. The backend
+then attaches the provider credit line to the client WABA during Embedded
+Signup, manual account creation, phone registration, or webhook re-subscription.
+If Meta rejects that attachment, onboarding/setup fails instead of saving an
+account that will later fail sends because the client's own payment method is
+missing.
 
 ## Project Structure
 

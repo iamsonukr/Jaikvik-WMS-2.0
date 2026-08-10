@@ -66,6 +66,9 @@ export class WhatsAppAccountsService {
       await this.assertTenantCanAddPhoneNumber(tenantId, dto.phoneNumberId);
     }
     const { tenantId: _requestTenantId, ...account } = dto;
+    if (account.wabaId) {
+      await this.attachProviderCreditLineIfConfigured(account.wabaId);
+    }
     return this.model.create(tenantId ? { ...account, tenantId: toObjectId(tenantId, 'tenantId') } : account);
   }
 
@@ -219,17 +222,16 @@ export class WhatsAppAccountsService {
 
   private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
     const { accessMode, providerAssignmentEnabled } = this.providerAccessSettings();
-    if (!providerAssignmentEnabled) return fallbackAccessToken;
-    if (!['provider_assignment', 'multi_partner'].includes(accessMode)) return fallbackAccessToken;
+    const shouldAssignProvider = providerAssignmentEnabled && ['provider_assignment', 'multi_partner'].includes(accessMode);
+    if (!shouldAssignProvider) {
+      await this.attachProviderCreditLineIfConfigured(wabaId);
+      return fallbackAccessToken;
+    }
 
     const configuredSystemUserId = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ID');
-    const providerAccessToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
-
-    if (!providerAccessToken) {
-      throw new BadRequestException(
-        'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required when META_WABA_ACCESS_MODE uses provider assignment.',
-      );
-    }
+    const providerAccessToken = this.requireProviderSystemUserAccessToken(
+      'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required when META_WABA_ACCESS_MODE uses provider assignment.',
+    );
 
     const providerSystemUserId = await this.resolveProviderSystemUserId(providerAccessToken, configuredSystemUserId);
     const tasks = this.parseProviderSystemUserTasks();
@@ -282,16 +284,33 @@ export class WhatsAppAccountsService {
     return selected;
   }
 
-  private async attachProviderCreditLineIfConfigured(wabaId: string, providerAccessToken: string) {
+  private requireProviderSystemUserAccessToken(message: string) {
+    const providerAccessToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
+    if (!providerAccessToken) {
+      throw new BadRequestException(message);
+    }
+    return providerAccessToken;
+  }
+
+  private isProviderCreditLineConfigured() {
+    return Boolean(this.cfg.get<string>('META_CREDIT_LINE_ID'));
+  }
+
+  private async attachProviderCreditLineIfConfigured(wabaId: string, providerAccessToken?: string) {
     const creditLineId = this.cfg.get<string>('META_CREDIT_LINE_ID');
-    if (!creditLineId) return;
+    if (!creditLineId) return false;
 
     const currency = this.cfg.get<string>('META_WABA_CURRENCY');
     if (!currency) {
       throw new BadRequestException('META_WABA_CURRENCY is required when META_CREDIT_LINE_ID is configured.');
     }
 
-    await this.meta.attachCreditLineToWaba(creditLineId, wabaId, currency, providerAccessToken);
+    const accessToken = providerAccessToken || this.requireProviderSystemUserAccessToken(
+      'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required when META_CREDIT_LINE_ID is configured.',
+    );
+
+    await this.meta.attachCreditLineToWaba(creditLineId, wabaId, currency, accessToken);
+    return true;
   }
 
   private async getPhoneNumberInfo(phoneNumberId: string, accessToken: string, version: string) {
@@ -387,6 +406,8 @@ export class WhatsAppAccountsService {
         ...this.providerAccessSettings(),
         providerTasks: this.parseProviderSystemUserTasks(),
         operationalAccessTokenSource: this.operationalAccessTokenSource(),
+        providerCreditLineConfigured: this.isProviderCreditLineConfigured(),
+        wabaCurrency: this.cfg.get<string>('META_WABA_CURRENCY') || null,
       },
       warnings: [],
       error: null,
