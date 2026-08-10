@@ -117,7 +117,8 @@ export class WebhooksController {
             this.logger.log(`Saved inbound message ${msg.id} for client ${client._id} from ${msg.from}`);
 
             // Mark read
-            await this.meta.markRead(phoneNumberId, client.accessToken, msg.id).catch(() => null);
+            const accessToken = this.clients.getOperationalAccessToken(client, 'messaging');
+            await this.meta.markRead(phoneNumberId, accessToken, msg.id).catch(() => null);
 
             // Chatbot auto-reply on text
             if (msg.type === 'text' && msg.text?.body) {

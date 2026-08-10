@@ -40,7 +40,8 @@ export class TemplatesService {
           components,
         };
 
-    const metaResponse = await this.meta.createTemplate(account.wabaId, account.accessToken, payload);
+    const accessToken = this.clients.getOperationalAccessToken(account, 'templates');
+    const metaResponse = await this.meta.createTemplate(account.wabaId, accessToken, payload);
     const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
 
     return this.model.findOneAndUpdate(
@@ -66,7 +67,8 @@ export class TemplatesService {
     const account = await this.clients.findOne(whatsappAccountId);
     if (!account) throw new NotFoundException('WhatsApp account not found.');
 
-    const response = await this.meta.getTemplateLibrary(account.accessToken, {
+    const accessToken = this.clients.getOperationalAccessToken(account, 'templates');
+    const response = await this.meta.getTemplateLibrary(accessToken, {
       name_or_content: filters.name_or_content || filters.search,
       language: filters.language,
       topic: filters.topic,
@@ -86,7 +88,8 @@ export class TemplatesService {
   async sync(whatsappAccountId: string) {
     const account = await this.clients.findOne(whatsappAccountId);
     const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
-    const metaTemplates = await this.meta.getTemplates(account.wabaId, account.accessToken);
+    const accessToken = this.clients.getOperationalAccessToken(account, 'templates');
+    const metaTemplates = await this.meta.getTemplates(account.wabaId, accessToken);
     const ops = metaTemplates.map((t: any) => ({
       updateOne: {
         filter: { whatsappAccountId: accountObjectId, name: t.name },

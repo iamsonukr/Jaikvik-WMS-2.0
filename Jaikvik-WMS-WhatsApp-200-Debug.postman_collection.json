@@ -1,0 +1,432 @@
+{
+  "info": {
+    "_postman_id": "b6249b38-5b78-4ac1-a7b0-jaikvik-wa-200-debug",
+    "name": "Jaikvik WMS - WhatsApp #200 Debug",
+    "description": "Focused checks for WhatsApp Cloud API (#200) send-permission failures. Fill backendAuthToken and metaAccessToken before running. Do not commit real tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "backendBaseUrl",
+      "value": "https://jaikvik-wms-2-0.onrender.com/api"
+    },
+    {
+      "key": "backendAuthToken",
+      "value": ""
+    },
+    {
+      "key": "loginEmail",
+      "value": "admin@wanotifier.com"
+    },
+    {
+      "key": "loginPassword",
+      "value": "Admin@123"
+    },
+    {
+      "key": "whatsappAccountId",
+      "value": "6a7965cead73aa7f06be89fc"
+    },
+    {
+      "key": "graphBaseUrl",
+      "value": "https://graph.facebook.com"
+    },
+    {
+      "key": "graphVersion",
+      "value": "v25.0"
+    },
+    {
+      "key": "metaAccessToken",
+      "value": ""
+    },
+    {
+      "key": "appAccessToken",
+      "value": "1009382525072254|PASTE_APP_SECRET_OR_APP_ACCESS_TOKEN"
+    },
+    {
+      "key": "wabaId",
+      "value": "2386528398417527"
+    },
+    {
+      "key": "phoneNumberId",
+      "value": "1223987500795260"
+    },
+    {
+      "key": "recipientPhone",
+      "value": "918210490833"
+    },
+    {
+      "key": "templateName",
+      "value": "hello_world"
+    },
+    {
+      "key": "languageCode",
+      "value": "en_US"
+    },
+    {
+      "key": "registerPin",
+      "value": "727666"
+    },
+    {
+      "key": "providerBusinessId",
+      "value": "2167429973829673"
+    }
+  ],
+  "item": [
+    {
+      "name": "Backend - Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "const token = json.accessToken || json.token || json.jwt;",
+              "if (token) pm.collectionVariables.set('backendAuthToken', token);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{backendBaseUrl}}/auth/login",
+          "host": [
+            "{{backendBaseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        },
+        "description": "Logs into your backend and stores backendAuthToken if the response contains accessToken/token/jwt."
+      }
+    },
+    {
+      "name": "Backend - Sending Diagnostics",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{backendAuthToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{backendBaseUrl}}/whatsapp-accounts/{{whatsappAccountId}}/sending-diagnostics",
+          "host": [
+            "{{backendBaseUrl}}"
+          ],
+          "path": [
+            "whatsapp-accounts",
+            "{{whatsappAccountId}}",
+            "sending-diagnostics"
+          ]
+        },
+        "description": "Checks the account saved in your app: WABA ID, phone number ID, token scopes, phone status, and warnings."
+      }
+    },
+    {
+      "name": "Backend - Send hello_world Template",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{backendAuthToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"whatsappAccountId\": \"{{whatsappAccountId}}\",\n  \"phone\": \"{{recipientPhone}}\",\n  \"templateName\": \"{{templateName}}\",\n  \"languageCode\": \"{{languageCode}}\",\n  \"bodyParameters\": []\n}"
+        },
+        "url": {
+          "raw": "{{backendBaseUrl}}/inbox/template",
+          "host": [
+            "{{backendBaseUrl}}"
+          ],
+          "path": [
+            "inbox",
+            "template"
+          ]
+        },
+        "description": "Your current failing backend request. If this fails but the direct Graph request succeeds, the backend saved token/account mapping is wrong."
+      }
+    },
+    {
+      "name": "Backend - Register Phone Number",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{backendAuthToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"pin\": \"{{registerPin}}\"\n}"
+        },
+        "url": {
+          "raw": "{{backendBaseUrl}}/whatsapp-accounts/{{whatsappAccountId}}/register",
+          "host": [
+            "{{backendBaseUrl}}"
+          ],
+          "path": [
+            "whatsapp-accounts",
+            "{{whatsappAccountId}}",
+            "register"
+          ]
+        },
+        "description": "Only use this if the Cloud API number is not registered yet. If already registered, you do not need this."
+      }
+    },
+    {
+      "name": "Meta Graph - Debug Saved Token",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/debug_token?input_token={{metaAccessToken}}&access_token={{appAccessToken}}",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "debug_token"
+          ],
+          "query": [
+            {
+              "key": "input_token",
+              "value": "{{metaAccessToken}}"
+            },
+            {
+              "key": "access_token",
+              "value": "{{appAccessToken}}"
+            }
+          ]
+        },
+        "description": "Paste the exact accessToken saved in Mongo into metaAccessToken. appAccessToken should be APP_ID|APP_SECRET."
+      }
+    },
+    {
+      "name": "Meta Graph - Phone Number Info",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{metaAccessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{phoneNumberId}}?fields=id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{phoneNumberId}}"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app"
+            }
+          ]
+        },
+        "description": "Verifies that this token can read the phone number and that the phone is CLOUD_API/VERIFIED."
+      }
+    },
+    {
+      "name": "Meta Graph - WABA Phone Numbers",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{metaAccessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{wabaId}}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{wabaId}}",
+            "phone_numbers"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app"
+            }
+          ]
+        },
+        "description": "Verifies this token can read the WABA's phone list."
+      }
+    },
+    {
+      "name": "Meta Graph - Templates",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{metaAccessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{wabaId}}/message_templates?fields=name,language,status,category,components&limit=100",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{wabaId}}",
+            "message_templates"
+          ],
+          "query": [
+            {
+              "key": "fields",
+              "value": "name,language,status,category,components"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "description": "Checks whether hello_world exists and is approved under this exact WABA."
+      }
+    },
+    {
+      "name": "Meta Graph - Direct Send hello_world Template",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{metaAccessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{recipientPhone}}\",\n  \"type\": \"template\",\n  \"template\": {\n    \"name\": \"{{templateName}}\",\n    \"language\": {\n      \"code\": \"{{languageCode}}\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{phoneNumberId}}/messages",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{phoneNumberId}}",
+            "messages"
+          ]
+        },
+        "description": "The deciding test. If this returns #200, Meta/token/WABA grant is the problem. If this succeeds but backend send fails, the saved token in Mongo or backend account row is different from metaAccessToken."
+      }
+    },
+    {
+      "name": "Meta Graph - Direct Send Text",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{metaAccessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{recipientPhone}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Direct Cloud API test from Jaikvik WMS\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{graphBaseUrl}}/{{graphVersion}}/{{phoneNumberId}}/messages",
+          "host": [
+            "{{graphBaseUrl}}"
+          ],
+          "path": [
+            "{{graphVersion}}",
+            "{{phoneNumberId}}",
+            "messages"
+          ]
+        },
+        "description": "Only succeeds inside an open 24-hour customer service window. Use template test for cold outreach."
+      }
+    }
+  ]
+}

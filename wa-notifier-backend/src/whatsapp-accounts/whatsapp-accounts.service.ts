@@ -28,6 +28,39 @@ export class WhatsAppAccountsService {
   findOnePublic(id: string) { return this.model.findById(toObjectId(id, 'whatsappAccountId')).select('-accessToken'); }
   findByPhoneNumberId(phoneNumberId: string) { return this.model.findOne({ phoneNumberId }); }
   findByMetaEntityId(entityId: string) { return this.model.findOne({ $or: [{ wabaId: entityId }, { phoneNumberId: entityId }] }); }
+
+  getOperationalAccessToken(account: { accessToken?: string; wabaId?: string; phoneNumberId?: string }, purpose = 'operation') {
+    const source = this.operationalAccessTokenSource();
+    if (source === 'account') return account.accessToken;
+
+    const providerToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
+    if (!providerToken) {
+      throw new BadRequestException(
+        `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required when META_OPERATIONAL_ACCESS_TOKEN_SOURCE=${source}.`,
+      );
+    }
+    return providerToken;
+  }
+
+  private operationalAccessTokenSource() {
+    const source = this.cfg.get<string>('META_OPERATIONAL_ACCESS_TOKEN_SOURCE', 'account').trim().toLowerCase();
+    return source === 'provider' ? 'provider' : 'account';
+  }
+
+  private async assertOperationalTokenCanAccessPhone(account: { accessToken?: string; wabaId?: string; phoneNumberId?: string }) {
+    if (this.operationalAccessTokenSource() !== 'provider') return;
+    const accessToken = this.getOperationalAccessToken(account, 'onboarding');
+    try {
+      await this.meta.getPhoneNumberInfo(account.phoneNumberId, accessToken);
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.message || err?.message || 'Unknown Meta error';
+      throw new BadRequestException(
+        `Provider system-user token cannot access this newly onboarded WhatsApp phone number. Grant the provider system user access to WABA ${account.wabaId} / phone ${account.phoneNumberId}, then reconnect. Meta said: ${message}`,
+      );
+    }
+  }
+
   async create(dto: Partial<Omit<WhatsAppAccount, 'tenantId'>> & { tenantId?: ObjectIdInput }, tenantId?: ObjectIdInput) {
     if (tenantId && dto.phoneNumberId) {
       await this.assertTenantCanAddPhoneNumber(tenantId, dto.phoneNumberId);
@@ -66,6 +99,12 @@ export class WhatsAppAccountsService {
     if (tenantId) {
       await this.assertTenantCanAddPhoneNumber(tenantId, phoneNumberId);
     }
+
+    await this.assertOperationalTokenCanAccessPhone({
+      accessToken,
+      wabaId: dto.wabaId,
+      phoneNumberId,
+    });
 
     await this.meta.subscribeWaba(dto.wabaId, accessToken).catch(err => {
       this.logger.warn(err?.message || 'Could not subscribe WABA webhooks automatically');
@@ -301,8 +340,9 @@ export class WhatsAppAccountsService {
   async subscribeWebhooks(id: string) {
     const account = await this.findOne(id);
     if (!account) throw new NotFoundException();
-    const accessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
-    await this.persistAccessTokenIfChanged(account, accessToken);
+    const preparedAccessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
+    await this.persistAccessTokenIfChanged(account, preparedAccessToken);
+    const accessToken = this.getOperationalAccessToken({ ...account.toObject(), accessToken: preparedAccessToken }, 'webhooks');
     return this.meta.subscribeWaba(account.wabaId, accessToken);
   }
 
@@ -312,8 +352,9 @@ export class WhatsAppAccountsService {
     if (account.onboardingMode === 'business_app') {
       throw new BadRequestException('Business App coexistence numbers are linked during Embedded Signup and do not use the standard register-number step.');
     }
-    const accessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
-    await this.persistAccessTokenIfChanged(account, accessToken);
+    const preparedAccessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
+    await this.persistAccessTokenIfChanged(account, preparedAccessToken);
+    const accessToken = this.getOperationalAccessToken({ ...account.toObject(), accessToken: preparedAccessToken }, 'registration');
     return this.meta.registerPhoneNumber(account.phoneNumberId, accessToken, pin);
   }
 
@@ -341,13 +382,22 @@ export class WhatsAppAccountsService {
       assignedUsers: [],
       wabaPhoneNumbers: [],
       token: null,
+      operationalToken: null,
       configuration: {
         ...this.providerAccessSettings(),
         providerTasks: this.parseProviderSystemUserTasks(),
+        operationalAccessTokenSource: this.operationalAccessTokenSource(),
       },
       warnings: [],
       error: null,
     };
+
+    let operationalAccessToken = account.accessToken;
+    try {
+      operationalAccessToken = this.getOperationalAccessToken(account, 'diagnostics');
+    } catch (err) {
+      result.operationalTokenError = err?.message || 'Could not resolve operational Meta access token.';
+    }
 
     try {
       const debug = await this.meta.debugAccessToken(account.accessToken);
@@ -368,7 +418,12 @@ export class WhatsAppAccountsService {
       };
       const embeddedSignupMode = result.configuration.accessMode === 'embedded_signup'
         && !result.configuration.providerAssignmentEnabled;
-      if (embeddedSignupMode && debug?.type === 'SYSTEM_USER' && Number(debug?.expires_at || 0) === 0) {
+      if (
+        result.configuration.operationalAccessTokenSource === 'account'
+        && embeddedSignupMode
+        && debug?.type === 'SYSTEM_USER'
+        && Number(debug?.expires_at || 0) === 0
+      ) {
         result.warnings.push(
           'Saved token is non-expiring. If your Embedded Signup configuration says tokens expire in 60 days, this account may still be using a provider/manual system-user token instead of the customer Embedded Signup token.',
         );
@@ -378,15 +433,40 @@ export class WhatsAppAccountsService {
       result.tokenError = metaError?.message || err?.message || 'Could not debug the saved Meta token.';
     }
 
+    if (result.configuration.operationalAccessTokenSource === 'provider' && !result.operationalTokenError) {
+      try {
+        const debug = await this.meta.debugAccessToken(operationalAccessToken);
+        const scopes = Array.isArray(debug?.scopes) ? debug.scopes : [];
+        const granularScopes = Array.isArray(debug?.granular_scopes) ? debug.granular_scopes : [];
+        result.operationalToken = {
+          source: 'provider',
+          appId: debug?.app_id,
+          type: debug?.type,
+          isValid: debug?.is_valid,
+          expiresAt: debug?.expires_at,
+          scopes,
+          hasWhatsappBusinessManagement: scopes.includes('whatsapp_business_management'),
+          hasWhatsappBusinessMessaging: scopes.includes('whatsapp_business_messaging'),
+          granularScopes: granularScopes.map((scope) => ({
+            scope: scope.scope,
+            targetIds: scope.target_ids || [],
+          })),
+        };
+      } catch (err) {
+        const metaError = err?.response?.data?.error;
+        result.operationalTokenError = metaError?.message || err?.message || 'Could not debug the provider operational token.';
+      }
+    }
+
     try {
-      result.phoneNumber = await this.meta.getPhoneNumberInfo(account.phoneNumberId, account.accessToken);
+      result.phoneNumber = await this.meta.getPhoneNumberInfo(account.phoneNumberId, operationalAccessToken);
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.error = metaError?.message || err?.message || 'Could not fetch phone number status from Meta.';
     }
 
     try {
-      result.waba = await this.meta.getWabaInfo(account.wabaId, account.accessToken);
+      result.waba = await this.meta.getWabaInfo(account.wabaId, operationalAccessToken);
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.wabaError = metaError?.message || err?.message || 'Could not fetch WABA details from Meta.';
@@ -397,7 +477,7 @@ export class WhatsAppAccountsService {
       const providerBusinessId = this.cfg.get<string>('META_PROVIDER_BUSINESS_ID');
       result.assignedUsers = await this.meta.getAssignedUsers(
         account.wabaId,
-        account.accessToken,
+        operationalAccessToken,
         ownerBusinessId || providerBusinessId,
       );
       const currentTokenTasks = result.assignedUsers
@@ -412,7 +492,7 @@ export class WhatsAppAccountsService {
     }
 
     try {
-      result.wabaPhoneNumbers = await this.meta.getWabaPhoneNumbers(account.wabaId, account.accessToken);
+      result.wabaPhoneNumbers = await this.meta.getWabaPhoneNumbers(account.wabaId, operationalAccessToken);
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.wabaPhoneNumbersError = metaError?.message || err?.message || 'Could not fetch WABA phone numbers from Meta.';

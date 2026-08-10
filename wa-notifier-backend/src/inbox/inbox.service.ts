@@ -77,7 +77,8 @@ export class InboxService {
 
     let res: any;
     try {
-      res = await this.meta.sendText(account.phoneNumberId, account.accessToken, phone, text);
+      const accessToken = this.clients.getOperationalAccessToken(account, 'messaging');
+      res = await this.meta.sendText(account.phoneNumberId, accessToken, phone, text);
     } catch (err) {
       await this.refundFailedSend(tenantId, charge, phone, MessageCategory.SERVICE, 'text reply');
       throw err;
@@ -135,9 +136,10 @@ export class InboxService {
     const components = this.buildSendComponents(template.components || [], bodyParameters);
     let res: any;
     try {
+      const accessToken = this.clients.getOperationalAccessToken(account, 'messaging');
       res = await this.meta.sendTemplate(
         account.phoneNumberId,
-        account.accessToken,
+        accessToken,
         phone,
         template.name,
         language,

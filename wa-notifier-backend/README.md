@@ -55,6 +55,7 @@ docker compose exec api node seed.js
 | `META_API_VERSION` | Meta API version | `v25.0` |
 | `META_WABA_ACCESS_MODE` | `embedded_signup` for direct Meta Cloud API, `provider_assignment`/`multi_partner` only for advanced partner flows | `embedded_signup` |
 | `META_ENABLE_PROVIDER_ASSIGNMENT` | Must be `true` before backend calls `/{waba-id}/assigned_users` | `false` |
+| `META_OPERATIONAL_ACCESS_TOKEN_SOURCE` | `account` uses the Embedded Signup token saved per WABA; `provider` uses `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` for sends/templates/register/read receipts | `account` |
 | `META_PROVIDER_BUSINESS_ID` | Provider business ID used to verify/list provider system users | — |
 | `META_PROVIDER_SYSTEM_USER_ID` | Provider system user ID returned by `/{business-id}/system_users` | — |
 | `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` | Provider system user token used to manage assigned client WABAs | — |
@@ -153,8 +154,17 @@ All routes prefixed `/api/`. JWT Bearer token required except login/register and
 ## Tech Provider Embedded Signup
 
 For direct Meta Cloud API onboarding, keep `META_WABA_ACCESS_MODE` set to
-`embedded_signup` and use the signup token returned by Meta for that client
-WABA.
+`embedded_signup`. By default the backend uses the signup token returned by Meta
+for that client WABA.
+
+For provider-style platforms where your provider system-user token has already
+been assigned access to customer WABAs, set
+`META_OPERATIONAL_ACCESS_TOKEN_SOURCE=provider`. The backend will still onboard
+and store each client's WABA/phone IDs through Embedded Signup, but sends,
+template sync/create, registration, webhook subscription, and read receipts use
+`META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN`. During onboarding, the backend verifies
+that the provider token can access the newly connected phone number so bad
+grants fail early instead of failing later with Meta `#200` on send.
 
 Only for advanced provider-assignment or multi-partner/BSP flows, set
 `META_WABA_ACCESS_MODE` to `provider_assignment` or `multi_partner`, set

@@ -221,6 +221,7 @@ export class BroadcastsService {
     // Process in batches of 10 with 1s delay (Meta rate limit safe)
     const BATCH = 10;
     let sent = 0, failed = 0;
+    const accessToken = this.clients.getOperationalAccessToken(client, 'messaging');
 
     while (true) {
       const current = await this.broadcastModel.findById(broadcast._id);
@@ -240,7 +241,7 @@ export class BroadcastsService {
           try {
             const res = await this.meta.sendTemplate(
               client.phoneNumberId,
-              client.accessToken,
+              accessToken,
               contact.phone,
               broadcast.templateName,
               broadcast.languageCode,
@@ -384,9 +385,10 @@ export class BroadcastsService {
     const cleanPhone = String(phone || '').replace(/[^\d+]/g, '');
     if (cleanPhone.length < 5) throw new BadRequestException('Enter a valid test phone number.');
     const account = await this.clients.findOne(this.accountIdOf(broadcast));
+    const accessToken = this.clients.getOperationalAccessToken(account, 'messaging');
     const result = await this.meta.sendTemplate(
       account.phoneNumberId,
-      account.accessToken,
+      accessToken,
       cleanPhone,
       broadcast.templateName,
       broadcast.languageCode,
