@@ -49,7 +49,7 @@ export class MetaService {
       });
       if (metaError?.code === 200) {
         throw new BadRequestException(
-          'WhatsApp template failed: the saved Meta token does not have MESSAGING access for this WhatsApp account/phone number. Reconnect using a config that includes whatsapp_business_messaging and the MESSAGING WhatsApp task.',
+          `WhatsApp template failed: ${message} | code ${metaError.code}${metaError?.error_subcode ? ` | subcode ${metaError.error_subcode}` : ''}`,
         );
       }
       throw new BadRequestException(`WhatsApp template failed: ${message}`);
@@ -78,7 +78,7 @@ export class MetaService {
       });
       if (metaError?.code === 200) {
         throw new BadRequestException(
-          'WhatsApp message failed: the saved Meta token does not have MESSAGING access for this WhatsApp account/phone number. Reconnect using a config that includes whatsapp_business_messaging and the MESSAGING WhatsApp task.',
+          `WhatsApp message failed: ${message} | code ${metaError.code}${metaError?.error_subcode ? ` | subcode ${metaError.error_subcode}` : ''}`,
         );
       }
       throw new BadRequestException(`WhatsApp message failed: ${message}`);
