@@ -172,9 +172,14 @@ export class WhatsAppAccountsService {
     return String(mode || '').trim().toLowerCase() === 'business_app' ? 'business_app' : 'cloud_api';
   }
 
-  private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
+  private providerAccessSettings() {
     const accessMode = this.cfg.get<string>('META_WABA_ACCESS_MODE', 'embedded_signup').trim().toLowerCase();
     const providerAssignmentEnabled = this.cfg.get<string>('META_ENABLE_PROVIDER_ASSIGNMENT', 'false').trim().toLowerCase() === 'true';
+    return { accessMode, providerAssignmentEnabled };
+  }
+
+  private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
+    const { accessMode, providerAssignmentEnabled } = this.providerAccessSettings();
     if (!providerAssignmentEnabled) return fallbackAccessToken;
     if (!['provider_assignment', 'multi_partner'].includes(accessMode)) return fallbackAccessToken;
 
@@ -233,7 +238,9 @@ export class WhatsAppAccountsService {
       .split(',')
       .map((task) => task.trim().toUpperCase())
       .filter(Boolean);
-    return tasks.length ? tasks : ['MANAGE'];
+    const selected = tasks.length ? tasks : ['MANAGE'];
+    if (!selected.includes('MESSAGING')) selected.push('MESSAGING');
+    return selected;
   }
 
   private async attachProviderCreditLineIfConfigured(wabaId: string, providerAccessToken: string) {
@@ -332,6 +339,11 @@ export class WhatsAppAccountsService {
       phoneNumber: null,
       wabaPhoneNumbers: [],
       token: null,
+      configuration: {
+        ...this.providerAccessSettings(),
+        providerTasks: this.parseProviderSystemUserTasks(),
+      },
+      warnings: [],
       error: null,
     };
 
@@ -352,6 +364,13 @@ export class WhatsAppAccountsService {
           targetIds: scope.target_ids || [],
         })),
       };
+      const embeddedSignupMode = result.configuration.accessMode === 'embedded_signup'
+        && !result.configuration.providerAssignmentEnabled;
+      if (embeddedSignupMode && debug?.type === 'SYSTEM_USER' && Number(debug?.expires_at || 0) === 0) {
+        result.warnings.push(
+          'Saved token is non-expiring. If your Embedded Signup configuration says tokens expire in 60 days, this account may still be using a provider/manual system-user token instead of the customer Embedded Signup token.',
+        );
+      }
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.tokenError = metaError?.message || err?.message || 'Could not debug the saved Meta token.';

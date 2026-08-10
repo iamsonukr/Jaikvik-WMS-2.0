@@ -24,12 +24,13 @@ export class MetaService {
     components: any[],
   ) {
     const url = `${this.base(phoneNumberId)}/messages`;
+    const recipient = this.normalizeRecipient(to);
     try {
       const { data } = await axios.post(
         url,
         {
           messaging_product: 'whatsapp',
-          to,
+          to: recipient,
           type: 'template',
           template: { name: templateName, language: { code: languageCode }, components },
         },
@@ -45,6 +46,7 @@ export class MetaService {
         code: metaError?.code,
         subcode: metaError?.error_subcode,
         phoneNumberId,
+        recipient,
         templateName,
       });
       if (metaError?.code === 200) {
