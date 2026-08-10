@@ -39,6 +39,10 @@ const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 const metaSolutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID;
+const SIGNUP_FEATURE_TYPES = {
+  cloud_api: 'whatsapp_embedded_signup',
+  business_app: 'whatsapp_business_app_onboarding',
+};
 const blankAccountForm = {
   name: '',
   wabaId: '',
@@ -195,7 +199,7 @@ export default function TenantDetailPage() {
   const [deletingClient, setDeletingClient] = useState(false);
   const [deleteClientError, setDeleteClientError] = useState('');
   const [error, setError] = useState('');
-  const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '' });
+  const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '', onboardingMode: 'cloud_api' });
   const waitTimerRef = useRef(null);
 
   const walletQuery = (page = walletPage, filters = walletFilters, limit = walletLimit) => {
@@ -397,7 +401,7 @@ export default function TenantDetailPage() {
 
   const resetSignupState = () => {
     clearWaitTimer();
-    signupRef.current = { code: '', setup: null, submitting: false, redirectUri: '' };
+    signupRef.current = { code: '', setup: null, submitting: false, redirectUri: '', onboardingMode: 'cloud_api' };
   };
 
   useEffect(() => {
@@ -876,6 +880,7 @@ export default function TenantDetailPage() {
         wabaId,
         phoneNumberId,
         redirectUri: current.redirectUri,
+        onboardingMode: current.onboardingMode,
         name: current.setup?.business_name || current.setup?.businessName || `${tenant?.name || 'Client'} WhatsApp`,
       });
       resetSignupState();
@@ -924,7 +929,7 @@ export default function TenantDetailPage() {
     return () => window.removeEventListener('message', onMessage);
   }, [finishEmbeddedSignup]);
 
-  const startEmbeddedSignup = () => {
+  const startEmbeddedSignup = (onboardingMode = 'cloud_api') => {
     setAccountError('');
     setAccountStatus('');
 
@@ -938,6 +943,7 @@ export default function TenantDetailPage() {
     }
 
     resetSignupState();
+    signupRef.current.onboardingMode = onboardingMode;
     setConnectingAccount(true);
     setAccountStatus('Opening Facebook Embedded Signup...');
 
@@ -971,7 +977,7 @@ export default function TenantDetailPage() {
       fallback_redirect_uri: redirectUri,
       extras: {
         setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
-        featureType: 'whatsapp_embedded_signup',
+        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
         sessionInfoVersion: '3',
       },
     });
@@ -1259,8 +1265,11 @@ export default function TenantDetailPage() {
               <Button variant="outline" size="sm" onClick={openManualAccount}>
                 <Plus size={14} /> Add manually
               </Button>
-              <Button size="sm" onClick={startEmbeddedSignup} disabled={connectingAccount}>
-                <MessageCircle size={14} /> {connectingAccount ? 'Connecting...' : 'Embedded signup'}
+              <Button size="sm" onClick={() => startEmbeddedSignup('cloud_api')} disabled={connectingAccount}>
+                <MessageCircle size={14} /> {connectingAccount ? 'Connecting...' : 'New/free number'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => startEmbeddedSignup('business_app')} disabled={connectingAccount}>
+                <MessageCircle size={14} /> Existing Business App
               </Button>
             </div>
           )}

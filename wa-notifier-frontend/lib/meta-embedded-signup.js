@@ -62,5 +62,6 @@ export function isSuccessfulEmbeddedSignupEvent(event) {
     'FINISH',
     'FINISH_ONLY_WABA',
     'FINISH_GRANT_ONLY_API_ACCESS',
+    'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING',
   ].includes(event);
 }

@@ -7,6 +7,7 @@ export class CreateWhatsAppAccountDto {
   @IsString() @MinLength(1) phoneNumberId: string;
   @IsString() @MinLength(1) accessToken: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() onboardingMode?: string;
   @IsOptional() @IsString() timezone?: string;
   @IsOptional() @IsString() industry?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
@@ -18,6 +19,7 @@ export class UpdateWhatsAppAccountDto {
   @IsOptional() @IsString() phoneNumberId?: string;
   @IsOptional() @IsString() accessToken?: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() onboardingMode?: string;
   @IsOptional() @IsString() timezone?: string;
   @IsOptional() @IsString() industry?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
@@ -30,6 +32,7 @@ export class EmbeddedSignupDto {
   @IsOptional() @IsString() phoneNumberId?: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() redirectUri?: string;
+  @IsOptional() @IsString() onboardingMode?: string;
 }
 
 export class PublicEmbeddedSignupDto extends EmbeddedSignupDto {

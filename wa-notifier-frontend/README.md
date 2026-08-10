@@ -49,6 +49,13 @@ Note: `NEXT_PUBLIC_API_URL` is baked in at **build time** (Next.js convention fo
 | `NEXT_PUBLIC_META_API_VERSION` | Meta Graph API version used by the JS SDK | `v25.0` |
 | `NEXT_PUBLIC_META_SOLUTION_ID` | Optional multi-partner/BSP solution ID passed as `extras.setup.solutionID` during Embedded Signup | `1985687578474211` |
 
+The connect screen supports two Meta signup modes:
+
+- `cloud_api`: standard WhatsApp Cloud API onboarding for a new/free number.
+- `business_app`: WhatsApp Business App coexistence, launched with
+  `featureType: whatsapp_business_app_onboarding`, for eligible numbers already
+  active in the WhatsApp Business App.
+
 ## Deploying Separately
 
 Since this is fully standalone, you can deploy it anywhere independent of the backend:

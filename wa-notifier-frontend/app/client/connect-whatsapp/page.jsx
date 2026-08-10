@@ -20,6 +20,10 @@ const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 const metaSolutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID;
+const SIGNUP_FEATURE_TYPES = {
+  cloud_api: 'whatsapp_embedded_signup',
+  business_app: 'whatsapp_business_app_onboarding',
+};
 
 export default function ConnectWhatsAppPage() {
   const router = useRouter();
@@ -32,7 +36,7 @@ export default function ConnectWhatsAppPage() {
   const [connected, setConnected] = useState(false);
   const [debugEvents, setDebugEvents] = useState([]);
   const [metaPayloads, setMetaPayloads] = useState([]);
-  const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '' });
+  const signupRef = useRef({ code: '', setup: null, submitting: false, redirectUri: '', onboardingMode: 'cloud_api' });
   const waitTimerRef = useRef(null);
 
   const addDebugEvent = (message) => {
@@ -82,7 +86,7 @@ export default function ConnectWhatsAppPage() {
 
   const resetSignupState = () => {
     clearWaitTimer();
-    signupRef.current = { code: '', setup: null, submitting: false, redirectUri: '' };
+    signupRef.current = { code: '', setup: null, submitting: false, redirectUri: '', onboardingMode: 'cloud_api' };
   };
 
   useEffect(() => {
@@ -130,6 +134,7 @@ export default function ConnectWhatsAppPage() {
         wabaId,
         phoneNumberId,
         redirectUri: current.redirectUri,
+        onboardingMode: current.onboardingMode,
         name: current.setup?.business_name || current.setup?.businessName || '',
       });
       await refreshClients(account?._id);
@@ -216,7 +221,7 @@ export default function ConnectWhatsAppPage() {
     return () => window.removeEventListener('message', onMessage);
   }, [finishEmbeddedSignup]);
 
-  const connectWhatsApp = () => {
+  const connectWhatsApp = (onboardingMode = 'cloud_api') => {
     setError('');
     setStatus('');
 
@@ -234,9 +239,10 @@ export default function ConnectWhatsAppPage() {
     }
 
     resetSignupState();
+    signupRef.current.onboardingMode = onboardingMode;
     setConnecting(true);
     setStatus('Opening Facebook Embedded Signup...');
-    addDebugEvent('Opening Meta Embedded Signup');
+    addDebugEvent(`Opening Meta Embedded Signup (${onboardingMode})`);
 
     const redirectUri = `${window.location.origin}/client/meta-embedded-signup`;
     signupRef.current.redirectUri = redirectUri;
@@ -265,7 +271,7 @@ export default function ConnectWhatsAppPage() {
       fallback_redirect_uri: redirectUri,
       extras: {
         setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
-        featureType: 'whatsapp_embedded_signup',
+        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
         sessionInfoVersion: '3',
       },
     });
@@ -310,10 +316,16 @@ export default function ConnectWhatsAppPage() {
           </div>
         )}
 
-        <Button className="mt-6 w-full" onClick={connectWhatsApp} disabled={connecting || connected || limitReached}>
+        <div className="mt-6 grid gap-2">
+        <Button className="w-full" onClick={() => connectWhatsApp('cloud_api')} disabled={connecting || connected || limitReached}>
           <MessageCircle size={16} />
-          {connected ? 'Connected' : connecting ? 'Connecting...' : limitReached ? 'Plan limit reached' : 'Connect WhatsApp'}
+          {connected ? 'Connected' : connecting ? 'Connecting...' : limitReached ? 'Plan limit reached' : 'Connect new/free number'}
         </Button>
+        <Button variant="outline" className="w-full" onClick={() => connectWhatsApp('business_app')} disabled={connecting || connected || limitReached}>
+          <MessageCircle size={16} />
+          Connect existing Business App number
+        </Button>
+        </div>
 
         {connected && (
           <Link href="/client/dashboard">

@@ -47,6 +47,11 @@ export class MetaService {
         phoneNumberId,
         templateName,
       });
+      if (metaError?.code === 200) {
+        throw new BadRequestException(
+          'WhatsApp template failed: the saved Meta token does not have MESSAGING access for this WhatsApp account/phone number. Reconnect using a config that includes whatsapp_business_messaging and the MESSAGING WhatsApp task.',
+        );
+      }
       throw new BadRequestException(`WhatsApp template failed: ${message}`);
     }
   }
@@ -71,6 +76,11 @@ export class MetaService {
         subcode: metaError?.error_subcode,
         recipient,
       });
+      if (metaError?.code === 200) {
+        throw new BadRequestException(
+          'WhatsApp message failed: the saved Meta token does not have MESSAGING access for this WhatsApp account/phone number. Reconnect using a config that includes whatsapp_business_messaging and the MESSAGING WhatsApp task.',
+        );
+      }
       throw new BadRequestException(`WhatsApp message failed: ${message}`);
     }
   }
@@ -126,7 +136,7 @@ export class MetaService {
   async getPhoneNumberInfo(phoneNumberId: string, accessToken: string) {
     const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${phoneNumberId}`, {
       params: {
-        fields: 'id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status',
+        fields: 'id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app',
         access_token: accessToken,
       },
     });
@@ -136,7 +146,7 @@ export class MetaService {
   async getWabaPhoneNumbers(wabaId: string, accessToken: string) {
     const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${wabaId}/phone_numbers`, {
       params: {
-        fields: 'id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status',
+        fields: 'id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app',
         access_token: accessToken,
       },
     });
@@ -286,6 +296,9 @@ export class MetaService {
         type: metaError?.type,
         code: metaError?.code,
         subcode: metaError?.error_subcode,
+        details: metaError?.error_data?.details,
+        userTitle: metaError?.error_user_title,
+        userMessage: metaError?.error_user_msg,
         phoneNumberId,
       });
       if (metaError?.code === 100 && String(message).includes('Need either permission')) {
@@ -293,7 +306,14 @@ export class MetaService {
           'Could not register WhatsApp phone number: the saved Embedded Signup token cannot manage this WABA. Reconnect using a Facebook user with full admin access to the client business/WABA and make sure the Meta login configuration grants whatsapp_business_management.',
         );
       }
-      throw new BadRequestException(`Could not register WhatsApp phone number: ${message}`);
+      const parts = [
+        `Could not register WhatsApp phone number: ${message}`,
+        metaError?.code ? `code ${metaError.code}` : '',
+        metaError?.error_subcode ? `subcode ${metaError.error_subcode}` : '',
+        metaError?.error_data?.details ? `details: ${metaError.error_data.details}` : '',
+        metaError?.error_user_msg ? `user message: ${metaError.error_user_msg}` : '',
+      ].filter(Boolean);
+      throw new BadRequestException(parts.join(' | '));
     }
   }
 

@@ -47,6 +47,13 @@ export class WhatsAppAccountsService {
 
     const signupAccessToken = await this.exchangeSignupCode(dto.code, appId, appSecret, version);
     const accessToken = await this.prepareProviderWabaAccess(dto.wabaId, signupAccessToken);
+    const onboardingMode = this.normalizeOnboardingMode(dto.onboardingMode);
+    if (onboardingMode === 'business_app' && !dto.phoneNumberId) {
+      throw new BadRequestException(
+        'Meta completed Business App onboarding without returning a phone number ID. Reopen the coexistence flow and complete the phone/QR linking step; do not finish with WABA-only access.',
+      );
+    }
+
     const phoneInfo = dto.phoneNumberId
       ? await this.getPhoneNumberInfo(dto.phoneNumberId, accessToken, version)
       : await this.getFirstPhoneNumberForWaba(dto.wabaId, accessToken, version);
@@ -73,6 +80,7 @@ export class WhatsAppAccountsService {
       phoneNumberId,
       accessToken,
       phone,
+      onboardingMode,
       isActive: true,
     };
     if (tenantId) setFields.tenantId = toObjectId(tenantId, 'tenantId');
@@ -158,6 +166,10 @@ export class WhatsAppAccountsService {
       });
       throw new BadRequestException(`Could not complete Meta Embedded Signup: ${message}`);
     }
+  }
+
+  private normalizeOnboardingMode(mode?: string) {
+    return String(mode || '').trim().toLowerCase() === 'business_app' ? 'business_app' : 'cloud_api';
   }
 
   private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
@@ -290,6 +302,9 @@ export class WhatsAppAccountsService {
   async registerPhoneNumber(id: string, pin: string) {
     const account = await this.findOne(id);
     if (!account) throw new NotFoundException();
+    if (account.onboardingMode === 'business_app') {
+      throw new BadRequestException('Business App coexistence numbers are linked during Embedded Signup and do not use the standard register-number step.');
+    }
     const accessToken = await this.prepareProviderWabaAccess(account.wabaId, account.accessToken);
     await this.persistAccessTokenIfChanged(account, accessToken);
     return this.meta.registerPhoneNumber(account.phoneNumberId, accessToken, pin);
@@ -312,6 +327,7 @@ export class WhatsAppAccountsService {
         wabaId: account.wabaId,
         phoneNumberId: account.phoneNumberId,
         phone: account.phone,
+        onboardingMode: account.onboardingMode || 'cloud_api',
       },
       phoneNumber: null,
       wabaPhoneNumbers: [],

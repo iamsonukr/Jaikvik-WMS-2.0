@@ -15,6 +15,7 @@ export class WhatsAppAccount {
   @Prop({ required: true }) phoneNumberId: string;  // Meta phone number ID
   @Prop({ required: true }) accessToken: string;    // Permanent token
   @Prop() phone: string;                            // display number
+  @Prop({ default: 'cloud_api' }) onboardingMode: string; // cloud_api | business_app
   @Prop({ default: true }) isActive: boolean;
   @Prop() timezone: string;
   @Prop() industry: string;

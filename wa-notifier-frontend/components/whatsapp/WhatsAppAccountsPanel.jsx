@@ -187,6 +187,7 @@ export default function WhatsAppAccountsPanel() {
       <div className="grid gap-3 sm:grid-cols-2">
         {clients.map((account) => {
           const busy = busyId === account._id;
+          const isBusinessAppMode = account.onboardingMode === 'business_app';
           return (
             <Card key={account._id} className="p-4">
               <div className="flex items-start justify-between gap-3">
@@ -199,7 +200,10 @@ export default function WhatsAppAccountsPanel() {
                     <p className="flex items-center gap-1 truncate text-xs text-muted-foreground"><Phone size={11} />{account.phone || 'No display number'}</p>
                   </div>
                 </div>
-                <Badge color={account.isActive ? 'green' : 'red'} label={account.isActive ? 'Active' : 'Deactivated'} />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Badge color={account.isActive ? 'green' : 'red'} label={account.isActive ? 'Active' : 'Deactivated'} />
+                  {isBusinessAppMode && <Badge color="blue" label="Business App" />}
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -212,7 +216,9 @@ export default function WhatsAppAccountsPanel() {
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => subscribeWebhook(account)}>
                   {busy ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />} Subscribe webhook
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => openPinModal(account)}><ShieldCheck size={13} /> Register number</Button>
+                {!isBusinessAppMode && (
+                  <Button variant="outline" size="sm" onClick={() => openPinModal(account)}><ShieldCheck size={13} /> Register number</Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => openDiagnostics(account)}><Activity size={13} /> Diagnostics</Button>
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => toggleActive(account)}>
                   <Power size={13} /> {account.isActive ? 'Deactivate' : 'Activate'}
@@ -261,7 +267,7 @@ export default function WhatsAppAccountsPanel() {
         )}
       >
         <form onSubmit={submitPin} className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">Enter the 6-digit PIN for this WhatsApp phone number (used for two-step verification with Meta).</p>
+          <p className="text-sm text-muted-foreground">Enter or choose a 6-digit PIN. Meta uses this PIN while registering the number on Cloud API; you do not need to create it separately first.</p>
           {pinError && <p className="text-sm text-destructive">{pinError}</p>}
           <Input label="6-digit PIN" value={pin} maxLength={6} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required />
         </form>
