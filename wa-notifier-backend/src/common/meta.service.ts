@@ -158,7 +158,7 @@ export class MetaService {
   async getWabaInfo(wabaId: string, accessToken: string) {
     const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${wabaId}`, {
       params: {
-        fields: 'id,name,owner_business_info,on_behalf_of_business_info,primary_funding_id,status',
+        fields: 'id,name,timezone_id,message_template_namespace',
         access_token: accessToken,
       },
     });
