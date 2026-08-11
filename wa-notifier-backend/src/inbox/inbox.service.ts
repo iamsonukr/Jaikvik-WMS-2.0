@@ -245,7 +245,7 @@ export class InboxService {
       internalNotes: latest.internalNotes,
     };
   }
-
+  
   private whatsappAccountIdQuery(whatsappAccountId: string) {
     return whatsappAccountIdFilter(whatsappAccountId);
   }
