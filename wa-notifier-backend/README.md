@@ -53,6 +53,7 @@ docker compose exec api node seed.js
 | `META_APP_SECRET` | Meta App Secret | — |
 | `META_VERIFY_TOKEN` | Webhook verify token | `wa_notifier_verify` |
 | `META_API_VERSION` | Meta API version | `v25.0` |
+| `META_PRICING_API_VERSION` | Graph API version used for WhatsApp pricing analytics sync | `META_API_VERSION` |
 | `META_WABA_ACCESS_MODE` | `embedded_signup` for direct Meta Cloud API, `provider_assignment`/`multi_partner` only for advanced partner flows | `embedded_signup` |
 | `META_ENABLE_PROVIDER_ASSIGNMENT` | Must be `true` before backend calls `/{waba-id}/assigned_users` | `false` |
 | `META_OPERATIONAL_ACCESS_TOKEN_SOURCE` | `account` uses the Embedded Signup token saved per WABA; `provider` uses `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` for sends/templates/register/read receipts | `account` |

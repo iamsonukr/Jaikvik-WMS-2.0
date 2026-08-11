@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { MetaService } from '../common/meta.service';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { WhatsAppAccount, WhatsAppAccountDocument } from '../whatsapp-accounts/whatsapp-account.schema';
 import { WalletTransaction, WalletTransactionDocument, WalletTransactionType } from '../wallet/wallet-transaction.schema';
-import { MetaExpenseSnapshot, MetaExpenseSnapshotDocument } from './meta-expense.schema';
+import { MetaExpenseSnapshot, MetaExpenseSnapshotDocument, MetaExpenseSource } from './meta-expense.schema';
 
 type Period = 'month' | 'year' | 'all';
 
@@ -15,6 +17,8 @@ export class ExpensesService {
     @InjectModel(WhatsAppAccount.name) private accountModel: Model<WhatsAppAccountDocument>,
     @InjectModel(WalletTransaction.name) private txnModel: Model<WalletTransactionDocument>,
     @InjectModel(MetaExpenseSnapshot.name) private expenseModel: Model<MetaExpenseSnapshotDocument>,
+    private cfg: ConfigService,
+    private meta: MetaService,
   ) {}
 
   async adminSummary(period: Period = 'month') {
@@ -181,11 +185,154 @@ export class ExpensesService {
     };
   }
 
+  async syncMetaPricing(period: Period = 'month') {
+    const window = this.periodWindow(period);
+    const start = window.start || new Date(new Date().getFullYear(), 0, 1);
+    const end = window.end;
+    const startSeconds = Math.floor(start.getTime() / 1000);
+    const endSeconds = Math.floor(end.getTime() / 1000);
+    const providerToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
+
+    const accounts = await this.accountModel
+      .find({ tenantId: { $exists: true, $ne: null }, wabaId: { $exists: true, $ne: '' } })
+      .select('tenantId name wabaId phoneNumberId accessToken')
+      .lean();
+
+    if (!accounts.length) {
+      return { synced: 0, failed: 0, skipped: 0, failures: [], summary: await this.adminSummary(period) };
+    }
+
+    let synced = 0;
+    let failed = 0;
+    let skipped = 0;
+    const failures = [];
+
+    for (const account of accounts as any[]) {
+      const accessToken = providerToken || account.accessToken;
+      if (!accessToken) {
+        skipped += 1;
+        failures.push({ wabaId: account.wabaId, accountName: account.name, message: 'No Meta access token available for this WABA.' });
+        continue;
+      }
+
+      try {
+        const response = await this.meta.getPricingAnalytics(account.wabaId, accessToken, startSeconds, endSeconds, {
+          granularity: 'DAILY',
+          metricTypes: ['COST', 'VOLUME'],
+          dimensions: ['COUNTRY', 'PRICING_CATEGORY', 'PHONE'],
+        });
+        const metaChargedAmount = this.sumMetaCost(response);
+        const currency = this.extractCurrency(response) || this.cfg.get<string>('META_WABA_CURRENCY', 'INR');
+
+        await this.expenseModel.findOneAndUpdate(
+          { wabaId: account.wabaId, periodStart: start, periodEnd: end },
+          {
+            $set: {
+              tenantId: account.tenantId,
+              whatsappAccountId: account._id,
+              wabaId: account.wabaId,
+              periodStart: start,
+              periodEnd: end,
+              metaChargedAmount,
+              currency,
+              source: MetaExpenseSource.META_API,
+              notes: 'Synced from Meta pricing_analytics.',
+              rawMetaResponse: response,
+              syncedAt: new Date(),
+            },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true },
+        );
+        synced += 1;
+      } catch (err) {
+        failed += 1;
+        failures.push({
+          wabaId: account.wabaId,
+          accountName: account.name,
+          message: err?.response?.data?.error?.message || err?.message || 'Unknown Meta pricing sync error',
+        });
+      }
+    }
+
+    return {
+      synced,
+      failed,
+      skipped,
+      failures,
+      range: { start, end, startSeconds, endSeconds },
+      summary: await this.adminSummary(period),
+    };
+  }
+
   private periodWindow(period: Period) {
     const now = new Date();
     const end = now;
     if (period === 'year') return { start: new Date(now.getFullYear(), 0, 1), end };
     if (period === 'all') return { start: null, end };
     return { start: new Date(now.getFullYear(), now.getMonth(), 1), end };
+  }
+
+  private sumMetaCost(value: any): number {
+    const records = this.pricingRecords(value);
+    const total = records.reduce((sum, record) => sum + this.costFromRecord(record), 0);
+    return Number(total.toFixed(6));
+  }
+
+  private pricingRecords(value: any): any[] {
+    if (Array.isArray(value?.data)) return value.data;
+    if (Array.isArray(value?.pricing_analytics?.data)) return value.pricing_analytics.data;
+    if (Array.isArray(value?._embedded?.pricing_analytics)) return value._embedded.pricing_analytics;
+    return Array.isArray(value) ? value : [value].filter(Boolean);
+  }
+
+  private costFromRecord(record: any): number {
+    if (!record || typeof record !== 'object') return 0;
+    if (Array.isArray(record.data_points)) {
+      return record.data_points.reduce((sum, point) => sum + this.costFromRecord(point), 0);
+    }
+    if (Array.isArray(record.values)) {
+      return record.values.reduce((sum, point) => sum + this.costFromRecord(point), 0);
+    }
+    const direct = this.numberValue(record.cost ?? record.total_cost ?? record.amount);
+    if (direct !== null) return direct;
+
+    return Object.entries(record).reduce((sum, [key, value]) => {
+      if (['cost', 'total_cost', 'amount'].includes(key)) return sum + (this.numberValue(value) || 0);
+      if (Array.isArray(value)) return sum + value.reduce((inner, item) => inner + this.costFromRecord(item), 0);
+      return sum;
+    }, 0);
+  }
+
+  private numberValue(value: any): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+    return null;
+  }
+
+  private extractCurrency(value: any): string | null {
+    const records = this.pricingRecords(value);
+    for (const record of records) {
+      const currency = this.findCurrency(record);
+      if (currency) return currency;
+    }
+    return null;
+  }
+
+  private findCurrency(value: any): string | null {
+    if (!value || typeof value !== 'object') return null;
+    if (typeof value.currency === 'string') return value.currency;
+    if (typeof value.currency_code === 'string') return value.currency_code;
+    for (const child of Object.values(value)) {
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          const found = this.findCurrency(item);
+          if (found) return found;
+        }
+      } else if (child && typeof child === 'object') {
+        const found = this.findCurrency(child);
+        if (found) return found;
+      }
+    }
+    return null;
   }
 }

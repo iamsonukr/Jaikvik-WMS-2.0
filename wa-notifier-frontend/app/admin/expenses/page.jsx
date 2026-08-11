@@ -3,10 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import {
-  PageHeader, StatCard, Card, CardHeader, Spinner, Empty, Input, Select,
+  PageHeader, StatCard, Card, CardHeader, Spinner, Empty, Input, Select, Button,
   Badge, SortableTh, PaginationControls, sortItems, usePagination,
 } from '@/components/ui';
-import { BarChart3, IndianRupee, Landmark, ReceiptText, Search, WalletCards } from 'lucide-react';
+import { BarChart3, IndianRupee, Landmark, ReceiptText, RefreshCw, Search, WalletCards } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
@@ -46,14 +46,35 @@ export default function AdminExpensesPage() {
   const [syncFilter, setSyncFilter] = useState('all');
   const [sort, setSort] = useState({ key: 'clientRevenue', direction: 'desc' });
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
-  useEffect(() => {
+  const loadSummary = () => {
     setSummary(null);
     setError('');
-    api.get(`/expenses/admin/summary?period=${period}`)
+    return api.get(`/expenses/admin/summary?period=${period}`)
       .then((res) => setSummary(res.data))
       .catch((err) => setError(err?.response?.data?.message || 'Could not load expenses.'));
+  };
+
+  useEffect(() => {
+    loadSummary();
   }, [period]);
+
+  const syncMetaExpenses = async () => {
+    setSyncing(true);
+    setError('');
+    setSyncResult(null);
+    try {
+      const { data } = await api.post(`/expenses/admin/sync?period=${period}`);
+      setSyncResult(data);
+      setSummary(data.summary);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not sync Meta pricing analytics.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const rows = summary?.rows || [];
   const filteredRows = useMemo(() => {
@@ -107,15 +128,38 @@ export default function AdminExpensesPage() {
         title="Expenses"
         subtitle="Reconcile client message revenue against Meta charges per WhatsApp Business Account."
         action={(
-          <Select value={period} onChange={(e) => setPeriod(e.target.value)} className="w-44">
-            <option value="month">This month</option>
-            <option value="year">This year</option>
-            <option value="all">All time</option>
-          </Select>
+          <>
+            <Button onClick={syncMetaExpenses} disabled={syncing}>
+              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Syncing...' : 'Sync Meta'}
+            </Button>
+            <Select value={period} onChange={(e) => setPeriod(e.target.value)} className="w-44">
+              <option value="month">This month</option>
+              <option value="year">This year</option>
+              <option value="all">All time</option>
+            </Select>
+          </>
         )}
       />
 
       {error && <p className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p>}
+      {syncResult && (
+        <div className="mb-6 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+          <p className="font-medium">
+            Meta sync completed: {syncResult.synced} synced, {syncResult.failed} failed, {syncResult.skipped} skipped.
+          </p>
+          {!!syncResult.failures?.length && (
+            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+              {syncResult.failures.slice(0, 5).map((failure) => (
+                <p key={`${failure.wabaId}-${failure.message}`}>
+                  <span className="font-mono">{failure.wabaId}</span>: {failure.message}
+                </p>
+              ))}
+              {syncResult.failures.length > 5 && <p>{syncResult.failures.length - 5} more failure(s).</p>}
+            </div>
+          )}
+        </div>
+      )}
 
       {!summary ? (
         <div className="flex justify-center py-16"><Spinner /></div>
@@ -162,8 +206,8 @@ export default function AdminExpensesPage() {
                   <p className="mt-1 text-muted-foreground">Comes from stored Meta expense snapshots. Rows without snapshots are marked Not synced.</p>
                 </div>
                 <div>
-                  <p className="font-medium">Next sync source</p>
-                  <p className="mt-1 text-muted-foreground">Use each WABA's Meta billing/analytics export or API to populate snapshots by WABA and period.</p>
+                  <p className="font-medium">Sync source</p>
+                  <p className="mt-1 text-muted-foreground">Sync Meta calls each WABA's pricing_analytics edge for COST and VOLUME, then stores the result by WABA and period.</p>
                 </div>
               </div>
             </Card>

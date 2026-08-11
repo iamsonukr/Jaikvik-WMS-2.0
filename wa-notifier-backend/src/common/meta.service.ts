@@ -305,6 +305,44 @@ export class MetaService {
     }
   }
 
+  async getPricingAnalytics(
+    wabaId: string,
+    accessToken: string,
+    start: number,
+    end: number,
+    options: {
+      granularity?: 'DAILY' | 'HALF_HOUR' | 'MONTHLY';
+      metricTypes?: string[];
+      dimensions?: string[];
+    } = {},
+  ) {
+    const version = this.cfg.get<string>('META_PRICING_API_VERSION', this.version);
+    try {
+      const { data } = await axios.get(`https://graph.facebook.com/${version}/${wabaId}/pricing_analytics`, {
+        params: {
+          start,
+          end,
+          granularity: options.granularity || 'DAILY',
+          metric_types: JSON.stringify(options.metricTypes || ['COST', 'VOLUME']),
+          dimensions: JSON.stringify(options.dimensions || ['COUNTRY', 'PRICING_CATEGORY', 'PHONE']),
+        },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      return data;
+    } catch (err) {
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta getPricingAnalytics failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        wabaId,
+      });
+      throw new BadRequestException(`Could not fetch Meta pricing analytics: ${message}`);
+    }
+  }
+
   async registerPhoneNumber(phoneNumberId: string, accessToken: string, pin: string) {
     try {
       const { data } = await axios.post(

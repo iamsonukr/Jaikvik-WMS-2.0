@@ -40,6 +40,9 @@ export class MetaExpenseSnapshot {
   @Prop()
   notes?: string;
 
+  @Prop({ type: Object })
+  rawMetaResponse?: Record<string, any>;
+
   @Prop()
   syncedAt?: Date;
 }
@@ -47,3 +50,4 @@ export class MetaExpenseSnapshot {
 export const MetaExpenseSnapshotSchema = SchemaFactory.createForClass(MetaExpenseSnapshot);
 MetaExpenseSnapshotSchema.index({ tenantId: 1, periodStart: -1 });
 MetaExpenseSnapshotSchema.index({ wabaId: 1, periodStart: -1 });
+MetaExpenseSnapshotSchema.index({ wabaId: 1, periodStart: 1, periodEnd: 1 }, { unique: true });
