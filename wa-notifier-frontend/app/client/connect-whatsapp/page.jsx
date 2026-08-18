@@ -110,6 +110,7 @@ export default function ConnectWhatsAppPage() {
     const current = signupRef.current;
     const phoneNumberId = current.setup?.phone_number_id || current.setup?.phoneNumberId;
     const wabaId = current.setup?.waba_id || current.setup?.wabaId;
+    const businessId = current.setup?.business_id || current.setup?.businessId;
 
     if (!current.code || !current.setup || current.submitting) return;
 
@@ -132,6 +133,7 @@ export default function ConnectWhatsAppPage() {
       const { data: account } = await api.post('/whatsapp-accounts/embedded-signup', {
         code: current.code,
         wabaId,
+        businessId,
         phoneNumberId,
         redirectUri: current.redirectUri,
         onboardingMode: current.onboardingMode,

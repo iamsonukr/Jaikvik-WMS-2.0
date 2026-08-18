@@ -10,7 +10,7 @@ import {
   RefreshCw, ShieldCheck, Trash2, Wifi,
 } from 'lucide-react';
 
-const blankEdit = { name: '', wabaId: '', phoneNumberId: '', phone: '', timezone: '', industry: '', accessToken: '' };
+const blankEdit = { name: '', businessId: '', wabaId: '', phoneNumberId: '', phone: '', timezone: '', industry: '', accessToken: '' };
 const text = (value) => String(value || '').toLowerCase();
 const tenantIdOf = (account) => String(account?.tenantId?._id || account?.tenantId || '');
 const requiredMetaFields = ['wabaId', 'phoneNumberId'];
@@ -127,6 +127,7 @@ export default function AdminWhatsAppAccountsPage() {
       const matchesSearch = !query
         || text(account.name).includes(query)
         || text(account.phone).includes(query)
+        || text(account.businessId).includes(query)
         || text(account.wabaId).includes(query)
         || text(account.phoneNumberId).includes(query)
         || text(account.industry).includes(query)
@@ -169,6 +170,7 @@ export default function AdminWhatsAppAccountsPage() {
   const openEdit = (account) => {
     setEditForm({
       name: account.name || '',
+      businessId: account.businessId || '',
       wabaId: account.wabaId || '',
       phoneNumberId: account.phoneNumberId || '',
       phone: account.phone || '',
@@ -417,6 +419,7 @@ export default function AdminWhatsAppAccountsPage() {
                         <p className="flex items-center gap-1"><Phone size={13} />{account.phone || '-'}</p>
                       </td>
                       <td className="px-4 py-3">
+                        <p className="break-all"><span className="text-muted-foreground">Business:</span> {account.businessId || '-'}</p>
                         <p className="break-all"><span className="text-muted-foreground">WABA:</span> {account.wabaId || '-'}</p>
                         <p className="break-all"><span className="text-muted-foreground">Phone ID:</span> {account.phoneNumberId || '-'}</p>
                       </td>
@@ -467,6 +470,7 @@ export default function AdminWhatsAppAccountsPage() {
           {editError && <p className="text-sm text-destructive">{editError}</p>}
           <Input label="Display name" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
           <Input label="Display phone" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+          <Input label="Business ID" value={editForm.businessId} onChange={(e) => setEditForm({ ...editForm, businessId: e.target.value })} />
           <Input label="WABA ID" value={editForm.wabaId} onChange={(e) => setEditForm({ ...editForm, wabaId: e.target.value })} />
           <Input label="Phone number ID" value={editForm.phoneNumberId} onChange={(e) => setEditForm({ ...editForm, phoneNumberId: e.target.value })} />
           <Input label="Timezone" value={editForm.timezone} onChange={(e) => setEditForm({ ...editForm, timezone: e.target.value })} placeholder="Asia/Kolkata" />

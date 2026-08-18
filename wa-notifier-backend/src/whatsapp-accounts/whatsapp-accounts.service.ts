@@ -115,10 +115,12 @@ export class WhatsAppAccountsService {
 
     const name = dto.name || phoneInfo?.verified_name || `WhatsApp ${phoneNumberId}`;
     const phone = phoneInfo?.display_phone_number || phoneInfo?.phone_number || undefined;
+    const businessId = this.cleanMetaId(dto.businessId);
 
     const setFields: Record<string, any> = {
       name,
       wabaId: dto.wabaId,
+      ...(businessId ? { businessId } : {}),
       phoneNumberId,
       accessToken,
       phone,
@@ -392,6 +394,7 @@ export class WhatsAppAccountsService {
         id: account._id,
         name: account.name,
         wabaId: account.wabaId,
+        businessId: account.businessId,
         phoneNumberId: account.phoneNumberId,
         phone: account.phone,
         onboardingMode: account.onboardingMode || 'cloud_api',
@@ -488,13 +491,18 @@ export class WhatsAppAccountsService {
 
     try {
       result.waba = await this.meta.getWabaInfo(account.wabaId, operationalAccessToken);
+      const ownerBusinessId = this.extractOwnerBusinessId(result.waba);
+      if (ownerBusinessId && ownerBusinessId !== account.businessId) {
+        await this.model.findByIdAndUpdate(account._id, { businessId: ownerBusinessId });
+        result.client.businessId = ownerBusinessId;
+      }
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.wabaError = metaError?.message || err?.message || 'Could not fetch WABA details from Meta.';
     }
 
     try {
-      const ownerBusinessId = result.waba?.owner_business_info?.id || result.waba?.owner_business_info?.business_id;
+      const ownerBusinessId = this.extractOwnerBusinessId(result.waba) || account.businessId;
       const providerBusinessId = this.cfg.get<string>('META_PROVIDER_BUSINESS_ID');
       result.assignedUsers = await this.meta.getAssignedUsers(
         account.wabaId,
@@ -520,5 +528,14 @@ export class WhatsAppAccountsService {
     }
 
     return result;
+  }
+
+  private cleanMetaId(value?: string) {
+    const clean = String(value || '').trim();
+    return clean || undefined;
+  }
+
+  private extractOwnerBusinessId(waba: any) {
+    return this.cleanMetaId(waba?.owner_business_info?.id || waba?.owner_business_info?.business_id);
   }
 }

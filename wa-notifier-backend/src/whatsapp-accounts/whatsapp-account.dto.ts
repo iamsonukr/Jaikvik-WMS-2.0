@@ -4,6 +4,7 @@ export class CreateWhatsAppAccountDto {
   @IsOptional() @IsMongoId() tenantId?: string;
   @IsString() @MinLength(1) name: string;
   @IsString() @MinLength(1) wabaId: string;
+  @IsOptional() @IsString() businessId?: string;
   @IsString() @MinLength(1) phoneNumberId: string;
   @IsString() @MinLength(1) accessToken: string;
   @IsOptional() @IsString() phone?: string;
@@ -16,6 +17,7 @@ export class CreateWhatsAppAccountDto {
 export class UpdateWhatsAppAccountDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() wabaId?: string;
+  @IsOptional() @IsString() businessId?: string;
   @IsOptional() @IsString() phoneNumberId?: string;
   @IsOptional() @IsString() accessToken?: string;
   @IsOptional() @IsString() phone?: string;
@@ -29,6 +31,7 @@ export class EmbeddedSignupDto {
   @IsOptional() @IsMongoId() tenantId?: string;
   @IsString() @MinLength(1) code: string;
   @IsString() @MinLength(1) wabaId: string;
+  @IsOptional() @IsString() businessId?: string;
   @IsOptional() @IsString() phoneNumberId?: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() redirectUri?: string;

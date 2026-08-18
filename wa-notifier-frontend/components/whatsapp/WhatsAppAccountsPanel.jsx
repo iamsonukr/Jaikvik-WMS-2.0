@@ -207,6 +207,7 @@ export default function WhatsAppAccountsPanel() {
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <p className="truncate">Business ID: <span className="text-foreground">{account.businessId || '-'}</span></p>
                 <p className="truncate">WABA ID: <span className="text-foreground">{account.wabaId}</span></p>
                 <p className="truncate">Phone ID: <span className="text-foreground">{account.phoneNumberId}</span></p>
               </div>

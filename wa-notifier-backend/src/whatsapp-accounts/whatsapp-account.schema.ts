@@ -12,6 +12,7 @@ export class WhatsAppAccount {
 
   @Prop({ required: true }) name: string;
   @Prop({ required: true }) wabaId: string;         // WhatsApp Business Account ID
+  @Prop() businessId: string;                       // Owning Meta Business ID
   @Prop({ required: true }) phoneNumberId: string;  // Meta phone number ID
   @Prop({ required: true }) accessToken: string;    // Permanent token
   @Prop() phone: string;                            // display number

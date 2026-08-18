@@ -45,6 +45,7 @@ const SIGNUP_FEATURE_TYPES = {
 };
 const blankAccountForm = {
   name: '',
+  businessId: '',
   wabaId: '',
   phoneNumberId: '',
   accessToken: '',
@@ -857,6 +858,7 @@ export default function TenantDetailPage() {
     const current = signupRef.current;
     const phoneNumberId = current.setup?.phone_number_id || current.setup?.phoneNumberId;
     const wabaId = current.setup?.waba_id || current.setup?.wabaId;
+    const businessId = current.setup?.business_id || current.setup?.businessId;
 
     if (!current.code || !current.setup || current.submitting) return;
     if (!wabaId) {
@@ -878,6 +880,7 @@ export default function TenantDetailPage() {
         tenantId: id,
         code: current.code,
         wabaId,
+        businessId,
         phoneNumberId,
         redirectUri: current.redirectUri,
         onboardingMode: current.onboardingMode,
@@ -1988,6 +1991,11 @@ export default function TenantDetailPage() {
             label="Account name"
             value={manualAccountForm.name}
             onChange={(e) => setManualAccountForm({ ...manualAccountForm, name: e.target.value })}
+          />
+          <Input
+            label="Business ID"
+            value={manualAccountForm.businessId}
+            onChange={(e) => setManualAccountForm({ ...manualAccountForm, businessId: e.target.value })}
           />
           <Input
             label="WABA ID"

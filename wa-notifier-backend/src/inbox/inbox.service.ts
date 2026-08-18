@@ -21,7 +21,7 @@ export class InboxService {
     private wallet: WalletService,
     @InjectModel(Tenant.name) private tenantModel: Model<TenantDocument>,
     @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
-  ) {}
+  ) { }
 
   /** All unique threads (latest message per phone) */
   async threads(whatsappAccountId: string) {
@@ -67,12 +67,12 @@ export class InboxService {
     const charge = this.totalForOneMessage(price);
     const txn = charge > 0
       ? await this.wallet.debitForMessage(tenantId, charge, {
-          description: `Service message sent to ${phone}`,
-          referenceId: phone,
-          messageCategory: MessageCategory.SERVICE,
-          appliedUnitPrice: price.sellingPrice,
-          tax: price.taxPercent,
-        })
+        description: `Service message sent to ${phone}`,
+        referenceId: phone,
+        messageCategory: MessageCategory.SERVICE,
+        appliedUnitPrice: price.sellingPrice,
+        tax: price.taxPercent,
+      })
       : null;
 
     let res: any;
@@ -124,12 +124,12 @@ export class InboxService {
     const charge = this.totalForOneMessage(price);
     const txn = charge > 0
       ? await this.wallet.debitForMessage(tenantId, charge, {
-          description: `${category} template "${template.name}" sent to ${phone}`,
-          referenceId: phone,
-          messageCategory: category,
-          appliedUnitPrice: price.sellingPrice,
-          tax: price.taxPercent,
-        })
+        description: `${category} template "${template.name}" sent to ${phone}`,
+        referenceId: phone,
+        messageCategory: category,
+        appliedUnitPrice: price.sellingPrice,
+        tax: price.taxPercent,
+      })
       : null;
 
     const language = languageCode || template.language || 'en';
