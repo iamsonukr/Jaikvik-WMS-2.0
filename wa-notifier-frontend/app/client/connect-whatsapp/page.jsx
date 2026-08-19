@@ -130,7 +130,7 @@ export default function ConnectWhatsAppPage() {
     setStatus('Finalizing WhatsApp connection...');
 
     try {
-      const { data: account } = await api.post('/whatsapp-accounts/embedded-signup', {
+      const embeddedSignupPayload = {
         code: current.code,
         wabaId,
         businessId,
@@ -138,7 +138,10 @@ export default function ConnectWhatsAppPage() {
         redirectUri: current.redirectUri,
         onboardingMode: current.onboardingMode,
         name: current.setup?.business_name || current.setup?.businessName || '',
-      });
+      };
+      console.log('[EmbeddedSignupDebug] Client sending embedded signup payload to backend', embeddedSignupPayload);
+      const { data: account } = await api.post('/whatsapp-accounts/embedded-signup', embeddedSignupPayload);
+      console.log('[EmbeddedSignupDebug] Client embedded signup backend response', account);
       await refreshClients(account?._id);
       resetSignupState();
       setConnected(true);
@@ -183,10 +186,15 @@ export default function ConnectWhatsAppPage() {
 
       const payload = parseEmbeddedSignupMessage(event.data);
       if (payload?.type !== 'WA_EMBEDDED_SIGNUP') return;
-      console.log('Received Meta Embedded Signup message', payload);
+      console.log('[EmbeddedSignupDebug] Client received Meta Embedded Signup window message', {
+        origin: event.origin,
+        rawData: event.data,
+        parsedPayload: payload,
+      });
       captureMetaPayload(payload);
 
       const setupData = normalizeEmbeddedSignupData(payload.data);
+      console.log('[EmbeddedSignupDebug] Client normalized Meta setup data', setupData);
       const setupKeys = Object.entries(setupData)
         .filter(([, value]) => value !== undefined && value !== null && value !== '')
         .map(([key]) => key)
@@ -248,10 +256,25 @@ export default function ConnectWhatsAppPage() {
 
     const redirectUri = `${window.location.origin}/client/meta-embedded-signup`;
     signupRef.current.redirectUri = redirectUri;
+    console.log('[EmbeddedSignupDebug] Client opening Meta Embedded Signup', {
+      onboardingMode,
+      metaAppId,
+      metaConfigId,
+      metaApiVersion,
+      metaSolutionId,
+      redirectUri,
+      extras: {
+        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
+        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
+        sessionInfoVersion: '3',
+      },
+    });
 
     window.FB.login((response) => {
+      console.log('[EmbeddedSignupDebug] Client FB.login response', response);
       if (response?.authResponse?.code) {
         signupRef.current.code = response.authResponse.code;
+        console.log('[EmbeddedSignupDebug] Client received Meta authorization code', response.authResponse.code);
         setStatus('Authorization received. Waiting for WhatsApp details...');
         addDebugEvent('Meta authorization code received');
         startWaitTimer();

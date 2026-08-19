@@ -77,12 +77,25 @@ export class WhatsAppAccountsService {
     const appSecret = this.cfg.get<string>('META_APP_SECRET');
     const version = this.cfg.get<string>('META_API_VERSION', 'v19.0');
 
+    console.log('[EmbeddedSignupDebug] Backend received embedded signup dto', {
+      ...dto,
+      tenantId,
+    });
+
     if (!appId || !appSecret) {
       throw new BadRequestException('Meta App ID and App Secret are required for Embedded Signup.');
     }
 
     const signupAccessToken = await this.exchangeSignupCode(dto.code, appId, appSecret, version);
     const accessToken = await this.prepareProviderWabaAccess(dto.wabaId, signupAccessToken);
+    const persistedAccessToken = this.getSignupTokenToPersist(accessToken);
+    console.log('[EmbeddedSignupDebug] Backend resolved access tokens', {
+      signupAccessToken,
+      preparedAccessToken: accessToken,
+      persistedAccessToken,
+      operationalAccessTokenSource: this.operationalAccessTokenSource(),
+      providerAccessMode: this.providerAccessSettings(),
+    });
     const onboardingMode = this.normalizeOnboardingMode(dto.onboardingMode);
     if (onboardingMode === 'business_app' && !dto.phoneNumberId) {
       throw new BadRequestException(
@@ -94,6 +107,11 @@ export class WhatsAppAccountsService {
       ? await this.getPhoneNumberInfo(dto.phoneNumberId, accessToken, version)
       : await this.getFirstPhoneNumberForWaba(dto.wabaId, accessToken, version);
     const phoneNumberId = dto.phoneNumberId || phoneInfo?.id;
+    console.log('[EmbeddedSignupDebug] Backend resolved phone info', {
+      requestedPhoneNumberId: dto.phoneNumberId,
+      resolvedPhoneNumberId: phoneNumberId,
+      phoneInfo,
+    });
 
     if (!phoneNumberId) {
       throw new BadRequestException('Meta did not return a WhatsApp phone number for this account.');
@@ -122,12 +140,18 @@ export class WhatsAppAccountsService {
       wabaId: dto.wabaId,
       ...(businessId ? { businessId } : {}),
       phoneNumberId,
-      accessToken,
+      accessToken: persistedAccessToken,
       phone,
       onboardingMode,
       isActive: true,
     };
     if (tenantId) setFields.tenantId = toObjectId(tenantId, 'tenantId');
+
+    console.log('[EmbeddedSignupDebug] Backend upserting WhatsApp account', {
+      filter: { phoneNumberId },
+      setFields,
+      setOnInsert: { timezone: 'Asia/Kolkata' },
+    });
 
     const doc = await this.model.findOneAndUpdate(
       { phoneNumberId },
@@ -139,6 +163,8 @@ export class WhatsAppAccountsService {
       },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     ).select('-accessToken');
+
+    console.log('[EmbeddedSignupDebug] Backend embedded signup upsert result', doc);
 
     return doc;
   }
@@ -198,6 +224,7 @@ export class WhatsAppAccountsService {
         },
       });
       if (!data?.access_token) throw new Error('Meta did not return an access token.');
+      console.log('[EmbeddedSignupDebug] Meta oauth/access_token response', data);
       return data.access_token;
     } catch (err) {
       const metaError = err?.response?.data?.error;
@@ -292,6 +319,13 @@ export class WhatsAppAccountsService {
       throw new BadRequestException(message);
     }
     return providerAccessToken;
+  }
+
+  private getSignupTokenToPersist(accessToken: string) {
+    if (this.operationalAccessTokenSource() !== 'provider') return accessToken;
+    return this.requireProviderSystemUserAccessToken(
+      'META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN is required when META_OPERATIONAL_ACCESS_TOKEN_SOURCE=provider.',
+    );
   }
 
   private isProviderCreditLineConfigured() {
