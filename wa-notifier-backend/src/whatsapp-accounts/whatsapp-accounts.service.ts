@@ -311,7 +311,7 @@ export class WhatsAppAccountsService {
       .filter(Boolean);
     const selected = tasks.length ? tasks : ['MANAGE'];
     if (!selected.includes('MESSAGING')) selected.push('MESSAGING');
-    if (!selected.includes('ANALYZE')) selected.push('ANALYZE');
+    if (!selected.includes('VIEW_COST')) selected.push('VIEW_COST');
     return selected;
   }
 

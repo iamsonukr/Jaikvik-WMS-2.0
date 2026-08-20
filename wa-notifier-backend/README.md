@@ -60,7 +60,7 @@ docker compose exec api node seed.js
 | `META_PROVIDER_BUSINESS_ID` | Provider business ID used to verify/list provider system users | — |
 | `META_PROVIDER_SYSTEM_USER_ID` | Provider system user ID returned by `/{business-id}/system_users` | — |
 | `META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN` | Provider system user token used to manage assigned client WABAs | — |
-| `META_WABA_SYSTEM_USER_TASKS` | Comma-separated WABA tasks assigned to the provider system user. Include `MESSAGING` for sends and `ANALYZE` for Meta pricing/analytics sync. | `MANAGE,MESSAGING,ANALYZE` |
+| `META_WABA_SYSTEM_USER_TASKS` | Comma-separated WABA tasks assigned to the provider system user. Include `MESSAGING` for sends and `VIEW_COST` for Meta pricing/analytics sync. | `MANAGE,MESSAGING,VIEW_COST` |
 | `META_CREDIT_LINE_ID` | Provider credit line ID to attach to client WABAs when clients should not pay Meta directly | — |
 | `META_WABA_CURRENCY` | Currency used when attaching the provider credit line | `INR` |
 | `API_PORT` | Port to listen on | `3001` |
