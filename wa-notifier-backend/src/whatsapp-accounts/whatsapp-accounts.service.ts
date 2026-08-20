@@ -251,7 +251,8 @@ export class WhatsAppAccountsService {
 
   private async prepareProviderWabaAccess(wabaId: string, fallbackAccessToken: string) {
     const { accessMode, providerAssignmentEnabled } = this.providerAccessSettings();
-    const shouldAssignProvider = providerAssignmentEnabled && ['provider_assignment', 'multi_partner'].includes(accessMode);
+    const shouldAssignProvider = providerAssignmentEnabled
+      && (this.operationalAccessTokenSource() === 'provider' || ['provider_assignment', 'multi_partner'].includes(accessMode));
     if (!shouldAssignProvider) {
       await this.attachProviderCreditLineIfConfigured(wabaId);
       return fallbackAccessToken;
@@ -310,6 +311,7 @@ export class WhatsAppAccountsService {
       .filter(Boolean);
     const selected = tasks.length ? tasks : ['MANAGE'];
     if (!selected.includes('MESSAGING')) selected.push('MESSAGING');
+    if (!selected.includes('ANALYZE')) selected.push('ANALYZE');
     return selected;
   }
 

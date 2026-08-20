@@ -246,10 +246,11 @@ export class ExpensesService {
         synced += 1;
       } catch (err) {
         failed += 1;
+        const message = err?.response?.data?.error?.message || err?.message || 'Unknown Meta pricing sync error';
         failures.push({
           wabaId: account.wabaId,
           accountName: account.name,
-          message: err?.response?.data?.error?.message || err?.message || 'Unknown Meta pricing sync error',
+          message: this.pricingSyncErrorMessage(message),
         });
       }
     }
@@ -283,6 +284,13 @@ export class ExpensesService {
     if (Array.isArray(value?.pricing_analytics?.data)) return value.pricing_analytics.data;
     if (Array.isArray(value?._embedded?.pricing_analytics)) return value._embedded.pricing_analytics;
     return Array.isArray(value) ? value : [value].filter(Boolean);
+  }
+
+  private pricingSyncErrorMessage(message: string) {
+    if (/#200|permission|permissions|not have access|does not have access/i.test(message)) {
+      return `${message} Provider mode can send messages with MESSAGING, but Meta pricing analytics also requires the provider system user to be assigned ANALYZE on this WABA. Re-run provider assignment or reconnect this client after updating META_WABA_SYSTEM_USER_TASKS.`;
+    }
+    return message;
   }
 
   private costFromRecord(record: any): number {
