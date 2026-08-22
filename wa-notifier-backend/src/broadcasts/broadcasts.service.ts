@@ -561,7 +561,7 @@ export class BroadcastsService {
   }
 
   /** Called by webhook when Meta sends status update. */
-  async handleStatusUpdate(waMessageId: string, status: string) {
+  async handleStatusUpdate(waMessageId: string, status: string, errors: any[] = []) {
     const log = await this.logModel.findOne({ waMessageId });
     if (!log) return;
     if (log.status === status) return; // duplicate webhook delivery — already processed
@@ -570,7 +570,19 @@ export class BroadcastsService {
     const rank: Record<string, number> = { queued: 0, sent: 1, delivered: 2, read: 3, failed: 1 };
     if ((rank[status] ?? 0) <= (rank[log.status] ?? 0) && status !== 'failed') return;
 
-    await this.logModel.findByIdAndUpdate(log._id, { status });
+    const update: any = { status };
+    if (status === 'failed') {
+      const error = Array.isArray(errors) ? errors[0] : errors;
+      if (error) {
+        update.errorCode = error.code == null ? undefined : String(error.code);
+        update.errorSubcode = error.error_subcode == null ? undefined : String(error.error_subcode);
+        update.errorType = error.type;
+        update.errorMessage = error.error_data?.details || error.message || error.title;
+        update.errorDetails = { errors };
+      }
+    }
+
+    await this.logModel.findByIdAndUpdate(log._id, update);
 
     const field = status === 'delivered' ? 'deliveredCount' : status === 'read' ? 'readCount' : null;
     if (field) {

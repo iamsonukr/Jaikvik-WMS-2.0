@@ -82,7 +82,7 @@ export class WebhooksController {
           // ── Status updates (delivery receipts) ──
           for (const status of val.statuses || []) {
             this.logger.log(`Meta status update ${status.id}: ${status.status}`);
-            await this.broadcasts.handleStatusUpdate(status.id, status.status).catch(() => null);
+            await this.broadcasts.handleStatusUpdate(status.id, status.status, status.errors || []).catch(() => null);
           }
 
           // ── Inbound messages ──
