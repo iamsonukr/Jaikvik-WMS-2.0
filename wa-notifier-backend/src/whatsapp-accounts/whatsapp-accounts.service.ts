@@ -6,8 +6,17 @@ import { Model } from 'mongoose';
 import { EmbeddedSignupDto, PublicEmbeddedSignupDto } from './whatsapp-account.dto';
 import { WhatsAppAccount, WhatsAppAccountDocument } from './whatsapp-account.schema';
 import { MetaService } from '../common/meta.service';
-import { ObjectIdInput, toObjectId } from '../common/mongo-id';
+import { ObjectIdInput, toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { Contact, ContactDocument } from '../contacts/contact.schema';
+import { ContactImport, ContactImportDocument } from '../contacts/contact-import.schema';
+import { ContactSegment, ContactSegmentDocument } from '../contacts/contact-segment.schema';
+import { ContactTag, ContactTagDocument } from '../contacts/contact-tag.schema';
+import { Broadcast, BroadcastDocument, BroadcastLog, BroadcastLogDocument } from '../broadcasts/broadcast.schema';
+import { Message, MessageDocument } from '../inbox/message.schema';
+import { Template, TemplateDocument } from '../templates/template.schema';
+import { ChatbotRule, ChatbotRuleDocument } from '../chatbot/chatbot-rule.schema';
+import { AccountAlert, AccountAlertDocument } from '../webhooks/account-alert.schema';
 
 @Injectable()
 export class WhatsAppAccountsService {
@@ -15,19 +24,29 @@ export class WhatsAppAccountsService {
 
   constructor(
     @InjectModel(WhatsAppAccount.name) private model: Model<WhatsAppAccountDocument>,
+    @InjectModel(Contact.name) private contactModel: Model<ContactDocument>,
+    @InjectModel(ContactImport.name) private contactImportModel: Model<ContactImportDocument>,
+    @InjectModel(ContactSegment.name) private contactSegmentModel: Model<ContactSegmentDocument>,
+    @InjectModel(ContactTag.name) private contactTagModel: Model<ContactTagDocument>,
+    @InjectModel(Broadcast.name) private broadcastModel: Model<BroadcastDocument>,
+    @InjectModel(BroadcastLog.name) private broadcastLogModel: Model<BroadcastLogDocument>,
+    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(Template.name) private templateModel: Model<TemplateDocument>,
+    @InjectModel(ChatbotRule.name) private chatbotRuleModel: Model<ChatbotRuleDocument>,
+    @InjectModel(AccountAlert.name) private accountAlertModel: Model<AccountAlertDocument>,
     private cfg: ConfigService,
     private meta: MetaService,
     private subscriptions: SubscriptionsService,
   ) {}
 
-  findAll() { return this.model.find().select('-accessToken'); }
+  findAll() { return this.model.find({ isRemoved: { $ne: true } }).select('-accessToken'); }
   findAllByTenant(tenantId: ObjectIdInput) {
-    return this.model.find({ tenantId: toObjectId(tenantId, 'tenantId') }).select('-accessToken');
+    return this.model.find({ tenantId: toObjectId(tenantId, 'tenantId'), isRemoved: { $ne: true } }).select('-accessToken');
   }
-  findOne(id: string) { return this.model.findById(toObjectId(id, 'whatsappAccountId')); }
-  findOnePublic(id: string) { return this.model.findById(toObjectId(id, 'whatsappAccountId')).select('-accessToken'); }
-  findByPhoneNumberId(phoneNumberId: string) { return this.model.findOne({ phoneNumberId }); }
-  findByMetaEntityId(entityId: string) { return this.model.findOne({ $or: [{ wabaId: entityId }, { phoneNumberId: entityId }] }); }
+  findOne(id: string) { return this.model.findOne({ _id: toObjectId(id, 'whatsappAccountId'), isRemoved: { $ne: true } }); }
+  findOnePublic(id: string) { return this.model.findOne({ _id: toObjectId(id, 'whatsappAccountId'), isRemoved: { $ne: true } }).select('-accessToken'); }
+  findByPhoneNumberId(phoneNumberId: string) { return this.model.findOne({ phoneNumberId, isRemoved: { $ne: true } }); }
+  findByMetaEntityId(entityId: string) { return this.model.findOne({ isRemoved: { $ne: true }, $or: [{ wabaId: entityId }, { phoneNumberId: entityId }] }); }
 
   getOperationalAccessToken(account: { accessToken?: string; wabaId?: string; phoneNumberId?: string }, purpose = 'operation') {
     const source = this.operationalAccessTokenSource();
@@ -144,6 +163,7 @@ export class WhatsAppAccountsService {
       phone,
       onboardingMode,
       isActive: true,
+      isRemoved: false,
     };
     if (tenantId) setFields.tenantId = toObjectId(tenantId, 'tenantId');
 
@@ -157,6 +177,7 @@ export class WhatsAppAccountsService {
       { phoneNumberId },
       {
         $set: setFields,
+        $unset: { removedAt: 1 },
         $setOnInsert: {
           timezone: 'Asia/Kolkata',
         },
@@ -187,7 +208,7 @@ export class WhatsAppAccountsService {
     const limit = this.resolveWhatsAppNumberLimit(plan);
     if (limit === null) return;
 
-    const currentCount = await this.model.countDocuments({ tenantId });
+    const currentCount = await this.model.countDocuments({ tenantId, isRemoved: { $ne: true } });
     if (currentCount >= limit) {
       throw new BadRequestException(
         `Your current plan allows ${limit} WhatsApp number${limit === 1 ? '' : 's'}. Upgrade your plan to connect more numbers.`,
@@ -388,10 +409,65 @@ export class WhatsAppAccountsService {
     if (!doc) throw new NotFoundException();
     return doc;
   }
-  async remove(id: string) {
-    const doc = await this.model.findByIdAndDelete(id);
-    if (!doc) throw new NotFoundException();
-    return { deleted: true };
+  async remove(id: string, deleteData = false) {
+    const accountObjectId = toObjectId(id, 'whatsappAccountId');
+    const accountFilter = whatsappAccountIdFilter(accountObjectId);
+
+    if (!deleteData) {
+      const doc = await this.model.findByIdAndUpdate(
+        accountObjectId,
+        { isActive: false, isRemoved: true, removedAt: new Date() },
+        { new: true },
+      ).select('-accessToken');
+      if (!doc) throw new NotFoundException();
+      return { removed: true, deleted: false, dataDeleted: false };
+    }
+
+    const existing = await this.model.findById(accountObjectId);
+    if (!existing) throw new NotFoundException();
+
+    const [
+      contacts,
+      contactImports,
+      contactSegments,
+      contactTags,
+      broadcasts,
+      broadcastLogs,
+      messages,
+      templates,
+      chatbotRules,
+      accountAlerts,
+    ] = await Promise.all([
+      this.contactModel.deleteMany(accountFilter),
+      this.contactImportModel.deleteMany(accountFilter),
+      this.contactSegmentModel.deleteMany(accountFilter),
+      this.contactTagModel.deleteMany(accountFilter),
+      this.broadcastModel.deleteMany(accountFilter),
+      this.broadcastLogModel.deleteMany(accountFilter),
+      this.messageModel.deleteMany(accountFilter),
+      this.templateModel.deleteMany(accountFilter),
+      this.chatbotRuleModel.deleteMany(accountFilter),
+      this.accountAlertModel.deleteMany(accountFilter),
+    ]);
+
+    const doc = await this.model.findByIdAndDelete(accountObjectId);
+    return {
+      removed: true,
+      deleted: true,
+      dataDeleted: true,
+      deletedCounts: {
+        contacts: contacts.deletedCount || 0,
+        contactImports: contactImports.deletedCount || 0,
+        contactSegments: contactSegments.deletedCount || 0,
+        contactTags: contactTags.deletedCount || 0,
+        broadcasts: broadcasts.deletedCount || 0,
+        broadcastLogs: broadcastLogs.deletedCount || 0,
+        messages: messages.deletedCount || 0,
+        templates: templates.deletedCount || 0,
+        chatbotRules: chatbotRules.deletedCount || 0,
+        accountAlerts: accountAlerts.deletedCount || 0,
+      },
+    };
   }
 
   async subscribeWebhooks(id: string) {

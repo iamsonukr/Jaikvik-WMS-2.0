@@ -91,6 +91,7 @@ export default function AdminWhatsAppAccountsPage() {
   const [diagError, setDiagError] = useState('');
 
   const [removeTarget, setRemoveTarget] = useState(null);
+  const [removeDataMode, setRemoveDataMode] = useState('keep');
   const [removing, setRemoving] = useState(false);
 
   const flash = (message) => {
@@ -311,15 +312,22 @@ export default function AdminWhatsAppAccountsPage() {
     }
   };
 
+  const openRemove = (account) => {
+    setRemoveDataMode('keep');
+    setRemoveTarget(account);
+  };
+
   const confirmRemove = async () => {
     if (!removeTarget) return;
     setRemoving(true);
     setActionError('');
     try {
-      await api.delete(`/whatsapp-accounts/${removeTarget._id}`);
+      await api.delete(`/whatsapp-accounts/${removeTarget._id}`, {
+        params: { deleteData: removeDataMode === 'delete' },
+      });
       setRemoveTarget(null);
       await load();
-      flash('WhatsApp account deleted');
+      flash(removeDataMode === 'delete' ? 'WhatsApp account and related data deleted' : 'WhatsApp account removed; data kept for re-onboarding');
     } catch (err) {
       setActionError(err?.response?.data?.message || 'Failed to remove account');
       setRemoveTarget(null);
@@ -440,7 +448,7 @@ export default function AdminWhatsAppAccountsPage() {
                           <Button variant="outline" size="sm" disabled={busy} onClick={() => toggleActive(account)}>
                             <Power size={13} />{account.isActive ? 'Deactivate' : 'Activate'}
                           </Button>
-                          <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setRemoveTarget(account)}>
+                          <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => openRemove(account)}>
                             <Trash2 size={13} />Delete
                           </Button>
                         </div>
@@ -551,9 +559,39 @@ export default function AdminWhatsAppAccountsPage() {
           </>
         )}
       >
-        <p className="text-sm text-muted-foreground">
-          Delete <strong>{removeTarget?.name}</strong> ({removeTarget?.phone || removeTarget?.phoneNumberId})? Broadcasts, templates, and inbox history tied to this number will remain.
-        </p>
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            Delete <strong>{removeTarget?.name}</strong> ({removeTarget?.phone || removeTarget?.phoneNumberId})?
+          </p>
+          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3">
+            <input
+              type="radio"
+              name="removeDataMode"
+              value="keep"
+              checked={removeDataMode === 'keep'}
+              onChange={(e) => setRemoveDataMode(e.target.value)}
+              className="mt-1"
+            />
+            <span>
+              <span className="block font-medium">Keep contacts, broadcasts, templates, and inbox history</span>
+              <span className="block text-xs text-muted-foreground">The number is removed from active use and can be re-onboarded later with its data still attached.</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+            <input
+              type="radio"
+              name="removeDataMode"
+              value="delete"
+              checked={removeDataMode === 'delete'}
+              onChange={(e) => setRemoveDataMode(e.target.value)}
+              className="mt-1"
+            />
+            <span>
+              <span className="block font-medium text-destructive">Delete all related WhatsApp data</span>
+              <span className="block text-xs text-muted-foreground">Deletes contacts, tags, saved groups, imports, templates, broadcasts, logs, inbox messages, chatbot rules, and account alerts for this number.</span>
+            </span>
+          </label>
+        </div>
       </Modal>
     </AppShell>
   );

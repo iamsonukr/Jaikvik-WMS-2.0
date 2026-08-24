@@ -1,22 +1,58 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
+import axios from 'axios';
 import { Model } from 'mongoose';
 import { MetaService } from '../common/meta.service';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { WhatsAppAccount, WhatsAppAccountDocument } from '../whatsapp-accounts/whatsapp-account.schema';
 import { WalletTransaction, WalletTransactionDocument, WalletTransactionType } from '../wallet/wallet-transaction.schema';
 import { MetaExpenseSnapshot, MetaExpenseSnapshotDocument, MetaExpenseSource } from './meta-expense.schema';
+import { BroadcastLog, BroadcastLogDocument } from '../broadcasts/broadcast.schema';
+import { Message, MessageDocument } from '../inbox/message.schema';
 
 type Period = 'month' | 'year' | 'all';
+type PricingCategory = 'marketing' | 'utility' | 'authentication' | 'service';
+
+const META_PRICING_PAGE_URL = 'https://whatsappbusiness.com/products/platform-pricing/?country=India&currency=Indian%20Rupee%20(INR)&category=Authentication';
+const META_PRICING_FALLBACK: Record<PricingCategory, { quote: number; tierList: Array<{ minVolume: number; maxVolume: number; quote: number }> }> = {
+  marketing: { quote: 0.8631, tierList: [] },
+  utility: {
+    quote: 0.115,
+    tierList: [
+      { minVolume: 0, maxVolume: 25000000, quote: 0.115 },
+      { minVolume: 25000001, maxVolume: 50000000, quote: 0.1081 },
+      { minVolume: 50000001, maxVolume: 100000000, quote: 0.1012 },
+      { minVolume: 100000001, maxVolume: 200000000, quote: 0.0943 },
+      { minVolume: 200000001, maxVolume: 300000000, quote: 0.0874 },
+      { minVolume: 300000001, maxVolume: Number.MAX_SAFE_INTEGER, quote: 0.0805 },
+    ],
+  },
+  authentication: {
+    quote: 0.115,
+    tierList: [
+      { minVolume: 0, maxVolume: 750000, quote: 0.115 },
+      { minVolume: 750001, maxVolume: 15000000, quote: 0.1081 },
+      { minVolume: 15000001, maxVolume: 20000000, quote: 0.1012 },
+      { minVolume: 20000001, maxVolume: 50000000, quote: 0.0943 },
+      { minVolume: 50000001, maxVolume: 100000000, quote: 0.0874 },
+      { minVolume: 100000001, maxVolume: Number.MAX_SAFE_INTEGER, quote: 0.0805 },
+    ],
+  },
+  service: { quote: 0, tierList: [] },
+};
 
 @Injectable()
 export class ExpensesService {
+  private metaPricingCache: { fetchedAt: Date; rates: Record<PricingCategory, any>; source: string; error?: string } | null = null;
+
   constructor(
     @InjectModel(Tenant.name) private tenantModel: Model<TenantDocument>,
     @InjectModel(WhatsAppAccount.name) private accountModel: Model<WhatsAppAccountDocument>,
     @InjectModel(WalletTransaction.name) private txnModel: Model<WalletTransactionDocument>,
     @InjectModel(MetaExpenseSnapshot.name) private expenseModel: Model<MetaExpenseSnapshotDocument>,
+    @InjectModel(BroadcastLog.name) private broadcastLogModel: Model<BroadcastLogDocument>,
+    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
     private cfg: ConfigService,
     private meta: MetaService,
   ) {}
@@ -25,8 +61,9 @@ export class ExpensesService {
     const window = this.periodWindow(period);
     const dateMatch = window.start ? { createdAt: { $gte: window.start, $lte: window.end } } : {};
     const expenseDateMatch = window.start ? { periodStart: { $lte: window.end }, periodEnd: { $gte: window.start } } : {};
+    const metaPricing = await this.currentMetaPricing();
 
-    const [tenants, accounts, revenueRows, expenseRows] = await Promise.all([
+    const [tenants, accounts, revenueRows, expenseRows, expectedRows] = await Promise.all([
       this.tenantModel.find().populate('planId', 'name').lean(),
       this.accountModel.find().select('tenantId name wabaId phoneNumberId phone onboardingMode isActive').lean(),
       this.txnModel.aggregate([
@@ -82,6 +119,7 @@ export class ExpensesService {
           },
         },
       ]),
+      this.expectedUsageByTenant(dateMatch),
     ]);
 
     const accountsByTenant = new Map<string, any[]>();
@@ -112,16 +150,37 @@ export class ExpensesService {
         },
       ]),
     );
+    const expectedByTenant = new Map(
+      expectedRows.map((row) => {
+        const categoryCounts = this.normalizeCategoryCounts(row.categories || {});
+        const expectedMetaCost = this.expectedCostForCategories(categoryCounts, metaPricing.rates);
+        return [
+          String(row.tenantId),
+          {
+            expectedMetaCost,
+            expectedBillableMessages: Object.values(categoryCounts).reduce((sum: number, count: any) => sum + Number(count || 0), 0),
+            expectedCategoryCounts: categoryCounts,
+          },
+        ];
+      }),
+    );
 
     const rows = tenants.map((tenant: any) => {
       const tenantId = String(tenant._id);
       const revenue = revenueByTenant.get(tenantId) || { messageDebits: 0, refunds: 0, billableEntries: 0 };
       const expense = expenseByTenant.get(tenantId) || { metaCharged: 0, snapshotCount: 0, latestSyncedAt: null };
+      const expected = expectedByTenant.get(tenantId) || {
+        expectedMetaCost: 0,
+        expectedBillableMessages: 0,
+        expectedCategoryCounts: this.normalizeCategoryCounts({}),
+      };
       const clientRevenue = Number((revenue.messageDebits - revenue.refunds).toFixed(4));
       const hasMetaCost = expense.snapshotCount > 0;
       const metaCharged = Number(expense.metaCharged.toFixed(4));
       const margin = hasMetaCost ? Number((clientRevenue - metaCharged).toFixed(4)) : null;
       const marginPercent = hasMetaCost && clientRevenue > 0 ? Number(((margin / clientRevenue) * 100).toFixed(2)) : null;
+      const expectedMargin = Number((clientRevenue - expected.expectedMetaCost).toFixed(4));
+      const expectedMarginPercent = clientRevenue > 0 ? Number(((expectedMargin / clientRevenue) * 100).toFixed(2)) : null;
       const tenantAccounts = accountsByTenant.get(tenantId) || [];
 
       return {
@@ -144,8 +203,13 @@ export class ExpensesService {
         billableEntries: revenue.billableEntries,
         metaCharged,
         hasMetaCost,
+        expectedMetaCost: expected.expectedMetaCost,
+        expectedBillableMessages: expected.expectedBillableMessages,
+        expectedCategoryCounts: expected.expectedCategoryCounts,
         margin,
         marginPercent,
+        expectedMargin,
+        expectedMarginPercent,
         latestMetaSyncAt: expense.latestSyncedAt,
       };
     });
@@ -155,7 +219,9 @@ export class ExpensesService {
       acc.messageDebits += row.messageDebits;
       acc.refunds += row.refunds;
       acc.metaCharged += row.hasMetaCost ? row.metaCharged : 0;
+      acc.expectedMetaCost += row.expectedMetaCost;
       acc.billableEntries += row.billableEntries;
+      acc.expectedBillableMessages += row.expectedBillableMessages;
       acc.connectedWabas += row.accounts.length;
       if (!row.hasMetaCost && (row.clientRevenue > 0 || row.accounts.length > 0)) acc.unsyncedClients += 1;
       return acc;
@@ -164,7 +230,9 @@ export class ExpensesService {
       messageDebits: 0,
       refunds: 0,
       metaCharged: 0,
+      expectedMetaCost: 0,
       billableEntries: 0,
+      expectedBillableMessages: 0,
       connectedWabas: 0,
       unsyncedClients: 0,
     });
@@ -179,10 +247,160 @@ export class ExpensesService {
         messageDebits: Number(totals.messageDebits.toFixed(4)),
         refunds: Number(totals.refunds.toFixed(4)),
         metaCharged: Number(totals.metaCharged.toFixed(4)),
+        expectedMetaCost: Number(totals.expectedMetaCost.toFixed(4)),
         knownMargin: Number((totals.clientRevenue - totals.metaCharged).toFixed(4)),
+        expectedMargin: Number((totals.clientRevenue - totals.expectedMetaCost).toFixed(4)),
       },
+      metaPricing,
       rows,
     };
+  }
+
+  private async expectedUsageByTenant(dateMatch: Record<string, any>) {
+    const broadcastMatch = {
+      ...dateMatch,
+      tenantId: { $exists: true, $ne: null },
+      status: { $in: ['sent', 'delivered', 'read'] },
+    };
+    const directMessageMatch = {
+      ...dateMatch,
+      tenantId: { $exists: true, $ne: null },
+      direction: 'outbound',
+      messageCategory: { $exists: true, $ne: null },
+    };
+
+    const [broadcastRows, messageRows] = await Promise.all([
+      this.broadcastLogModel.aggregate([
+        { $match: broadcastMatch },
+        { $group: { _id: { tenantId: '$tenantId', category: '$messageCategory' }, count: { $sum: 1 } } },
+      ]),
+      this.messageModel.aggregate([
+        { $match: directMessageMatch },
+        { $group: { _id: { tenantId: '$tenantId', category: '$messageCategory' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const byTenant = new Map<string, { tenantId: string; categories: Record<string, number> }>();
+    [...broadcastRows, ...messageRows].forEach((row: any) => {
+      const tenantId = String(row?._id?.tenantId || '');
+      if (!tenantId) return;
+      const category = this.normalizePricingCategory(row?._id?.category);
+      if (!byTenant.has(tenantId)) byTenant.set(tenantId, { tenantId, categories: {} });
+      const record = byTenant.get(tenantId);
+      record.categories[category] = Number(record.categories[category] || 0) + Number(row.count || 0);
+    });
+
+    return Array.from(byTenant.values());
+  }
+
+  private async currentMetaPricing() {
+    if (this.metaPricingCache && Date.now() - this.metaPricingCache.fetchedAt.getTime() < 6 * 60 * 60 * 1000) {
+      return this.metaPricingCache;
+    }
+
+    try {
+      const page = await axios.get('https://whatsappbusiness.com/products/platform-pricing/', { timeout: 8000 });
+      const restUrl = this.extractString(page.data, /"restUrl":"([^"]+)"/);
+      const restNonce = this.extractString(page.data, /"restNonce":"([^"]+)"/);
+      const wpNonce = this.extractString(page.data, /"wpNonce":"([^"]+)"/);
+      if (!restUrl || !restNonce || !wpNonce) throw new Error('Could not read pricing endpoint tokens from WhatsApp pricing page.');
+
+      const rates = {} as Record<PricingCategory, any>;
+      await Promise.all((['marketing', 'utility', 'authentication', 'service'] as PricingCategory[]).map(async (category) => {
+        const response = await axios.get(restUrl.replace(/\\\//g, '/'), {
+          timeout: 8000,
+          headers: { 'X-WP-Nonce': wpNonce },
+          params: {
+            market: 'IN',
+            currency: 'INR',
+            category: this.metaPricingCategoryParam(category),
+            _wab_nonce: restNonce,
+          },
+        });
+        rates[category] = this.normalizeMetaRate(response.data);
+      }));
+
+      this.metaPricingCache = {
+        fetchedAt: new Date(),
+        rates,
+        source: META_PRICING_PAGE_URL,
+      };
+    } catch (err) {
+      this.metaPricingCache = {
+        fetchedAt: new Date(),
+        rates: META_PRICING_FALLBACK,
+        source: META_PRICING_PAGE_URL,
+        error: err?.message || 'Could not fetch current WhatsApp pricing; using bundled fallback rates.',
+      };
+    }
+
+    return this.metaPricingCache;
+  }
+
+  private extractString(value: string, pattern: RegExp) {
+    const match = String(value || '').match(pattern);
+    return match?.[1]?.replace(/\\\//g, '/') || '';
+  }
+
+  private normalizeMetaRate(value: any) {
+    return {
+      quote: Number(value?.quote || 0),
+      tierList: Array.isArray(value?.tier_list)
+        ? value.tier_list.map((tier) => ({
+          minVolume: Number(tier.min_volume || 0),
+          maxVolume: Math.min(Number(tier.max_volume || Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER),
+          quote: Number(tier.quote || 0),
+        }))
+        : [],
+    };
+  }
+
+  private metaPricingCategoryParam(category: PricingCategory) {
+    const labels: Record<PricingCategory, string> = {
+      marketing: 'Marketing',
+      utility: 'Utility',
+      authentication: 'Authentication',
+      service: 'Service',
+    };
+    return labels[category];
+  }
+
+  private normalizeCategoryCounts(value: Record<string, number>) {
+    return (['marketing', 'utility', 'authentication', 'service'] as PricingCategory[]).reduce((acc, category) => {
+      acc[category] = Number(value?.[category] || 0);
+      return acc;
+    }, {} as Record<PricingCategory, number>);
+  }
+
+  private normalizePricingCategory(category: any): PricingCategory {
+    const value = String(category || '').trim().toLowerCase();
+    if (value.includes('auth')) return 'authentication';
+    if (value.includes('util')) return 'utility';
+    if (value.includes('service')) return 'service';
+    return 'marketing';
+  }
+
+  private expectedCostForCategories(categoryCounts: Record<PricingCategory, number>, rates: Record<PricingCategory, any>) {
+    const total = (Object.entries(categoryCounts) as Array<[PricingCategory, number]>).reduce((sum, [category, count]) => {
+      return sum + this.expectedCostForCategory(count, rates[category]);
+    }, 0);
+    return Number(total.toFixed(4));
+  }
+
+  private expectedCostForCategory(count: number, rate: { quote: number; tierList: Array<{ minVolume: number; maxVolume: number; quote: number }> }) {
+    const messageCount = Number(count || 0);
+    if (messageCount <= 0) return 0;
+    const tiers = Array.isArray(rate?.tierList) ? rate.tierList : [];
+    if (!tiers.length) return messageCount * Number(rate?.quote || 0);
+
+    return tiers.reduce((sum, tier) => {
+      const from = Number(tier.minVolume || 0);
+      const to = Number(tier.maxVolume || Number.MAX_SAFE_INTEGER);
+      const lowerBound = from <= 0 ? 1 : from;
+      if (messageCount < lowerBound) return sum;
+      const messagesInTier = Math.max(0, Math.min(messageCount, to) - lowerBound + 1);
+      return sum + messagesInTier * Number(tier.quote || 0);
+    }, 0);
   }
 
   async syncMetaPricing(period: Period = 'month') {

@@ -18,6 +18,8 @@ export class WhatsAppAccount {
   @Prop() phone: string;                            // display number
   @Prop({ default: 'cloud_api' }) onboardingMode: string; // cloud_api | business_app
   @Prop({ default: true }) isActive: boolean;
+  @Prop({ default: false }) isRemoved: boolean;
+  @Prop() removedAt?: Date;
   @Prop() timezone: string;
   @Prop() industry: string;
 }
@@ -26,3 +28,4 @@ export const WhatsAppAccountSchema = SchemaFactory.createForClass(WhatsAppAccoun
 // Unique constraint — webhook routing relies on phoneNumberId being one-to-one with an account
 WhatsAppAccountSchema.index({ phoneNumberId: 1 }, { unique: true });
 WhatsAppAccountSchema.index({ tenantId: 1 });
+WhatsAppAccountSchema.index({ isRemoved: 1 });

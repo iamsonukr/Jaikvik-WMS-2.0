@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { WhatsAppAccountsService } from './whatsapp-accounts.service';
 import { CreateWhatsAppAccountDto, EmbeddedSignupDto, PublicEmbeddedSignupDto, RegisterPhoneNumberDto, UpdateWhatsAppAccountDto } from './whatsapp-account.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -79,5 +79,7 @@ export class WhatsAppAccountsController {
   @Roles(UserRole.ADMIN, UserRole.MASTER, UserRole.CLIENT_OWNER)
   @UseGuards(WhatsAppAccountOwnershipGuard)
   @Delete(':id')
-  remove(@Param('id') id: string) { return this.svc.remove(id); }
+  remove(@Param('id') id: string, @Query('deleteData') deleteData?: string) {
+    return this.svc.remove(id, deleteData === 'true');
+  }
 }
