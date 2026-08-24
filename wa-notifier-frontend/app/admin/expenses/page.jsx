@@ -4,15 +4,21 @@ import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import {
   PageHeader, StatCard, Card, CardHeader, Spinner, Empty, Input, Select, Button,
-  Badge, SortableTh, PaginationControls, sortItems, usePagination,
+  Badge, SortableTh, PaginationControls, sortItems, usePagination, Modal, Textarea,
 } from '@/components/ui';
-import { BarChart3, IndianRupee, Landmark, ReceiptText, RefreshCw, Search, WalletCards } from 'lucide-react';
+import { BarChart3, IndianRupee, Landmark, Pencil, ReceiptText, RefreshCw, Search } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import api from '@/lib/api';
 
 const STATUS_COLOR = { active: 'green', suspended: 'yellow', disabled: 'red' };
+const PRICE_CATEGORIES = [
+  ['marketing', 'Marketing'],
+  ['utility', 'Utility'],
+  ['authentication', 'Authentication'],
+  ['service', 'Service'],
+];
 const text = (value) => String(value || '').toLowerCase();
 const fmtMoney = (value) => value === null || value === undefined ? '-' : `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
 const fmtPercent = (value) => value === null || value === undefined ? '-' : `${Number(value).toLocaleString('en-IN')}%`;
@@ -49,6 +55,10 @@ export default function AdminExpensesPage() {
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [manualTarget, setManualTarget] = useState(null);
+  const [manualForm, setManualForm] = useState({ accountId: '', metaChargedAmount: '', metaInvoiceId: '', notes: '' });
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState('');
 
   const loadSummary = () => {
     setSummary(null);
@@ -74,6 +84,56 @@ export default function AdminExpensesPage() {
       setError(err?.response?.data?.message || 'Could not sync Meta pricing analytics.');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const openManualCost = (row) => {
+    const account = row.accounts?.[0];
+    setManualTarget(row);
+    setManualError('');
+    setManualForm({
+      accountId: account?.id || '',
+      metaChargedAmount: String(account?.metaCostSnapshot?.amount ?? (row.metaCharged || row.expectedMetaCost || '')),
+      metaInvoiceId: account?.metaCostSnapshot?.metaInvoiceId || '',
+      notes: account?.metaCostSnapshot?.notes || '',
+    });
+  };
+
+  const selectedManualAccount = useMemo(() => (
+    manualTarget?.accounts?.find((account) => account.id === manualForm.accountId) || manualTarget?.accounts?.[0] || null
+  ), [manualTarget, manualForm.accountId]);
+
+  const updateManualAccount = (accountId) => {
+    const account = manualTarget?.accounts?.find((item) => item.id === accountId);
+    setManualForm((prev) => ({
+      ...prev,
+      accountId,
+      metaChargedAmount: String(account?.metaCostSnapshot?.amount ?? (manualTarget?.expectedMetaCost || '')),
+      metaInvoiceId: account?.metaCostSnapshot?.metaInvoiceId || '',
+      notes: account?.metaCostSnapshot?.notes || '',
+    }));
+  };
+
+  const saveManualCost = async () => {
+    if (!manualTarget || !manualForm.accountId) return;
+    setManualSaving(true);
+    setManualError('');
+    try {
+      const { data } = await api.post(`/expenses/admin/manual?period=${period}`, {
+        tenantId: manualTarget.tenantId,
+        whatsappAccountId: manualForm.accountId,
+        metaChargedAmount: Number(manualForm.metaChargedAmount),
+        currency: 'INR',
+        metaInvoiceId: manualForm.metaInvoiceId,
+        notes: manualForm.notes,
+      });
+      setSummary(data.summary);
+      setManualTarget(null);
+      setSyncResult({ synced: 0, failed: 0, skipped: 0, failures: [], manualSaved: true });
+    } catch (err) {
+      setManualError(err?.response?.data?.message || 'Could not save manual Meta cost.');
+    } finally {
+      setManualSaving(false);
     }
   };
 
@@ -153,7 +213,9 @@ export default function AdminExpensesPage() {
       {syncResult && (
         <div className="mb-6 rounded-lg border border-border bg-card px-4 py-3 text-sm">
           <p className="font-medium">
-            Meta sync completed: {syncResult.synced} synced, {syncResult.failed} failed, {syncResult.skipped} skipped.
+            {syncResult.manualSaved
+              ? 'Manual Meta cost saved.'
+              : `Meta sync completed: ${syncResult.synced} synced, ${syncResult.failed} failed, ${syncResult.skipped} skipped.`}
           </p>
           {!!syncResult.failures?.length && (
             <div className="mt-2 space-y-1 text-xs text-muted-foreground">
@@ -268,7 +330,7 @@ export default function AdminExpensesPage() {
                     <SortableTh label="Margin %" sortKey="marginPercent" sort={sort} onSort={setSort} align="right" />
                     <SortableTh label="Messages" sortKey="expectedBillableMessages" sort={sort} onSort={setSort} align="right" />
                     <SortableTh label="Sync" sortKey="sync" sort={sort} onSort={setSort} />
-                    <th className="px-4 py-3 text-right font-semibold">Open</th>
+                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -318,7 +380,7 @@ export default function AdminExpensesPage() {
                       <td className="px-4 py-3">
                         {row.hasMetaCost ? (
                           <div>
-                            <Badge label="Synced" color="green" />
+                            <Badge label={row.accounts?.some((account) => account.metaCostSnapshot?.source === 'manual') ? 'Manual' : 'Synced'} color={row.accounts?.some((account) => account.metaCostSnapshot?.source === 'manual') ? 'blue' : 'green'} />
                             <p className="mt-1 text-xs text-muted-foreground">{fmtDate(row.latestMetaSyncAt)}</p>
                           </div>
                         ) : (
@@ -326,7 +388,12 @@ export default function AdminExpensesPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link href={`/admin/tenants/${row.tenantId}`} className="text-primary hover:underline">Details</Link>
+                        <div className="flex flex-col items-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openManualCost(row)} disabled={!row.accounts?.length || period === 'all'}>
+                            <Pencil size={13} />Meta cost
+                          </Button>
+                          <Link href={`/admin/tenants/${row.tenantId}`} className="text-primary hover:underline">Details</Link>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -335,6 +402,88 @@ export default function AdminExpensesPage() {
             </div>
             <PaginationControls {...expensesPage} onPageChange={expensesPage.setPage} onPageSizeChange={expensesPage.setPageSize} />
           </Card>
+
+          <Modal
+            open={!!manualTarget}
+            onClose={() => setManualTarget(null)}
+            title={`Meta cost - ${manualTarget?.clientName || ''}`}
+            className="max-w-2xl"
+            footer={(
+              <>
+                <Button variant="outline" onClick={() => setManualTarget(null)} disabled={manualSaving}>Cancel</Button>
+                <Button onClick={saveManualCost} disabled={manualSaving || !manualForm.accountId}>
+                  {manualSaving ? 'Saving...' : 'Save Meta cost'}
+                </Button>
+              </>
+            )}
+          >
+            <div className="space-y-4">
+              {manualError && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{manualError}</p>}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Select label="WhatsApp account" value={manualForm.accountId} onChange={(e) => updateManualAccount(e.target.value)}>
+                  {manualTarget?.accounts?.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name} - {account.phone || account.wabaId}</option>
+                  ))}
+                </Select>
+                <Input
+                  label="Actual Meta cost paid"
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={manualForm.metaChargedAmount}
+                  onChange={(e) => setManualForm((prev) => ({ ...prev, metaChargedAmount: e.target.value }))}
+                  placeholder="0.0000"
+                />
+              </div>
+
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Category</th>
+                      <th className="px-3 py-2 text-right font-semibold">Meta price</th>
+                      <th className="px-3 py-2 text-right font-semibold">Our current price</th>
+                      <th className="px-3 py-2 text-right font-semibold">Messages</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {PRICE_CATEGORIES.map(([key, label]) => (
+                      <tr key={key}>
+                        <td className="px-3 py-2 font-medium">{label}</td>
+                        <td className="px-3 py-2 text-right">{fmtRate(metaRates[key]?.quote)}</td>
+                        <td className="px-3 py-2 text-right">{fmtRate(manualTarget?.planMessageRates?.[key])}</td>
+                        <td className="px-3 py-2 text-right">{Number(manualTarget?.expectedCategoryCounts?.[key] || 0).toLocaleString('en-IN')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                  <p className="text-xs text-muted-foreground">Expected Meta cost</p>
+                  <p className="mt-1 font-semibold">{fmtMoney(manualTarget?.expectedMetaCost)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                  <p className="text-xs text-muted-foreground">Saved cost for selected WABA</p>
+                  <p className="mt-1 font-semibold">{selectedManualAccount?.metaCostSnapshot ? fmtMoney(selectedManualAccount.metaCostSnapshot.amount) : '-'}</p>
+                </div>
+              </div>
+
+              <Input
+                label="Meta invoice/reference ID"
+                value={manualForm.metaInvoiceId}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, metaInvoiceId: e.target.value }))}
+                placeholder="Optional"
+              />
+              <Textarea
+                label="Notes"
+                value={manualForm.notes}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="Optional"
+              />
+            </div>
+          </Modal>
         </>
       )}
     </AppShell>

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import axios from 'axios';
@@ -63,8 +63,8 @@ export class ExpensesService {
     const expenseDateMatch = window.start ? { periodStart: { $lte: window.end }, periodEnd: { $gte: window.start } } : {};
     const metaPricing = await this.currentMetaPricing();
 
-    const [tenants, accounts, revenueRows, expenseRows, expectedRows] = await Promise.all([
-      this.tenantModel.find().populate('planId', 'name').lean(),
+    const [tenants, accounts, revenueRows, expenseRows, expenseSnapshots, expectedRows] = await Promise.all([
+      this.tenantModel.find().populate('planId', 'name messageRates').lean(),
       this.accountModel.find().select('tenantId name wabaId phoneNumberId phone onboardingMode isActive').lean(),
       this.txnModel.aggregate([
         {
@@ -119,6 +119,7 @@ export class ExpensesService {
           },
         },
       ]),
+      this.expenseModel.find(expenseDateMatch).select('tenantId whatsappAccountId wabaId metaChargedAmount currency source metaInvoiceId notes syncedAt updatedAt').lean(),
       this.expectedUsageByTenant(dateMatch),
     ]);
 
@@ -129,6 +130,20 @@ export class ExpensesService {
       if (!accountsByTenant.has(tenantId)) accountsByTenant.set(tenantId, []);
       accountsByTenant.get(tenantId).push(account);
     });
+    const expenseByWaba = new Map(
+      expenseSnapshots.map((snapshot: any) => [
+        String(snapshot.wabaId),
+        {
+          id: String(snapshot._id),
+          amount: Number(snapshot.metaChargedAmount || 0),
+          currency: snapshot.currency || 'INR',
+          source: snapshot.source || MetaExpenseSource.MANUAL,
+          metaInvoiceId: snapshot.metaInvoiceId || '',
+          notes: snapshot.notes || '',
+          syncedAt: snapshot.syncedAt || snapshot.updatedAt || null,
+        },
+      ]),
+    );
 
     const revenueByTenant = new Map(
       revenueRows.map((row) => [
@@ -189,6 +204,7 @@ export class ExpensesService {
         contactEmail: tenant.contactEmail,
         status: tenant.status,
         planName: tenant.planId?.name || null,
+        planMessageRates: this.normalizePlanRates(tenant.planId?.messageRates || {}),
         accounts: tenantAccounts.map((account) => ({
           id: String(account._id),
           name: account.name,
@@ -196,6 +212,7 @@ export class ExpensesService {
           phoneNumberId: account.phoneNumberId,
           phone: account.phone,
           isActive: account.isActive !== false,
+          metaCostSnapshot: expenseByWaba.get(String(account.wabaId)) || null,
         })),
         clientRevenue,
         messageDebits: Number(revenue.messageDebits.toFixed(4)),
@@ -254,6 +271,49 @@ export class ExpensesService {
       metaPricing,
       rows,
     };
+  }
+
+  async saveManualMetaCost(period: Period, dto: any) {
+    if (period === 'all') {
+      throw new BadRequestException('Manual Meta cost entry is available for this month or this year, not all time.');
+    }
+    const amount = Number(dto?.metaChargedAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new BadRequestException('Meta cost amount must be a valid non-negative number.');
+    }
+
+    const tenantId = String(dto?.tenantId || '').trim();
+    const accountId = String(dto?.whatsappAccountId || dto?.accountId || '').trim();
+    if (!tenantId || !accountId) {
+      throw new BadRequestException('Client and WhatsApp account are required.');
+    }
+
+    const account = await this.accountModel.findOne({ _id: accountId, tenantId }).select('tenantId wabaId _id').lean();
+    if (!account) throw new NotFoundException('WhatsApp account not found for this client.');
+
+    const window = this.periodWindow(period);
+    await this.expenseModel.findOneAndUpdate(
+      { wabaId: account.wabaId, periodStart: window.start, periodEnd: window.end },
+      {
+        $set: {
+          tenantId: account.tenantId,
+          whatsappAccountId: account._id,
+          wabaId: account.wabaId,
+          periodStart: window.start,
+          periodEnd: window.end,
+          metaChargedAmount: Number(amount.toFixed(4)),
+          currency: dto?.currency || 'INR',
+          source: MetaExpenseSource.MANUAL,
+          metaInvoiceId: String(dto?.metaInvoiceId || '').trim(),
+          notes: String(dto?.notes || '').trim(),
+          rawMetaResponse: undefined,
+          syncedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    return { saved: true, summary: await this.adminSummary(period) };
   }
 
   private async expectedUsageByTenant(dateMatch: Record<string, any>) {
@@ -366,6 +426,13 @@ export class ExpensesService {
   }
 
   private normalizeCategoryCounts(value: Record<string, number>) {
+    return (['marketing', 'utility', 'authentication', 'service'] as PricingCategory[]).reduce((acc, category) => {
+      acc[category] = Number(value?.[category] || 0);
+      return acc;
+    }, {} as Record<PricingCategory, number>);
+  }
+
+  private normalizePlanRates(value: Record<string, any>) {
     return (['marketing', 'utility', 'authentication', 'service'] as PricingCategory[]).reduce((acc, category) => {
       acc[category] = Number(value?.[category] || 0);
       return acc;
