@@ -376,7 +376,7 @@ export class WhatsAppAccountsService {
     try {
       const { data } = await axios.get(`https://graph.facebook.com/${version}/${phoneNumberId}`, {
         params: {
-          fields: 'display_phone_number,verified_name',
+          fields: 'display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app',
           access_token: accessToken,
         },
       });
@@ -391,7 +391,7 @@ export class WhatsAppAccountsService {
     try {
       const { data } = await axios.get(`https://graph.facebook.com/${version}/${wabaId}/phone_numbers`, {
         params: {
-          fields: 'id,display_phone_number,verified_name',
+          fields: 'id,display_phone_number,verified_name,quality_rating,platform_type,code_verification_status,is_on_biz_app',
           access_token: accessToken,
         },
       });

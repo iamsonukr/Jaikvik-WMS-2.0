@@ -50,6 +50,11 @@ export class MetaService {
         templateName,
       });
       if (metaError?.code === 200) {
+        if (this.isCloudApiCallingNotEnabled(message)) {
+          throw new BadRequestException(
+            'WhatsApp template failed: Cloud API is not enabled for this phone number. Open Connect WhatsApp, click Register number, enter or set the 6-digit registration PIN for this number, then try again. If this number was connected in WhatsApp Business App mode, reconnect it and complete the phone linking step.',
+          );
+        }
         throw new BadRequestException(
           `WhatsApp template failed: ${message} | code ${metaError.code}${metaError?.error_subcode ? ` | subcode ${metaError.error_subcode}` : ''}`,
         );
@@ -79,6 +84,11 @@ export class MetaService {
         recipient,
       });
       if (metaError?.code === 200) {
+        if (this.isCloudApiCallingNotEnabled(message)) {
+          throw new BadRequestException(
+            'WhatsApp message failed: Cloud API is not enabled for this phone number. Open Connect WhatsApp, click Register number, enter or set the 6-digit registration PIN for this number, then try again. If this number was connected in WhatsApp Business App mode, reconnect it and complete the phone linking step.',
+          );
+        }
         throw new BadRequestException(
           `WhatsApp message failed: ${message} | code ${metaError.code}${metaError?.error_subcode ? ` | subcode ${metaError.error_subcode}` : ''}`,
         );
@@ -390,5 +400,9 @@ export class MetaService {
 
   private normalizeRecipient(phone: string) {
     return String(phone || '').replace(/[^\d]/g, '');
+  }
+
+  private isCloudApiCallingNotEnabled(message: string) {
+    return /cloud api calling not enabled/i.test(String(message || ''));
   }
 }
