@@ -172,6 +172,10 @@ export class WalletService {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.MESSAGE_DEBIT, amount, ...meta });
   }
 
+  async debitForSubscription(tenantId: ObjectIdInput, amount: number, meta: Partial<LedgerEntryInput> = {}) {
+    return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.SUBSCRIPTION_DEBIT, amount, ...meta });
+  }
+
   async reserveForCampaign(tenantId: ObjectIdInput, amount: number, meta: Partial<LedgerEntryInput> = {}) {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.CAMPAIGN_RESERVATION, amount, ...meta });
   }

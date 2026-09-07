@@ -1,11 +1,11 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, Button, Card, Spinner } from '@/components/ui';
+import { Badge, Button, Card, Modal, Spinner } from '@/components/ui';
 import { useAuth } from '@/lib/auth-context';
 import { normalizeRole } from '@/lib/roles';
 import api from '@/lib/api';
-import { CheckCircle2, CreditCard, ExternalLink, RefreshCw } from 'lucide-react';
+import { CheckCircle2, CreditCard, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
 
 function loadRazorpayScript() {
   return new Promise((resolve) => {
@@ -60,8 +60,11 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
   const canPurchase = role === 'client_owner';
   const [plans, setPlans] = useState(null);
   const [subscription, setSubscription] = useState(null);
+  const [wallet, setWallet] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processingPlanId, setProcessingPlanId] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('wallet');
   const [message, setMessage] = useState('');
   const [billingCycle, setBillingCycle] = useState('quarterly');
 
@@ -70,12 +73,14 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
   const load = async () => {
     setLoading(true);
     try {
-      const [plansRes, subscriptionRes] = await Promise.all([
+      const [plansRes, subscriptionRes, walletRes] = await Promise.all([
         api.get('/plans/public'),
         api.get('/subscriptions/me').catch(() => ({ data: null })),
+        api.get('/wallet/me').catch(() => ({ data: null })),
       ]);
       setPlans(plansRes.data || []);
       setSubscription(subscriptionRes.data);
+      setWallet(walletRes.data);
       if (subscriptionRes.data?.billingCycleSnapshot && BILLING_CYCLES.includes(subscriptionRes.data.billingCycleSnapshot)) {
         setBillingCycle(subscriptionRes.data.billingCycleSnapshot);
       }
@@ -93,7 +98,29 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
     purchasablePlans.filter((plan) => priceForCycle(plan, billingCycle) !== null && priceForCycle(plan, billingCycle) !== undefined)
   ), [purchasablePlans, billingCycle]);
 
-  const purchasePlan = async (plan) => {
+  const openCheckout = (plan) => {
+    setMessage('');
+    setSelectedPlan(plan);
+    setPaymentMethod(Number(wallet?.balance || 0) >= planTotal(plan, billingCycle) ? 'wallet' : 'razorpay');
+  };
+
+  const purchaseWithWallet = async (plan) => {
+    setMessage('');
+    setProcessingPlanId(plan._id);
+    try {
+      await api.post('/payments/subscription/wallet', { planId: plan._id, billingCycle });
+      setMessage(`${plan.name} plan activated with wallet balance.`);
+      setSelectedPlan(null);
+      await load();
+      await onPurchased?.();
+    } catch (err) {
+      setMessage(err?.response?.data?.message || err.message || 'Could not complete wallet payment');
+    } finally {
+      setProcessingPlanId('');
+    }
+  };
+
+  const purchaseWithRazorpay = async (plan) => {
     setMessage('');
     setProcessingPlanId(plan._id);
     try {
@@ -124,6 +151,7 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
             setMessage(err?.response?.data?.message || 'Payment verification failed');
           } finally {
             setProcessingPlanId('');
+            setSelectedPlan(null);
           }
         },
         modal: { ondismiss: () => setProcessingPlanId('') },
@@ -139,13 +167,22 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
     }
   };
 
+  const checkoutTotal = selectedPlan ? planTotal(selectedPlan, billingCycle) : 0;
+  const walletBalance = Number(wallet?.balance || 0);
+  const walletCanPay = walletBalance >= checkoutTotal;
+  const paySelectedPlan = () => {
+    if (!selectedPlan) return;
+    if (paymentMethod === 'wallet') purchaseWithWallet(selectedPlan);
+    else purchaseWithRazorpay(selectedPlan);
+  };
+
   return (
     <Card className="p-5">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">Purchase Plan</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {canPurchase ? 'Choose a plan and pay securely with Razorpay.' : 'Only the client owner can purchase or change plans.'}
+            {canPurchase ? 'Choose a plan and pay from wallet balance or Razorpay.' : 'Only the client owner can purchase or change plans.'}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -220,10 +257,10 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
                   className="mt-4 w-full"
                   variant={isCurrent ? 'outline' : 'primary'}
                   disabled={!canPurchase || isCurrent || processingPlanId === plan._id}
-                  onClick={() => purchasePlan(plan)}
+                  onClick={() => openCheckout(plan)}
                 >
                   <CreditCard size={15} />
-                  {isCurrent ? 'Active plan' : processingPlanId === plan._id ? 'Opening checkout...' : 'Purchase plan'}
+                  {isCurrent ? 'Active plan' : processingPlanId === plan._id ? 'Processing...' : 'Purchase plan'}
                 </Button>
               </div>
             );
@@ -246,6 +283,67 @@ export default function PlanPurchasePanel({ compact = false, onPurchased }) {
           {message}
         </div>
       )}
+
+      <Modal
+        open={!!selectedPlan}
+        onClose={() => !processingPlanId && setSelectedPlan(null)}
+        title="Confirm plan purchase"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setSelectedPlan(null)} disabled={!!processingPlanId}>Cancel</Button>
+            <Button onClick={paySelectedPlan} disabled={!!processingPlanId || (paymentMethod === 'wallet' && !walletCanPay)}>
+              {paymentMethod === 'wallet' ? <Wallet size={15} /> : <CreditCard size={15} />}
+              {processingPlanId ? 'Processing...' : paymentMethod === 'wallet' ? 'Pay from wallet' : 'Pay with Razorpay'}
+            </Button>
+          </>
+        }
+      >
+        {selectedPlan && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{selectedPlan.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{CYCLE_LABELS[billingCycle]} billing</p>
+                </div>
+                <p className="text-lg font-bold">{fmtMoney(checkoutTotal, selectedPlan.currency)}</p>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <p>Base price</p>
+                <p className="text-right text-foreground">{fmtMoney(priceForCycle(selectedPlan, billingCycle), selectedPlan.currency)}</p>
+                <p>Tax</p>
+                <p className="text-right text-foreground">{fmtMoney(checkoutTotal - Number(priceForCycle(selectedPlan, billingCycle) || 0), selectedPlan.currency)}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('wallet')}
+                className={`rounded-lg border p-4 text-left transition-colors ${paymentMethod === 'wallet' ? 'border-brand bg-brand/10' : 'border-border hover:bg-accent'}`}
+              >
+                <div className="flex items-center gap-2 font-medium"><Wallet size={16} /> Wallet</div>
+                <p className="mt-2 text-xs text-muted-foreground">Balance: {fmtMoney(walletBalance, selectedPlan.currency)}</p>
+                {!walletCanPay && <p className="mt-2 text-xs text-red-500">Add {fmtMoney(checkoutTotal - walletBalance, selectedPlan.currency)} more to use wallet.</p>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('razorpay')}
+                className={`rounded-lg border p-4 text-left transition-colors ${paymentMethod === 'razorpay' ? 'border-brand bg-brand/10' : 'border-border hover:bg-accent'}`}
+              >
+                <div className="flex items-center gap-2 font-medium"><CreditCard size={16} /> Razorpay</div>
+                <p className="mt-2 text-xs text-muted-foreground">Pay securely by card, UPI, netbanking, or wallet.</p>
+              </button>
+            </div>
+
+            {paymentMethod === 'wallet' && !walletCanPay && (
+              <Link href="/client/wallet" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+                Add money to wallet <ExternalLink size={13} />
+              </Link>
+            )}
+          </div>
+        )}
+      </Modal>
     </Card>
   );
 }

@@ -1,7 +1,12 @@
 import { Body, Controller, Get, Headers, Param, Post, Query, Req, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { PaymentsService } from './payments.service';
-import { CreateRechargeOrderDto, CreateSubscriptionOrderDto, VerifyRechargePaymentDto } from './payments.dto';
+import {
+  CreateRechargeOrderDto,
+  CreateSubscriptionOrderDto,
+  PurchaseSubscriptionWithWalletDto,
+  VerifyRechargePaymentDto,
+} from './payments.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -95,6 +100,16 @@ export class PaymentsController {
   @Roles(UserRole.CLIENT_OWNER)
   verifySubscription(@Body() dto: VerifyRechargePaymentDto) {
     return this.svc.verifySubscriptionPayment(dto);
+  }
+
+  @Post('subscription/wallet')
+  @Roles(UserRole.CLIENT_OWNER)
+  purchaseSubscriptionWithWallet(
+    @CurrentTenant() tenantId: string,
+    @Body() dto: PurchaseSubscriptionWithWalletDto,
+    @Req() req: any,
+  ) {
+    return this.svc.purchaseSubscriptionWithWallet(tenantId, dto.planId, dto.billingCycle, req.user?._id);
   }
 
   // Razorpay webhook — must stay public and must read the exact raw request

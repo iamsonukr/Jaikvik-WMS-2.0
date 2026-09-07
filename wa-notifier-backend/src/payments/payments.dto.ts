@@ -14,3 +14,8 @@ export class CreateSubscriptionOrderDto {
   @IsString() planId: string;
   @IsOptional() @IsString() billingCycle?: string;
 }
+
+export class PurchaseSubscriptionWithWalletDto {
+  @IsString() planId: string;
+  @IsOptional() @IsString() billingCycle?: string;
+}

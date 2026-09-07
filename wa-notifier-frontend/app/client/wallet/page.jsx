@@ -19,6 +19,7 @@ function loadRazorpayScript() {
 
 const TYPE_LABELS = {
   recharge: 'Recharge',
+  subscription_debit: 'Plan purchase',
   message_debit: 'Message sent',
   campaign_reservation: 'Campaign reserved',
   refund: 'Refund',

@@ -27,6 +27,7 @@ const BILLING_CYCLES = [
 ];
 const WALLET_TYPE_LABEL = {
   recharge: 'Recharge',
+  subscription_debit: 'Plan purchase',
   message_debit: 'Message debit',
   campaign_reservation: 'Campaign reservation',
   refund: 'Refund',

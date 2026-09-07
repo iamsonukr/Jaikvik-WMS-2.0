@@ -471,20 +471,7 @@ export class PaymentsService {
       this.throwRazorpayNotConfigured();
     }
 
-    const plan = await this.planModel.findOne({ _id: toObjectId(planId, 'planId'), status: PlanStatus.ACTIVE });
-    if (!plan) throw new BadRequestException('Plan is not available for purchase');
-    const billingCycle = selectedBillingCycle || BillingCycle.QUARTERLY;
-    if (![BillingCycle.MONTHLY, BillingCycle.QUARTERLY, BillingCycle.YEARLY].includes(billingCycle as BillingCycle)) {
-      throw new BadRequestException('Choose a valid billing cycle for this plan');
-    }
-    if (plan.price === null || plan.price === undefined) {
-      throw new BadRequestException('This plan cannot be purchased online. Please contact sales.');
-    }
-
-    const baseAmount = this.priceForCycle(plan, billingCycle);
-    const taxAmount = Number(((baseAmount * Number(plan.taxPercent || 0)) / 100).toFixed(2));
-    const amount = Number((baseAmount + taxAmount).toFixed(2));
-    if (amount <= 0) throw new BadRequestException('Plan price must be greater than zero');
+    const { plan, billingCycle, baseAmount, taxAmount, amount } = await this.getSubscriptionPurchaseQuote(planId, selectedBillingCycle);
 
     const order = await this.createRazorpayOrder(amount, plan.currency || 'INR', {
       tenantId,
@@ -525,6 +512,78 @@ export class PaymentsService {
         totalAmount: amount,
       },
     };
+  }
+
+  async purchaseSubscriptionWithWallet(
+    tenantId: string,
+    planId: string,
+    selectedBillingCycle?: string,
+    actorUserId?: string,
+  ) {
+    const { plan, billingCycle, baseAmount, taxAmount, amount } = await this.getSubscriptionPurchaseQuote(planId, selectedBillingCycle);
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
+    const referenceId = this.createWalletSubscriptionReference();
+
+    const record = await this.model.create({
+      tenantId: tenantObjectId,
+      purpose: PaymentPurpose.SUBSCRIPTION,
+      razorpayOrderId: referenceId,
+      amount,
+      currency: plan.currency || 'INR',
+      status: PaymentStatus.CREATED,
+      notes: {
+        planId,
+        planName: plan.name,
+        billingCycle,
+        baseAmount,
+        taxPercent: plan.taxPercent || 0,
+        taxAmount,
+        paymentMethod: 'wallet',
+      },
+    });
+
+    let walletTxn: any = null;
+    try {
+      walletTxn = await this.wallet.debitForSubscription(tenantObjectId, amount, {
+        description: `Subscription purchase - ${plan.name} (${billingCycle})`,
+        referenceId: String(record._id),
+        actorUserId,
+      });
+
+      const subscription = await this.subscriptions.assign({
+        tenantId,
+        planId,
+        billingCycle,
+      });
+
+      record.status = PaymentStatus.PAID;
+      record.walletTransactionId = walletTxn._id as any;
+      record.subscriptionId = subscription._id as any;
+      record.notes = {
+        ...(record.notes || {}),
+        walletTransactionId: String(walletTxn._id),
+        subscriptionId: String(subscription._id),
+      };
+      await record.save();
+
+      return { payment: record, transaction: walletTxn, subscription };
+    } catch (err) {
+      record.status = PaymentStatus.FAILED;
+      record.notes = {
+        ...(record.notes || {}),
+        failureReason: err instanceof Error ? err.message : 'Wallet subscription purchase failed',
+        walletTransactionId: walletTxn?._id ? String(walletTxn._id) : undefined,
+      };
+      await record.save().catch(() => undefined);
+      if (walletTxn?._id) {
+        await this.wallet.refund(tenantObjectId, amount, {
+          description: `Refund for failed subscription purchase - ${plan.name}`,
+          referenceId: String(walletTxn._id),
+          actorUserId,
+        }).catch(() => undefined);
+      }
+      throw err;
+    }
   }
 
   /**
@@ -709,12 +768,35 @@ export class PaymentsService {
     return amount;
   }
 
+  private async getSubscriptionPurchaseQuote(planId: string, selectedBillingCycle?: string) {
+    const plan = await this.planModel.findOne({ _id: toObjectId(planId, 'planId'), status: PlanStatus.ACTIVE });
+    if (!plan) throw new BadRequestException('Plan is not available for purchase');
+    const billingCycle = (selectedBillingCycle || BillingCycle.QUARTERLY) as BillingCycle;
+    if (![BillingCycle.MONTHLY, BillingCycle.QUARTERLY, BillingCycle.YEARLY].includes(billingCycle as BillingCycle)) {
+      throw new BadRequestException('Choose a valid billing cycle for this plan');
+    }
+    if (plan.price === null || plan.price === undefined) {
+      throw new BadRequestException('This plan cannot be purchased online. Please contact sales.');
+    }
+
+    const baseAmount = this.priceForCycle(plan, billingCycle);
+    const taxAmount = Number(((baseAmount * Number(plan.taxPercent || 0)) / 100).toFixed(2));
+    const amount = Number((baseAmount + taxAmount).toFixed(2));
+    if (amount <= 0) throw new BadRequestException('Plan price must be greater than zero');
+
+    return { plan, billingCycle, baseAmount, taxAmount, amount };
+  }
+
   private sign(payload: string, secret: string): string {
     return crypto.createHmac('sha256', secret).update(payload).digest('hex');
   }
 
   private createReceipt(prefix: string): string {
     return `${prefix}_${crypto.randomBytes(12).toString('hex')}`;
+  }
+
+  private createWalletSubscriptionReference(): string {
+    return `wallet_sub_${crypto.randomBytes(12).toString('hex')}`;
   }
 
   private safeCompare(a: string, b: string): boolean {

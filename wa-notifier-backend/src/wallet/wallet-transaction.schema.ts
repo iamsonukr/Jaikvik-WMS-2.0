@@ -5,6 +5,7 @@ export type WalletTransactionDocument = WalletTransaction & Document;
 
 export enum WalletTransactionType {
   RECHARGE = 'recharge',
+  SUBSCRIPTION_DEBIT = 'subscription_debit',
   MESSAGE_DEBIT = 'message_debit',
   CAMPAIGN_RESERVATION = 'campaign_reservation',
   REFUND = 'refund',
