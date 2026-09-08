@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { InboxService } from './inbox.service';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -19,6 +20,22 @@ export class InboxController {
   @Get('messages')
   messages(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string, @Query('phone') phone: string) {
     return this.svc.messages(aid || cid, phone);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Get('messages/:id/media')
+  async media(
+    @Param('id') id: string,
+    @Query('whatsappAccountId') aid: string,
+    @Query('clientId') cid: string,
+    @Res() res: Response,
+  ) {
+    const media = await this.svc.mediaAttachment(aid || cid, id);
+    res.setHeader('Content-Type', media.contentType);
+    res.setHeader('Content-Length', media.buffer.length);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Content-Disposition', `inline; filename="${media.filename.replace(/"/g, '')}"`);
+    return res.send(media.buffer);
   }
 
   @UseGuards(TenantOwnershipGuard)

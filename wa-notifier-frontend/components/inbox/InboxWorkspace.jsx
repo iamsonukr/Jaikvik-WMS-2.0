@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { AlertTriangle, ArrowLeft, CheckCheck, Clock, FileText, Image as ImageIcon, Paperclip, RefreshCw, Send, SlidersHorizontal, StickyNote, Tag, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCheck, Clock, Download, FileAudio, FileText, FileVideo, Image as ImageIcon, Paperclip, RefreshCw, Send, SlidersHorizontal, StickyNote, Tag, UserRound } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import { Badge, Button, Input, Select, Spinner, StatusBadge, PaginationControls, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
@@ -25,20 +25,102 @@ function mediaLabel(media) {
   return media.filename || media.caption || media.mime_type || media.id || media.url || media.link || '';
 }
 
-function MediaPreview({ message }) {
-  const media = message.media || {};
-  const url = media.url || media.link || media.previewUrl;
-  const type = String(message.type || media.type || '').toLowerCase();
-  if (!message.media && !['image', 'audio', 'video', 'document'].includes(type)) return null;
+function messageSnippet(message) {
+  if (message.text) return message.text;
+  const type = String(message.type || '').toLowerCase();
+  if (type === 'image') return message.media?.caption || 'Photo';
+  if (type === 'sticker') return 'Sticker';
+  if (type === 'video') return message.media?.caption || 'Video';
+  if (type === 'audio') return 'Voice/audio message';
+  if (type === 'document') return message.media?.filename || 'Document';
+  if (type === 'template') return message.media?.templateName ? `Template: ${message.media.templateName}` : 'Template message';
+  return type ? `${type} message` : 'Message';
+}
 
-  if (url && type === 'image') {
-    return <img src={url} alt={media.caption || 'Attachment'} className="mt-2 max-h-56 rounded-lg border border-border object-contain" />;
+function mediaIcon(type, size = 14) {
+  if (type === 'image') return <ImageIcon size={size} />;
+  if (type === 'video') return <FileVideo size={size} />;
+  if (type === 'audio') return <FileAudio size={size} />;
+  if (type === 'document') return <FileText size={size} />;
+  return <Paperclip size={size} />;
+}
+
+function MediaPreview({ message, whatsappAccountId }) {
+  const media = message.media || {};
+  const type = String(message.type || media.type || '').toLowerCase();
+  const [objectUrl, setObjectUrl] = useState(media.url || media.link || media.previewUrl || '');
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let localUrl = '';
+
+    if (!media.id || !message._id || !whatsappAccountId || media.url || media.link || media.previewUrl) {
+      setObjectUrl(media.url || media.link || media.previewUrl || '');
+      setFailed(false);
+      return undefined;
+    }
+
+    setLoading(true);
+    setFailed(false);
+    api.get(`/inbox/messages/${message._id}/media?whatsappAccountId=${whatsappAccountId}`, { responseType: 'blob' })
+      .then((response) => {
+        if (cancelled) return;
+        localUrl = URL.createObjectURL(response.data);
+        setObjectUrl(localUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (localUrl) URL.revokeObjectURL(localUrl);
+    };
+  }, [message._id, media.id, media.url, media.link, media.previewUrl, whatsappAccountId]);
+
+  if (!message.media && !['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;
+
+  const url = objectUrl;
+  const label = mediaLabel(media) || `${type || 'media'} attachment`;
+  const caption = media.caption && media.caption !== label ? media.caption : '';
+
+  if (loading) {
+    return (
+      <div className="mt-2 flex items-center gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+        <Spinner />
+        <span>Loading attachment...</span>
+      </div>
+    );
+  }
+
+  if (url && ['image', 'sticker'].includes(type)) {
+    return (
+      <div className="mt-2 overflow-hidden rounded-lg border border-border bg-background">
+        <img src={url} alt={media.caption || 'Attachment'} className="max-h-72 w-full object-contain" />
+        {caption && <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{caption}</p>}
+      </div>
+    );
   }
   if (url && type === 'video') {
-    return <video src={url} controls className="mt-2 max-h-56 rounded-lg border border-border" />;
+    return (
+      <div className="mt-2 overflow-hidden rounded-lg border border-border bg-background">
+        <video src={url} controls className="max-h-72 w-full" />
+        {caption && <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{caption}</p>}
+      </div>
+    );
   }
   if (url && type === 'audio') {
-    return <audio src={url} controls className="mt-2 w-full" />;
+    return (
+      <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2">
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">{mediaIcon(type)} <span>{label}</span></div>
+        <audio src={url} controls className="w-full" />
+      </div>
+    );
   }
 
   return (
@@ -46,10 +128,12 @@ function MediaPreview({ message }) {
       href={url || undefined}
       target="_blank"
       rel="noreferrer"
-      className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs"
+      download={url ? label : undefined}
+      className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-background/70 px-3 py-2 text-xs transition-colors hover:bg-background"
     >
-      {type === 'document' ? <FileText size={14} /> : type === 'image' ? <ImageIcon size={14} /> : <Paperclip size={14} />}
-      <span className="min-w-0 truncate">{mediaLabel(media) || `${type || 'media'} attachment`}</span>
+      {mediaIcon(type)}
+      <span className="min-w-0 flex-1 truncate">{failed ? 'Could not load attachment' : label}</span>
+      {url && <Download size={13} />}
     </a>
   );
 }
@@ -313,7 +397,7 @@ export default function InboxWorkspace({ allowedRoles }) {
                     <p className="truncate text-sm font-medium">{thread.contactName || thread.phone}</p>
                     <span className="text-xs text-muted-foreground">{thread.createdAt ? format(new Date(thread.createdAt), 'HH:mm') : '-'}</span>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{thread.text || '(media)'}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{messageSnippet(thread)}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     <StatusBadge status={thread.threadStatus} />
                     <Badge label={thread.priority || 'normal'} color={PRIORITY_COLOR[thread.priority || 'normal'] || 'gray'} />
@@ -479,9 +563,9 @@ export default function InboxWorkspace({ allowedRoles }) {
                     <div className={`max-w-[86%] rounded-2xl px-4 py-2.5 text-sm shadow-sm sm:max-w-[70%] ${message.direction === 'outbound'
                       ? 'rounded-br-sm bg-brand text-white'
                       : 'rounded-bl-sm border border-border bg-card text-card-foreground'}`}>
-                      {message.text && <p className="leading-relaxed">{message.text}</p>}
-                      <MediaPreview message={message} />
-                      {!message.text && !message.media && <p className="leading-relaxed">(media message)</p>}
+                      {message.text && <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>}
+                      <MediaPreview message={message} whatsappAccountId={activeClient._id} />
+                      {!message.text && !message.media && <p className="leading-relaxed">{messageSnippet(message)}</p>}
                       <p className={`mt-1 text-xs ${message.direction === 'outbound' ? 'text-white/70' : 'text-muted-foreground'}`}>
                         {message.createdAt ? format(new Date(message.createdAt), 'HH:mm') : '-'}
                       </p>

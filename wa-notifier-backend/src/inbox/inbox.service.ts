@@ -41,6 +41,29 @@ export class InboxService {
       .limit(200);
   }
 
+  async mediaAttachment(whatsappAccountId: string, messageId: string) {
+    const message = await this.model.findOne({
+      _id: toObjectId(messageId, 'messageId'),
+      ...this.whatsappAccountIdQuery(whatsappAccountId),
+    });
+    if (!message) throw new NotFoundException('Message not found.');
+
+    const mediaId = message.media?.id;
+    if (!mediaId) throw new BadRequestException('This message does not contain downloadable media.');
+
+    const account = await this.clients.findOne(whatsappAccountId);
+    if (!account) throw new NotFoundException('WhatsApp account not found.');
+
+    const accessToken = this.clients.getOperationalAccessToken(account, 'media');
+    const downloaded = await this.meta.downloadMedia(mediaId, accessToken);
+    const filename = this.mediaFilename(message);
+
+    return {
+      ...downloaded,
+      filename,
+    };
+  }
+
   async save(dto: Partial<Message>) {
     const whatsappAccountId = dto.whatsappAccountId ? String(dto.whatsappAccountId) : '';
     const phone = String(dto.phone || '');
@@ -313,6 +336,12 @@ export class InboxService {
 
   private totalForOneMessage(price: { sellingPrice: number; taxPercent: number }) {
     return Number((price.sellingPrice * (1 + price.taxPercent / 100)).toFixed(4));
+  }
+
+  private mediaFilename(message: MessageDocument) {
+    const media: any = message.media || {};
+    const rawName = String(media.filename || `${message.type || 'whatsapp-media'}-${message._id}`).trim();
+    return rawName.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || `whatsapp-media-${message._id}`;
   }
 
   private async refundFailedSend(tenantId: Types.ObjectId, charge: number, phone: string, category: MessageCategory, label: string) {

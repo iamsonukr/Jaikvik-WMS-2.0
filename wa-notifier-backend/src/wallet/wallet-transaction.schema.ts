@@ -56,3 +56,4 @@ export class WalletTransaction {
 export const WalletTransactionSchema = SchemaFactory.createForClass(WalletTransaction);
 WalletTransactionSchema.index({ tenantId: 1, createdAt: -1 });
 WalletTransactionSchema.index({ razorpayPaymentId: 1 }, { unique: true, sparse: true });
+WalletTransactionSchema.index({ razorpayOrderId: 1 }, { unique: true, sparse: true });

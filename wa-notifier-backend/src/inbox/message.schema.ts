@@ -10,7 +10,7 @@ export class Message {
   @Prop({ required: true }) phone: string;
   @Prop() contactName: string;
   @Prop({ required: true }) direction: string; // inbound | outbound
-  @Prop({ required: true }) type: string;      // text | image | audio | video | document | template
+  @Prop({ required: true }) type: string;      // text | image | audio | video | document | sticker | template
   @Prop() text: string;
   @Prop({ type: Object }) media: Record<string, any>;
   @Prop() waMessageId: string;

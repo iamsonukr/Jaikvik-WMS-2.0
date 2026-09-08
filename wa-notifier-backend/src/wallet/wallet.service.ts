@@ -95,11 +95,16 @@ export class WalletService {
     if (amount <= 0) throw new BadRequestException('Amount must be greater than zero');
     const tenantObjectId = toObjectId(input.tenantId, 'tenantId');
 
-    // Idempotency guard for Razorpay: if this payment ID was already
-    // credited, the unique sparse index on razorpayPaymentId will reject a
+    // Idempotency guard for Razorpay: if this payment/order was already
+    // credited, the unique sparse indexes reject a
     // second insert — callers should catch and treat as already-processed.
-    if (input.razorpayPaymentId) {
-      const existing = await this.txnModel.findOne({ razorpayPaymentId: input.razorpayPaymentId });
+    if (input.razorpayPaymentId || input.razorpayOrderId) {
+      const existing = await this.txnModel.findOne({
+        $or: [
+          ...(input.razorpayPaymentId ? [{ razorpayPaymentId: input.razorpayPaymentId }] : []),
+          ...(input.razorpayOrderId ? [{ razorpayOrderId: input.razorpayOrderId }] : []),
+        ],
+      });
       if (existing) return existing;
     }
 
@@ -156,8 +161,13 @@ export class WalletService {
         : { balance: amount, totalSpent: -amount };
       await this.walletModel.updateOne({ tenantId: tenantObjectId }, { $inc: compensating });
 
-      if (err?.code === 11000 && input.razorpayPaymentId) {
-        const existing = await this.txnModel.findOne({ razorpayPaymentId: input.razorpayPaymentId });
+      if (err?.code === 11000 && (input.razorpayPaymentId || input.razorpayOrderId)) {
+        const existing = await this.txnModel.findOne({
+          $or: [
+            ...(input.razorpayPaymentId ? [{ razorpayPaymentId: input.razorpayPaymentId }] : []),
+            ...(input.razorpayOrderId ? [{ razorpayOrderId: input.razorpayOrderId }] : []),
+          ],
+        });
         if (existing) return existing;
       }
       throw err;

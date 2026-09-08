@@ -109,7 +109,7 @@ export class WebhooksController {
               direction: 'inbound',
               type: msg.type,
               text: msg.text?.body,
-              media: msg.image || msg.audio || msg.video || msg.document,
+              media: msg.image || msg.audio || msg.video || msg.document || msg.sticker,
               waMessageId: msg.id,
               timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
               threadStatus: 'open',

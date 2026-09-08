@@ -155,6 +155,42 @@ export class MetaService {
     return data;
   }
 
+  async downloadMedia(mediaId: string, accessToken: string) {
+    try {
+      const { data: info } = await axios.get(`https://graph.facebook.com/${this.version}/${mediaId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!info?.url) {
+        throw new BadRequestException('Meta did not return a downloadable media URL.');
+      }
+
+      const response = await axios.get(info.url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        responseType: 'arraybuffer',
+      });
+
+      return {
+        buffer: Buffer.from(response.data),
+        contentType: response.headers['content-type'] || info.mime_type || 'application/octet-stream',
+        fileSize: info.file_size,
+        sha256: info.sha256,
+      };
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const metaError = err?.response?.data?.error;
+      const message = metaError?.error_data?.details || metaError?.message || err?.message || 'Unknown Meta error';
+      this.logger.error('Meta downloadMedia failed', {
+        message,
+        type: metaError?.type,
+        code: metaError?.code,
+        subcode: metaError?.error_subcode,
+        mediaId,
+      });
+      throw new BadRequestException(`Could not download WhatsApp media: ${message}`);
+    }
+  }
+
   async getWabaPhoneNumbers(wabaId: string, accessToken: string) {
     const { data } = await axios.get(`https://graph.facebook.com/${this.version}/${wabaId}/phone_numbers`, {
       params: {
