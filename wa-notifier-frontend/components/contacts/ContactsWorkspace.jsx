@@ -6,10 +6,11 @@ import { usePathname } from 'next/navigation';
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
-import { CheckCircle2, Clock, Download, Pencil, Plus, Search, Send, Tag, Trash2, Upload, Users, X } from 'lucide-react';
+import { CheckCircle2, Clock, Download, Pencil, Plus, Search, Send, Settings2, Tag, Trash2, Upload, Users, X } from 'lucide-react';
 
-const blank = { name: '', phone: '', tags: [] };
+const blank = { name: '', phone: '', tags: [], customFields: {} };
 const blankTag = { name: '', color: '#3b82f6', description: '' };
+const blankCustomField = { label: '', type: 'text', description: '' };
 const blankGroup = { name: '', description: '' };
 
 function parseCSVLine(line) {
@@ -70,6 +71,7 @@ function normalizeContact(contact) {
     name: contact?.name || '',
     phone: String(contact?.phone || ''),
     tags: Array.isArray(contact?.tags) ? contact.tags : [],
+    customFields: contact?.customFields && typeof contact.customFields === 'object' ? contact.customFields : {},
   };
 }
 
@@ -81,6 +83,17 @@ function normalizeTag(tag) {
     name: String(tag?.name || '').trim(),
     color: tag?.color || '#3b82f6',
     description: tag?.description || '',
+  };
+}
+
+function normalizeCustomField(field) {
+  return {
+    ...field,
+    _id: field?._id || field?.id,
+    label: String(field?.label || '').trim(),
+    key: String(field?.key || '').trim(),
+    type: ['text', 'number', 'date', 'boolean'].includes(field?.type) ? field.type : 'text',
+    description: field?.description || '',
   };
 }
 
@@ -100,14 +113,15 @@ function csvCell(value) {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function exportContactsCsv(items, filename = 'contacts-export.csv') {
-  const headers = ['phone', 'name', 'tags', 'status'];
+function exportContactsCsv(items, customFields = [], filename = 'contacts-export.csv') {
+  const headers = ['phone', 'name', 'tags', ...customFields.map((field) => field.label), 'status'];
   const lines = [
     headers.join(','),
     ...items.map((contact) => [
       contact.phone,
       contact.name,
       (contact.tags || []).join(';'),
+      ...customFields.map((field) => contact.customFields?.[field.key] ?? ''),
       contact.isOptedOut ? 'opted_out' : 'active',
     ].map(csvCell).join(',')),
   ];
@@ -138,6 +152,7 @@ export default function ContactsWorkspace() {
   const [contacts, setContacts] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tags, setTags] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
   const [segments, setSegments] = useState([]);
   const [tag, setTag] = useState('');
   const [segmentTags, setSegmentTags] = useState([]);
@@ -153,6 +168,10 @@ export default function ContactsWorkspace() {
   const [form, setForm] = useState(blank);
   const [tagModal, setTagModal] = useState(false);
   const [tagForm, setTagForm] = useState(blankTag);
+  const [fieldModal, setFieldModal] = useState(false);
+  const [fieldForm, setFieldForm] = useState(blankCustomField);
+  const [fieldSaving, setFieldSaving] = useState(false);
+  const [fieldError, setFieldError] = useState('');
   const [tagSearch, setTagSearch] = useState('');
   const [tagColorFilter, setTagColorFilter] = useState('all');
   const [tagSort, setTagSort] = useState({ key: 'tag', direction: 'asc' });
@@ -168,7 +187,7 @@ export default function ContactsWorkspace() {
   const [importFileName, setImportFileName] = useState('');
   const [importHeaders, setImportHeaders] = useState([]);
   const [importRows, setImportRows] = useState([]);
-  const [importMapping, setImportMapping] = useState({ phone: '', name: '', tags: '' });
+  const [importMapping, setImportMapping] = useState({ phone: '', name: '', tags: '', customFields: {} });
   const [importPreview, setImportPreview] = useState(null);
   const [importPreviewSearch, setImportPreviewSearch] = useState('');
   const [importPreviewStatusFilter, setImportPreviewStatusFilter] = useState('all');
@@ -205,11 +224,13 @@ export default function ContactsWorkspace() {
     return Promise.all([
       api.get(`/contacts?whatsappAccountId=${activeClient._id}`),
       api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`),
+      api.get(`/contacts/custom-fields?whatsappAccountId=${activeClient._id}`).catch(() => ({ data: [] })),
       api.get(`/contacts/segments?whatsappAccountId=${activeClient._id}`).catch(() => ({ data: [] })),
       api.get(`/templates?whatsappAccountId=${activeClient._id}`),
-    ]).then(([contactsRes, tagsRes, segmentsRes, templatesRes]) => {
+    ]).then(([contactsRes, tagsRes, customFieldsRes, segmentsRes, templatesRes]) => {
       setContacts(asArray(contactsRes.data).map(normalizeContact));
       setTags(asArray(tagsRes.data).map(normalizeTag).filter((tagItem) => tagItem.name));
+      setCustomFields(asArray(customFieldsRes.data).map(normalizeCustomField).filter((field) => field.label && field.key));
       setSegments(asArray(segmentsRes.data).map(normalizeSegment).filter((segment) => segment.name));
       setTemplates(asArray(templatesRes.data));
     })
@@ -243,7 +264,7 @@ export default function ContactsWorkspace() {
     }
     setSaving(true);
     try {
-      const dto = { ...form, phone, whatsappAccountId: activeClient._id, tags: form.tags };
+      const dto = { ...form, phone, whatsappAccountId: activeClient._id, tags: form.tags, customFields: form.customFields || {} };
       const { data } = await api.post('/contacts', dto);
       const saved = normalizeContact(data);
       setContacts((prev) => [saved, ...prev.filter((contact) => contact._id !== saved._id)]);
@@ -367,7 +388,7 @@ export default function ContactsWorkspace() {
         ? segmentTags.join('-')
         : tag || 'all-contacts';
     const safeName = String(segmentName || 'contacts').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    exportContactsCsv(sortedContacts, `${safeName || 'contacts'}-${stamp}.csv`);
+    exportContactsCsv(sortedContacts, customFields, `${safeName || 'contacts'}-${stamp}.csv`);
   };
 
   const openTags = () => {
@@ -375,6 +396,43 @@ export default function ContactsWorkspace() {
     setEditingTagId(null);
     setTagError('');
     setTagModal(true);
+  };
+
+  const openFields = () => {
+    setFieldForm(blankCustomField);
+    setFieldError('');
+    setFieldModal(true);
+  };
+
+  const saveCustomField = async () => {
+    if (!activeClient) return;
+    setFieldError('');
+    if (!fieldForm.label.trim()) { setFieldError('Field label is required'); return; }
+    setFieldSaving(true);
+    try {
+      await api.post('/contacts/custom-fields', { ...fieldForm, whatsappAccountId: activeClient._id });
+      setFieldForm(blankCustomField);
+      await load();
+    } catch (err) {
+      setFieldError(err?.response?.data?.message || 'Could not save custom field.');
+    } finally {
+      setFieldSaving(false);
+    }
+  };
+
+  const deleteCustomField = async (field) => {
+    if (!confirm(`Delete custom field "${field.label}"? It will be removed from matching contacts.`)) return;
+    try {
+      await api.delete(`/contacts/custom-fields/${field._id}`);
+      setForm((prev) => {
+        const nextFields = { ...(prev.customFields || {}) };
+        delete nextFields[field.key];
+        return { ...prev, customFields: nextFields };
+      });
+      await load();
+    } catch (err) {
+      setFieldError(err?.response?.data?.message || 'Could not delete custom field.');
+    }
   };
 
   const editTag = (tagItem) => {
@@ -495,6 +553,10 @@ export default function ContactsWorkspace() {
         phone: guessColumn(parsed.headers, ['phone', 'phonenumber', 'mobile', 'mobilenumber', 'whatsapp', 'whatsappnumber']),
         name: guessColumn(parsed.headers, ['name', 'fullname', 'customername', 'contactname']),
         tags: guessColumn(parsed.headers, ['tags', 'tag', 'segment', 'segments', 'labels']),
+        customFields: Object.fromEntries(customFields.map((field) => [
+          field.key,
+          guessColumn(parsed.headers, [field.key.replace(/[^a-z0-9]/g, ''), field.label.toLowerCase().replace(/[^a-z0-9]/g, '')]),
+        ])),
       });
       setImportOpen(true);
     } catch (err) {
@@ -509,7 +571,8 @@ export default function ContactsWorkspace() {
     phone: importMapping.phone ? row[importMapping.phone] : '',
     name: importMapping.name ? row[importMapping.name] : '',
     tags: importMapping.tags ? splitTags(row[importMapping.tags]) : [],
-  })), [importRows, importMapping]);
+    customFields: Object.fromEntries(customFields.map((field) => [field.key, importMapping.customFields?.[field.key] ? row[importMapping.customFields[field.key]] : ''])),
+  })), [importRows, importMapping, customFields]);
 
   const previewImport = async () => {
     if (!activeClient) return;
@@ -574,7 +637,7 @@ export default function ContactsWorkspace() {
     setImportFileName('');
     setImportHeaders([]);
     setImportRows([]);
-    setImportMapping({ phone: '', name: '', tags: '' });
+    setImportMapping({ phone: '', name: '', tags: '', customFields: {} });
     setImportPreview(null);
     setImportResult(null);
   };
@@ -586,7 +649,8 @@ export default function ContactsWorkspace() {
     const matchesSearch = !query
       || contact.name.toLowerCase().includes(query)
       || contact.phone.includes(query)
-      || contact.tags?.some((tagItem) => tagItem.toLowerCase().includes(query));
+      || contact.tags?.some((tagItem) => tagItem.toLowerCase().includes(query))
+      || customFields.some((field) => String(contact.customFields?.[field.key] ?? '').toLowerCase().includes(query));
     const matchesStatus = statusFilter === 'all'
       || (statusFilter === 'active' && !contact.isOptedOut)
       || (statusFilter === 'opted_out' && contact.isOptedOut);
@@ -700,6 +764,9 @@ export default function ContactsWorkspace() {
             <Button variant="outline" onClick={openTags} disabled={!activeClient}>
               <Tag size={15} />Manage Tags
             </Button>
+            <Button variant="outline" onClick={openFields} disabled={!activeClient}>
+              <Settings2 size={15} />Manage Fields
+            </Button>
             <Button variant="outline" onClick={() => setGroupPanelOpen((open) => !open)} disabled={!activeClient}>
               <Users size={15} />Create Group
             </Button>
@@ -809,7 +876,7 @@ export default function ContactsWorkspace() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, phone, tag..."
+            placeholder="Search name, phone, tag, custom field..."
             className="pl-8"
           />
         </div>
@@ -859,13 +926,16 @@ export default function ContactsWorkspace() {
                   <SortableTh label="Name" sortKey="name" sort={contactSort} onSort={setContactSort} />
                   <SortableTh label="Phone" sortKey="phone" sort={contactSort} onSort={setContactSort} />
                   <SortableTh label="Tags" sortKey="tags" sort={contactSort} onSort={setContactSort} />
+                  {customFields.map((field) => (
+                    <th key={field.key} className="px-4 py-3 font-semibold">{field.label}</th>
+                  ))}
                   <SortableTh label="Status" sortKey="status" sort={contactSort} onSort={setContactSort} />
                   <th className="px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-12 text-[var(--muted-text)]">No contacts found</td></tr>
+                  <tr><td colSpan={6 + customFields.length} className="text-center py-12 text-[var(--muted-text)]">No contacts found</td></tr>
                 )}
                 {contactsPage.pageItems.map((contact) => (
                   <tr key={contact._id} className="table-row-hover">
@@ -885,6 +955,11 @@ export default function ContactsWorkspace() {
                         {contact.tags?.map((tagItem) => <Badge key={tagItem} label={tagItem} color="blue" />)}
                       </div>
                     </td>
+                    {customFields.map((field) => (
+                      <td key={field.key} className="px-4 py-3 text-muted-foreground">
+                        {String(contact.customFields?.[field.key] ?? '') || '-'}
+                      </td>
+                    ))}
                     <td className="px-4 py-3">{contact.isOptedOut ? <Badge label="Opted out" color="red" /> : <Badge label="Active" color="green" />}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -959,6 +1034,27 @@ export default function ContactsWorkspace() {
                 {importHeaders.map((header) => <option key={header} value={header}>{header}</option>)}
               </Select>
             </div>
+            {customFields.length > 0 && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {customFields.map((field) => (
+                  <Select
+                    key={field.key}
+                    label={`${field.label} column`}
+                    value={importMapping.customFields?.[field.key] || ''}
+                    onChange={(e) => {
+                      setImportMapping((prev) => ({
+                        ...prev,
+                        customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
+                      }));
+                      setImportPreview(null);
+                    }}
+                  >
+                    <option value="">Do not import</option>
+                    {importHeaders.map((header) => <option key={header} value={header}>{header}</option>)}
+                  </Select>
+                ))}
+              </div>
+            )}
             <p className="mt-2 text-xs text-muted-foreground">Tags can be separated with comma, semicolon, or pipe. Missing tags are created automatically during import.</p>
           </div>
 
@@ -1093,6 +1189,39 @@ export default function ContactsWorkspace() {
           {formError && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{formError}</div>}
           <Input label="Phone (E.164) *" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="+919876543210" />
           <Input label="Name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="John Doe" />
+          {customFields.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {customFields.map((field) => (
+                field.type === 'boolean' ? (
+                  <Select
+                    key={field.key}
+                    label={field.label}
+                    value={String(form.customFields?.[field.key] ?? '')}
+                    onChange={(e) => setForm((prev) => ({
+                      ...prev,
+                      customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
+                    }))}
+                  >
+                    <option value="">Not set</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </Select>
+                ) : (
+                  <Input
+                    key={field.key}
+                    label={field.label}
+                    type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                    value={String(form.customFields?.[field.key] ?? '')}
+                    onChange={(e) => setForm((prev) => ({
+                      ...prev,
+                      customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
+                    }))}
+                    placeholder={field.description || field.label}
+                  />
+                )
+              ))}
+            </div>
+          )}
           <div className="space-y-2">
             <Select label="Tags" value="" onChange={(e) => {
               const selected = e.target.value;
@@ -1116,6 +1245,67 @@ export default function ContactsWorkspace() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">Create or edit tag options from Manage Tags.</p>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={fieldModal}
+        onClose={() => setFieldModal(false)}
+        title="Manage Custom Fields"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setFieldModal(false)}>Close</Button>
+            <Button onClick={saveCustomField} disabled={fieldSaving}>{fieldSaving ? 'Saving...' : 'Create field'}</Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          {fieldError && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{fieldError}</div>}
+          <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
+            <Input label="Field label" value={fieldForm.label} onChange={(e) => setFieldForm((prev) => ({ ...prev, label: e.target.value }))} placeholder="Birthday" />
+            <Select label="Type" value={fieldForm.type} onChange={(e) => setFieldForm((prev) => ({ ...prev, type: e.target.value }))}>
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="boolean">Yes / No</option>
+            </Select>
+          </div>
+          <Input label="Description" value={fieldForm.description} onChange={(e) => setFieldForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Optional internal note" />
+
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Field</th>
+                  <th className="px-3 py-2 font-semibold">Key</th>
+                  <th className="px-3 py-2 font-semibold">Type</th>
+                  <th className="px-3 py-2 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {customFields.length === 0 && (
+                  <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">No custom fields created yet.</td></tr>
+                )}
+                {customFields.map((field) => (
+                  <tr key={field._id}>
+                    <td className="px-3 py-2">
+                      <p className="font-medium">{field.label}</p>
+                      {field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{field.key}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{field.type}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end">
+                        <button onClick={() => deleteCustomField(field)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-500" aria-label={`Delete ${field.label}`}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </Modal>

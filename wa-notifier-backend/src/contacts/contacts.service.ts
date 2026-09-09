@@ -5,6 +5,7 @@ import { Contact, ContactDocument } from './contact.schema';
 import { ContactTag, ContactTagDocument } from './contact-tag.schema';
 import { ContactImport, ContactImportDocument } from './contact-import.schema';
 import { ContactSegment, ContactSegmentDocument } from './contact-segment.schema';
+import { ContactCustomField, ContactCustomFieldDocument, ContactCustomFieldType } from './contact-custom-field.schema';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { resolveWhatsAppAccountId, toObjectId, whatsappAccountIdFilter } from '../common/mongo-id';
@@ -16,6 +17,7 @@ export class ContactsService {
     @InjectModel(ContactTag.name) private tagModel: Model<ContactTagDocument>,
     @InjectModel(ContactImport.name) private importModel: Model<ContactImportDocument>,
     @InjectModel(ContactSegment.name) private segmentModel: Model<ContactSegmentDocument>,
+    @InjectModel(ContactCustomField.name) private customFieldModel: Model<ContactCustomFieldDocument>,
     private clients: WhatsAppAccountsService,
     private subscriptions: SubscriptionsService,
   ) {}
@@ -32,12 +34,14 @@ export class ContactsService {
     const whatsappAccountId = String(resolveWhatsAppAccountId(dto));
     const account = await this.clients.findOne(whatsappAccountId);
     const tags = await this.allowedTags(whatsappAccountId, dto.tags || []);
+    const customFields = await this.allowedCustomFieldValues(whatsappAccountId, dto.customFields || {});
     return this.model.create({
       ...dto,
       whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
       tenantId: account?.tenantId,
       phone: String(dto.phone || '').trim(),
       tags,
+      customFields,
     });
   }
 
@@ -49,13 +53,14 @@ export class ContactsService {
       .map(c => ({ ...c, phone: String(c.phone).trim() }));
     const tagResult = await this.ensureTags(whatsappAccountId, valid.flatMap((contact) => contact.tags || []));
     const allowed = tagResult.allowed;
+    const customFieldDefinitions = await this.customFieldDefinitionMap(whatsappAccountId);
 
     if (valid.length === 0) return { upsertedCount: 0, modifiedCount: 0, skipped: contacts.length };
 
     const ops = valid.map(c => ({
       updateOne: {
         filter: { whatsappAccountId: accountObjectId, phone: c.phone },
-        update: { $set: { ...c, tags: this.filterAllowedTags(c.tags || [], allowed), whatsappAccountId: accountObjectId, tenantId: account?.tenantId } },
+        update: { $set: { ...c, tags: this.filterAllowedTags(c.tags || [], allowed), customFields: this.filterCustomFieldValues(c.customFields || {}, customFieldDefinitions), whatsappAccountId: accountObjectId, tenantId: account?.tenantId } },
         upsert: true,
       },
     }));
@@ -96,6 +101,7 @@ export class ContactsService {
     const importable = analysis.rows.filter((row) => row.status === 'new' || (row.status === 'existing' && updateExisting));
     const tagResult = await this.ensureTags(whatsappAccountId, importable.flatMap((row) => row.tags || []));
     const allowed = tagResult.allowed;
+    const customFieldDefinitions = await this.customFieldDefinitionMap(whatsappAccountId);
 
     const ops = importable.map((row) => ({
       updateOne: {
@@ -106,6 +112,7 @@ export class ContactsService {
             name: row.name,
             tags: this.filterAllowedTags(row.tags || [], allowed),
             variables: row.variables || {},
+            customFields: this.filterCustomFieldValues(row.customFields || {}, customFieldDefinitions),
             whatsappAccountId: accountObjectId,
             tenantId: account?.tenantId,
             isActive: true,
@@ -167,6 +174,9 @@ export class ContactsService {
     if (!existing) throw new NotFoundException('Contact not found');
     const next: Partial<Contact> = { ...dto };
     if (dto.tags) next.tags = await this.allowedTags(String(existing.whatsappAccountId || (existing as any).clientId), dto.tags);
+    if (dto.customFields) {
+      next.customFields = await this.allowedCustomFieldValues(String(existing.whatsappAccountId || (existing as any).clientId), dto.customFields);
+    }
     return this.model.findByIdAndUpdate(id, next, { new: true });
   }
 
@@ -215,6 +225,89 @@ export class ContactsService {
       if (err?.code === 11000) throw new BadRequestException('A tag with this name already exists for this WhatsApp account');
       throw err;
     }
+  }
+
+  async getCustomFields(whatsappAccountId: string) {
+    return this.customFieldModel
+      .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), isActive: true })
+      .sort({ label: 1 });
+  }
+
+  async createCustomField(dto: { whatsappAccountId?: string; clientId?: string; label: string; key?: string; type?: ContactCustomFieldType; description?: string }) {
+    const whatsappAccountId = String(resolveWhatsAppAccountId(dto));
+    const account = await this.clients.findOne(whatsappAccountId);
+    const label = this.cleanCustomFieldLabel(dto.label);
+    if (!label) throw new BadRequestException('Field label is required');
+    const key = this.normalizeCustomFieldKey(dto.key || label);
+    if (!key) throw new BadRequestException('Field key is required');
+
+    const existing = await this.customFieldModel.findOne({ ...this.whatsappAccountIdQuery(whatsappAccountId), key });
+    if (existing?.isActive) {
+      throw new BadRequestException('A custom field with this name already exists for this WhatsApp account');
+    }
+    await this.assertCustomFieldCapacity(whatsappAccountId, account, 1);
+
+    if (existing) {
+      return this.customFieldModel.findByIdAndUpdate(
+        existing._id,
+        {
+          label,
+          type: this.normalizeCustomFieldType(dto.type),
+          description: dto.description || '',
+          tenantId: account?.tenantId,
+          isActive: true,
+        },
+        { new: true },
+      );
+    }
+
+    try {
+      return await this.customFieldModel.create({
+        whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
+        tenantId: account?.tenantId,
+        label,
+        key,
+        type: this.normalizeCustomFieldType(dto.type),
+        description: dto.description || '',
+      });
+    } catch (err) {
+      if (err?.code === 11000) throw new BadRequestException('A custom field with this name already exists for this WhatsApp account');
+      throw err;
+    }
+  }
+
+  async updateCustomField(id: string, dto: Partial<ContactCustomField>) {
+    const existing = await this.customFieldModel.findById(id);
+    if (!existing) throw new NotFoundException('Custom field not found');
+    const next: Partial<ContactCustomField> = { ...dto };
+    delete (next as any).key;
+    delete (next as any).whatsappAccountId;
+    delete (next as any).tenantId;
+
+    if (dto.label !== undefined) {
+      const label = this.cleanCustomFieldLabel(dto.label);
+      if (!label) throw new BadRequestException('Field label is required');
+      next.label = label;
+    }
+    if (dto.type !== undefined) next.type = this.normalizeCustomFieldType(dto.type);
+
+    if (dto.isActive === true && existing.isActive === false) {
+      const whatsappAccountId = String(existing.whatsappAccountId || (existing as any).clientId);
+      const account = await this.clients.findOne(whatsappAccountId);
+      await this.assertCustomFieldCapacity(whatsappAccountId, account, 1);
+    }
+
+    return this.customFieldModel.findByIdAndUpdate(id, next, { new: true });
+  }
+
+  async removeCustomField(id: string) {
+    const existing = await this.customFieldModel.findById(id);
+    if (!existing) throw new NotFoundException('Custom field not found');
+    await this.model.updateMany(
+      this.whatsappAccountIdQuery(String(existing.whatsappAccountId || (existing as any).clientId)),
+      { $unset: { [`customFields.${existing.key}`]: '' } },
+    );
+    return this.customFieldModel.findByIdAndDelete(id);
   }
 
   async updateTag(id: string, dto: Partial<ContactTag>) {
@@ -352,6 +445,7 @@ export class ContactsService {
       const phone = this.normalizePhone(contact.phone);
       const tags = Array.isArray(contact.tags) ? contact.tags.map((tag) => this.cleanTagName(tag)).filter(Boolean) : [];
       const variables = contact.variables && typeof contact.variables === 'object' ? contact.variables : {};
+      const customFields = contact.customFields && typeof contact.customFields === 'object' ? contact.customFields : {};
       return {
         rowNumber,
         phone,
@@ -359,6 +453,7 @@ export class ContactsService {
         name: String(contact.name || '').trim(),
         tags,
         variables,
+        customFields,
       };
     });
 
@@ -442,6 +537,57 @@ export class ContactsService {
 
   private normalizeTag(name?: string) {
     return this.cleanTagName(name).toLowerCase();
+  }
+
+  private cleanCustomFieldLabel(label?: string) {
+    return String(label || '').trim().replace(/\s+/g, ' ');
+  }
+
+  private normalizeCustomFieldKey(value?: string) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 50);
+  }
+
+  private normalizeCustomFieldType(type?: ContactCustomFieldType) {
+    return Object.values(ContactCustomFieldType).includes(type) ? type : ContactCustomFieldType.TEXT;
+  }
+
+  private async customFieldDefinitionMap(whatsappAccountId: string) {
+    const fields = await this.customFieldModel
+      .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), isActive: true })
+      .select('key type');
+    return new Map(fields.map((field) => [field.key, field.type]));
+  }
+
+  private filterCustomFieldValues(values: Record<string, any>, definitions: Map<string, ContactCustomFieldType>) {
+    return Object.fromEntries(
+      Object.entries(values || {})
+        .filter(([key]) => definitions.has(key))
+        .map(([key, value]) => [key, this.normalizeCustomFieldValue(value, definitions.get(key))]),
+    );
+  }
+
+  private async allowedCustomFieldValues(whatsappAccountId: string, values: Record<string, any>) {
+    return this.filterCustomFieldValues(values, await this.customFieldDefinitionMap(whatsappAccountId));
+  }
+
+  private normalizeCustomFieldValue(value: any, type?: ContactCustomFieldType) {
+    if (value === undefined || value === null) return '';
+    if (type === ContactCustomFieldType.NUMBER) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : '';
+    }
+    if (type === ContactCustomFieldType.BOOLEAN) {
+      if (typeof value === 'boolean') return value;
+      const text = String(value).trim().toLowerCase();
+      if (!text) return '';
+      return ['true', 'yes', '1', 'y'].includes(text);
+    }
+    return String(value).trim();
   }
 
   private async allowedTagSet(whatsappAccountId: string) {
@@ -534,6 +680,45 @@ export class ContactsService {
     if (raw === null || raw === undefined || raw === '') return null;
     const limit = Number(raw);
     return Number.isFinite(limit) && limit >= 0 ? limit : null;
+  }
+
+  private async assertCustomFieldCapacity(whatsappAccountId: string, account: any, addedActiveFields: number) {
+    if (addedActiveFields <= 0 || !account?.tenantId) return;
+
+    const subscription = await this.subscriptions.currentForTenant(String(account.tenantId));
+    const plan = subscription?.planId as any;
+    const limit = this.resolveCustomFieldLimit(plan);
+    if (limit === null) return;
+
+    const activeCount = await this.customFieldModel.countDocuments(this.activeCustomFieldCountFilter(whatsappAccountId, account));
+    if (activeCount + addedActiveFields <= limit) return;
+
+    throw new BadRequestException(
+      `Your current plan allows ${limit} custom contact field${limit === 1 ? '' : 's'}. Delete unused fields or upgrade the plan to add more.`,
+    );
+  }
+
+  private resolveCustomFieldLimit(plan: any): number | null {
+    const raw = plan?.customFields ?? plan?.limits?.customFields;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const limit = Number(raw);
+    return Number.isFinite(limit) && limit >= 0 ? limit : null;
+  }
+
+  private activeCustomFieldCountFilter(whatsappAccountId: string, account: any) {
+    if (account?.tenantId) {
+      return {
+        isActive: true,
+        $or: [
+          { tenantId: account.tenantId },
+          ...this.whatsappAccountIdQuery(whatsappAccountId).$or,
+        ],
+      };
+    }
+    return {
+      ...this.whatsappAccountIdQuery(whatsappAccountId),
+      isActive: true,
+    };
   }
 
   private activeTagCountFilter(whatsappAccountId: string, account: any) {

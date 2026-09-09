@@ -3,9 +3,11 @@ import { ContactsService } from './contacts.service';
 import {
   BulkContactsDto,
   CommitContactImportDto,
+  CreateContactCustomFieldDto,
   CreateContactSegmentDto,
   CreateContactDto,
   CreateContactTagDto,
+  UpdateContactCustomFieldDto,
   PreviewContactImportDto,
   UpdateContactSegmentDto,
   UpdateContactDto,
@@ -32,6 +34,28 @@ export class ContactsController {
   @UseGuards(TenantOwnershipGuard)
   @Get('tags') getTags(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
     return this.svc.getTags(aid || cid);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Get('custom-fields') getCustomFields(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
+    return this.svc.getCustomFields(aid || cid);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
+  @Post('custom-fields') createCustomField(@Body() dto: CreateContactCustomFieldDto) {
+    return this.svc.createCustomField(dto);
+  }
+
+  @ResourceOwnership('contactcustomfields')
+  @UseGuards(ResourceOwnershipGuard)
+  @Patch('custom-fields/:id') updateCustomField(@Param('id') id: string, @Body() dto: UpdateContactCustomFieldDto) {
+    return this.svc.updateCustomField(id, dto);
+  }
+
+  @ResourceOwnership('contactcustomfields')
+  @UseGuards(ResourceOwnershipGuard)
+  @Delete('custom-fields/:id') removeCustomField(@Param('id') id: string) {
+    return this.svc.removeCustomField(id);
   }
 
   @UseGuards(TenantOwnershipGuard)

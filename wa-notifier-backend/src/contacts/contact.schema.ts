@@ -11,6 +11,7 @@ export class Contact {
   @Prop() name: string;
   @Prop([String]) tags: string[];
   @Prop({ type: Object }) variables: Record<string, string>; // {{1}}, {{2}} personalisation
+  @Prop({ type: Object, default: {} }) customFields: Record<string, any>;
   @Prop({ default: true }) isActive: boolean;
   @Prop({ default: false }) isOptedOut: boolean;
 }

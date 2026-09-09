@@ -1,4 +1,5 @@
 import { IsArray, IsBoolean, IsIn, IsMongoId, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
+import { ContactCustomFieldType } from './contact-custom-field.schema';
 
 export class CreateContactDto {
   @IsOptional() @IsMongoId() whatsappAccountId?: string;
@@ -7,12 +8,14 @@ export class CreateContactDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsArray() tags?: string[];
   @IsOptional() @IsObject() variables?: Record<string, string>;
+  @IsOptional() @IsObject() customFields?: Record<string, any>;
 }
 
 export class UpdateContactDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsArray() tags?: string[];
   @IsOptional() @IsObject() variables?: Record<string, string>;
+  @IsOptional() @IsObject() customFields?: Record<string, any>;
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsBoolean() isOptedOut?: boolean;
 }
@@ -20,7 +23,7 @@ export class UpdateContactDto {
 export class BulkContactsDto {
   @IsOptional() @IsMongoId() whatsappAccountId?: string;
   @IsOptional() @IsMongoId() clientId?: string;
-  @IsArray() contacts: Array<{ phone: string; name?: string; tags?: string[]; variables?: Record<string, string>; rowNumber?: number }>;
+  @IsArray() contacts: Array<{ phone: string; name?: string; tags?: string[]; variables?: Record<string, string>; customFields?: Record<string, any>; rowNumber?: number }>;
   @IsOptional() @IsString() fileName?: string;
   @IsOptional() @IsObject() mapping?: Record<string, string>;
 }
@@ -42,6 +45,22 @@ export class CreateContactTagDto {
 export class UpdateContactTagDto {
   @IsOptional() @IsString() @MinLength(1) name?: string;
   @IsOptional() @IsString() color?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class CreateContactCustomFieldDto {
+  @IsOptional() @IsMongoId() whatsappAccountId?: string;
+  @IsOptional() @IsMongoId() clientId?: string;
+  @IsString() @MinLength(1) label: string;
+  @IsOptional() @IsString() key?: string;
+  @IsOptional() @IsIn(Object.values(ContactCustomFieldType)) type?: ContactCustomFieldType;
+  @IsOptional() @IsString() description?: string;
+}
+
+export class UpdateContactCustomFieldDto {
+  @IsOptional() @IsString() @MinLength(1) label?: string;
+  @IsOptional() @IsIn(Object.values(ContactCustomFieldType)) type?: ContactCustomFieldType;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
