@@ -347,16 +347,16 @@ export default function InboxWorkspace({ allowedRoles }) {
   return (
     <AppShell allowedRoles={allowedRoles}>
       <div className="app-panel -m-4 flex h-[calc(100vh-4rem)] flex-col overflow-hidden rounded-none sm:-m-5 lg:-m-6 lg:flex-row lg:rounded-lg">
-        <div className={`${active ? 'hidden lg:flex' : 'flex'} w-full flex-col border-b border-border lg:w-80 lg:flex-shrink-0 lg:border-b-0 lg:border-r`}>
+        <div className={`${active ? 'hidden lg:flex' : 'flex'} w-full flex-col border-b border-border bg-card lg:w-80 lg:flex-shrink-0 lg:border-b-0 lg:border-r`}>
           <div className="border-b border-border px-3 py-2">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-1.5 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Inbox</h2>
               <button onClick={loadThreads} className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Refresh threads">
                 <RefreshCw size={14} />
               </button>
             </div>
             <div className="grid gap-1.5">
-              <Input className="h-9" placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input className="h-8 text-xs" placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} />
               <div className="grid grid-cols-2 gap-2">
                 <Select className="h-8 text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="all">All statuses</option>
@@ -387,9 +387,9 @@ export default function InboxWorkspace({ allowedRoles }) {
               <button
                 key={thread._id}
                 onClick={() => loadMessages(thread)}
-                className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/70 ${active?.phone === thread.phone ? 'border-l-2 border-brand bg-brand/10' : ''}`}
+                className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/70 ${active?.phone === thread.phone ? 'border-l-2 border-brand bg-brand/10' : ''}`}
               >
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
                   {initials(thread.contactName)}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -433,7 +433,7 @@ export default function InboxWorkspace({ allowedRoles }) {
             <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Select a conversation</div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-4">
+              <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-3 py-2 sm:px-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <button type="button" onClick={() => setActive(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground lg:hidden" aria-label="Back to conversations">
                     <ArrowLeft size={16} />
@@ -556,17 +556,17 @@ export default function InboxWorkspace({ allowedRoles }) {
               </div>
               )}
 
-              <div className="flex-1 space-y-3 overflow-y-auto bg-muted/40 px-3 py-3 sm:px-4">
+              <div className="flex-1 space-y-1.5 overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(37,211,102,0.08),transparent_30%),linear-gradient(135deg,rgba(148,163,184,0.12),rgba(248,250,252,0.45))] px-3 py-2.5 dark:bg-[radial-gradient(circle_at_top_left,rgba(37,211,102,0.10),transparent_28%),linear-gradient(135deg,rgba(15,23,42,0.88),rgba(2,6,23,0.95))] sm:px-4">
                 {loading && <div className="flex justify-center py-10"><Spinner /></div>}
                 {messages.map((message) => (
                   <div key={message._id} className={`flex ${message.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[86%] rounded-2xl px-4 py-2.5 text-sm shadow-sm sm:max-w-[70%] ${message.direction === 'outbound'
-                      ? 'rounded-br-sm bg-brand text-white'
-                      : 'rounded-bl-sm border border-border bg-card text-card-foreground'}`}>
-                      {message.text && <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>}
+                    <div className={`max-w-[86%] rounded-xl px-3 py-1.5 text-[13px] shadow-sm ring-1 sm:max-w-[68%] ${message.direction === 'outbound'
+                      ? 'rounded-br-[3px] bg-[#dcf8c6] text-slate-900 ring-[#b7e7a5] dark:bg-[#075e54] dark:text-white dark:ring-white/10'
+                      : 'rounded-bl-[3px] bg-white text-slate-900 ring-slate-200 dark:bg-slate-900 dark:text-slate-50 dark:ring-white/10'}`}>
+                      {message.text && <p className="whitespace-pre-wrap leading-snug">{message.text}</p>}
                       <MediaPreview message={message} whatsappAccountId={activeClient._id} />
-                      {!message.text && !message.media && <p className="leading-relaxed">{messageSnippet(message)}</p>}
-                      <p className={`mt-1 text-xs ${message.direction === 'outbound' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                      {!message.text && !message.media && <p className="leading-snug">{messageSnippet(message)}</p>}
+                      <p className={`mt-0.5 text-right text-[10px] ${message.direction === 'outbound' ? 'text-slate-600 dark:text-white/70' : 'text-muted-foreground'}`}>
                         {message.createdAt ? format(new Date(message.createdAt), 'HH:mm') : '-'}
                       </p>
                     </div>
@@ -584,9 +584,9 @@ export default function InboxWorkspace({ allowedRoles }) {
                   onChange={(e) => setReply(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendReply()}
                   placeholder="Type a reply..."
-                  className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-9 flex-1 rounded-full border border-input bg-background px-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
-                <button onClick={sendReply} disabled={sending || !reply.trim()} className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-50" aria-label="Send reply">
+                <button onClick={sendReply} disabled={sending || !reply.trim()} className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-50" aria-label="Send reply">
                   <Send size={16} />
                 </button>
               </div>

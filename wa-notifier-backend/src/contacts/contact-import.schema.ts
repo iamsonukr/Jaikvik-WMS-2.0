@@ -18,6 +18,8 @@ export class ContactImport {
   @Prop({ default: 0 }) skippedCount: number;
   @Prop({ default: 0 }) invalidRows: number;
   @Prop({ default: 0 }) duplicateRows: number;
+  @Prop({ default: 0 }) existingRows: number;
+  @Prop({ default: 0 }) fileDuplicateRows: number;
   @Prop({ type: [Object], default: [] }) invalidReport: Array<Record<string, any>>;
   @Prop({ type: [Object], default: [] }) duplicateReport: Array<Record<string, any>>;
 }

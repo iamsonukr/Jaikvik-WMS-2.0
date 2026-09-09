@@ -145,6 +145,12 @@ function bodyPlaceholderCount(template) {
   return matches.length ? Math.max(...matches) : 0;
 }
 
+function compactObjectValues(values) {
+  return Object.fromEntries(
+    Object.entries(values || {}).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== ''),
+  );
+}
+
 export default function ContactsWorkspace() {
   const { activeClient } = useClient();
   const pathname = usePathname();
@@ -264,7 +270,14 @@ export default function ContactsWorkspace() {
     }
     setSaving(true);
     try {
-      const dto = { ...form, phone, whatsappAccountId: activeClient._id, tags: form.tags, customFields: form.customFields || {} };
+      const customFieldValues = compactObjectValues(form.customFields);
+      const dto = {
+        ...form,
+        phone,
+        whatsappAccountId: activeClient._id,
+        tags: form.tags,
+        ...(Object.keys(customFieldValues).length ? { customFields: customFieldValues } : {}),
+      };
       const { data } = await api.post('/contacts', dto);
       const saved = normalizeContact(data);
       setContacts((prev) => [saved, ...prev.filter((contact) => contact._id !== saved._id)]);
@@ -606,7 +619,7 @@ export default function ContactsWorkspace() {
         contacts: mappedContacts,
         fileName: importFileName,
         mapping: importMapping,
-        updateExisting: true,
+        updateExisting: false,
       });
       setImportResult(data);
       const returnedTags = [
@@ -720,13 +733,15 @@ export default function ContactsWorkspace() {
   const previewRows = importPreview?.rows || [];
   const previewQuery = importPreviewSearch.trim().toLowerCase();
   const filteredPreviewRows = previewRows.filter((row) => {
-    const statusLabel = row.status === 'new' ? 'new' : row.status === 'existing' ? 'update' : row.status === 'invalid' ? 'invalid' : 'duplicate';
+    const statusLabel = row.status === 'new' ? 'new' : row.status === 'existing' ? 'duplicate' : row.status === 'invalid' ? 'invalid' : 'duplicate';
     const matchesSearch = !previewQuery
       || String(row.rowNumber || '').includes(previewQuery)
       || String(row.phone || row.originalPhone || '').toLowerCase().includes(previewQuery)
       || String(row.name || '').toLowerCase().includes(previewQuery)
       || statusLabel.includes(previewQuery);
-    const matchesStatus = importPreviewStatusFilter === 'all' || row.status === importPreviewStatusFilter;
+    const matchesStatus = importPreviewStatusFilter === 'all'
+      || row.status === importPreviewStatusFilter
+      || (importPreviewStatusFilter === 'duplicate' && (row.status === 'existing' || row.status === 'duplicate_file'));
     return matchesSearch && matchesStatus;
   });
   const sortedPreviewRows = sortItems(filteredPreviewRows, importPreviewSort, {
@@ -995,7 +1010,7 @@ export default function ContactsWorkspace() {
               {previewingImport ? 'Previewing...' : 'Preview import'}
             </Button>
             <Button onClick={commitImport} disabled={committingImport || !importPreview || importPreview.importableRows === 0}>
-              {committingImport ? 'Importing...' : 'Import approved rows'}
+              {committingImport ? 'Importing...' : 'Import new contacts'}
             </Button>
           </>
         )}
@@ -1062,7 +1077,7 @@ export default function ContactsWorkspace() {
             <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Ready</p>
+                  <p className="text-xs text-muted-foreground">Ready to import</p>
                   <p className="mt-1 text-xl font-semibold">{importPreview.importableRows || 0}</p>
                 </div>
                 <div className="rounded-lg border border-border p-3">
@@ -1070,12 +1085,12 @@ export default function ContactsWorkspace() {
                   <p className="mt-1 text-xl font-semibold text-emerald-600 dark:text-emerald-400">{importPreview.newRows || 0}</p>
                 </div>
                 <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Existing updates</p>
+                  <p className="text-xs text-muted-foreground">Existing skipped</p>
                   <p className="mt-1 text-xl font-semibold">{importPreview.existingRows || 0}</p>
                 </div>
                 <div className="rounded-lg border border-border p-3">
                   <p className="text-xs text-muted-foreground">Invalid / duplicate</p>
-                  <p className="mt-1 text-xl font-semibold text-red-600 dark:text-red-400">{(importPreview.invalidRows || 0) + (importPreview.fileDuplicateRows || 0)}</p>
+                  <p className="mt-1 text-xl font-semibold text-red-600 dark:text-red-400">{(importPreview.invalidRows || 0) + (importPreview.duplicateRows || 0)}</p>
                 </div>
               </div>
 
@@ -1117,8 +1132,8 @@ export default function ContactsWorkspace() {
                         </td>
                         <td className="px-3 py-2">
                           <Badge
-                            label={row.status === 'new' ? 'New' : row.status === 'existing' ? 'Update' : row.status === 'invalid' ? 'Invalid' : 'Duplicate'}
-                            color={row.status === 'new' ? 'green' : row.status === 'existing' ? 'blue' : 'red'}
+                            label={row.status === 'new' ? 'New' : row.status === 'existing' ? 'Duplicate' : row.status === 'invalid' ? 'Invalid' : 'Duplicate'}
+                            color={row.status === 'new' ? 'green' : 'red'}
                           />
                         </td>
                       </tr>
@@ -1161,7 +1176,7 @@ export default function ContactsWorkspace() {
                 <CheckCircle2 size={15} /> Import completed
               </div>
               <p className="mt-1">
-                Created {importResult.createdCount || 0}, updated {importResult.updatedCount || 0}, skipped {importResult.skippedCount || 0}.
+                Total {importResult.totalRows || 0}, imported {importResult.createdCount || 0}, duplicates skipped {importResult.duplicateRows || 0}, invalid {importResult.invalidRows || 0}, skipped {importResult.skippedCount || 0}.
               </p>
               {(importResult.createdTags?.length > 0 || importResult.reactivatedTags?.length > 0) && (
                 <p className="mt-1">
@@ -1190,36 +1205,42 @@ export default function ContactsWorkspace() {
           <Input label="Phone (E.164) *" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="+919876543210" />
           <Input label="Name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="John Doe" />
           {customFields.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {customFields.map((field) => (
-                field.type === 'boolean' ? (
-                  <Select
-                    key={field.key}
-                    label={field.label}
-                    value={String(form.customFields?.[field.key] ?? '')}
-                    onChange={(e) => setForm((prev) => ({
-                      ...prev,
-                      customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
-                    }))}
-                  >
-                    <option value="">Not set</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </Select>
-                ) : (
-                  <Input
-                    key={field.key}
-                    label={field.label}
-                    type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                    value={String(form.customFields?.[field.key] ?? '')}
-                    onChange={(e) => setForm((prev) => ({
-                      ...prev,
-                      customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
-                    }))}
-                    placeholder={field.description || field.label}
-                  />
-                )
-              ))}
+            <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Optional Details</p>
+                <span className="text-[11px] text-muted-foreground">{customFields.length} field{customFields.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {customFields.map((field) => (
+                  field.type === 'boolean' ? (
+                    <Select
+                      key={field.key}
+                      label={field.label}
+                      value={String(form.customFields?.[field.key] ?? '')}
+                      onChange={(e) => setForm((prev) => ({
+                        ...prev,
+                        customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
+                      }))}
+                    >
+                      <option value="">Not set</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </Select>
+                  ) : (
+                    <Input
+                      key={field.key}
+                      label={field.label}
+                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                      value={String(form.customFields?.[field.key] ?? '')}
+                      onChange={(e) => setForm((prev) => ({
+                        ...prev,
+                        customFields: { ...(prev.customFields || {}), [field.key]: e.target.value },
+                      }))}
+                      placeholder={field.description || field.label}
+                    />
+                  )
+                ))}
+              </div>
             </div>
           )}
           <div className="space-y-2">

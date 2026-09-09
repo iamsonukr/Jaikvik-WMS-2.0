@@ -30,19 +30,40 @@ export class ContactsService {
 
   findByIds(ids: Types.ObjectId[]) { return this.model.find({ _id: { $in: ids } }); }
 
-  async create(dto: Omit<Partial<Contact>, 'whatsappAccountId'> & { whatsappAccountId?: string; clientId?: string }) {
+  async create(dto: Partial<Omit<Contact, 'whatsappAccountId' | 'clientId'>> & { whatsappAccountId?: string; clientId?: string }) {
     const whatsappAccountId = String(resolveWhatsAppAccountId(dto));
     const account = await this.clients.findOne(whatsappAccountId);
+    if (!account) throw new NotFoundException('WhatsApp account not found');
+    const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
+    const phone = this.normalizePhone(dto.phone);
+    if (!this.isValidPhone(phone)) {
+      throw new BadRequestException('Enter a valid phone number in E.164 format, e.g. +919876543210');
+    }
+    const existing = await this.model.findOne({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone });
+    if (existing) {
+      throw new BadRequestException('A contact with this phone number already exists for this WhatsApp account');
+    }
     const tags = await this.allowedTags(whatsappAccountId, dto.tags || []);
-    const customFields = await this.allowedCustomFieldValues(whatsappAccountId, dto.customFields || {});
-    return this.model.create({
-      ...dto,
-      whatsappAccountId: toObjectId(whatsappAccountId, 'whatsappAccountId'),
-      tenantId: account?.tenantId,
-      phone: String(dto.phone || '').trim(),
-      tags,
-      customFields,
-    });
+    const requestedCustomFields = this.compactCustomFieldValues(dto.customFields || {});
+    const customFields = Object.keys(requestedCustomFields).length
+      ? await this.allowedCustomFieldValues(whatsappAccountId, requestedCustomFields)
+      : {};
+    try {
+      return await this.model.create({
+        ...dto,
+        whatsappAccountId: accountObjectId,
+        clientId: accountObjectId,
+        tenantId: account?.tenantId,
+        phone,
+        tags,
+        customFields,
+      });
+    } catch (err) {
+      if (err?.code === 11000) {
+        throw new BadRequestException('A contact with this phone number already exists for this WhatsApp account');
+      }
+      throw err;
+    }
   }
 
   async bulkUpsert(whatsappAccountId: string, contacts: Partial<Contact>[]) {
@@ -97,7 +118,7 @@ export class ContactsService {
     const account = await this.clients.findOne(whatsappAccountId);
     const accountObjectId = toObjectId(whatsappAccountId, 'whatsappAccountId');
     const analysis = await this.analyzeImport(whatsappAccountId, contacts);
-    const updateExisting = metadata.updateExisting !== false;
+    const updateExisting = metadata.updateExisting === true;
     const importable = analysis.rows.filter((row) => row.status === 'new' || (row.status === 'existing' && updateExisting));
     const tagResult = await this.ensureTags(whatsappAccountId, importable.flatMap((row) => row.tags || []));
     const allowed = tagResult.allowed;
@@ -141,6 +162,8 @@ export class ContactsService {
       skippedCount,
       invalidRows: analysis.summary.invalidRows,
       duplicateRows: analysis.summary.duplicateRows,
+      existingRows: analysis.summary.existingRows,
+      fileDuplicateRows: analysis.summary.fileDuplicateRows,
       invalidReport: analysis.invalidReport.slice(0, 100),
       duplicateReport: analysis.duplicateReport.slice(0, 100),
     });
@@ -155,6 +178,8 @@ export class ContactsService {
       skippedCount,
       invalidRows: analysis.summary.invalidRows,
       duplicateRows: analysis.summary.duplicateRows,
+      existingRows: analysis.summary.existingRows,
+      fileDuplicateRows: analysis.summary.fileDuplicateRows,
       invalidReport: analysis.invalidReport.slice(0, 100),
       duplicateReport: analysis.duplicateReport.slice(0, 100),
       createdTags: tagResult.createdTags,
@@ -487,7 +512,7 @@ export class ContactsService {
 
       seen.add(row.phone);
       if (existingByPhone.has(row.phone)) {
-        const item = { rowNumber: row.rowNumber, phone: row.phone, reason: 'Contact already exists and will be updated' };
+        const item = { rowNumber: row.rowNumber, phone: row.phone, reason: 'Contact already exists and was skipped' };
         duplicateReport.push(item);
         return { ...row, status: 'existing', reason: item.reason };
       }
@@ -496,7 +521,7 @@ export class ContactsService {
     });
 
     const validRows = rows.filter((row) => row.status !== 'invalid').length;
-    const importableRows = rows.filter((row) => row.status === 'new' || row.status === 'existing').length;
+    const importableRows = rows.filter((row) => row.status === 'new').length;
     const duplicateRows = rows.filter((row) => row.status === 'duplicate_file' || row.status === 'existing').length;
 
     return {
@@ -565,9 +590,15 @@ export class ContactsService {
 
   private filterCustomFieldValues(values: Record<string, any>, definitions: Map<string, ContactCustomFieldType>) {
     return Object.fromEntries(
-      Object.entries(values || {})
+      Object.entries(this.compactCustomFieldValues(values || {}))
         .filter(([key]) => definitions.has(key))
         .map(([key, value]) => [key, this.normalizeCustomFieldValue(value, definitions.get(key))]),
+    );
+  }
+
+  private compactCustomFieldValues(values: Record<string, any>) {
+    return Object.fromEntries(
+      Object.entries(values || {}).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== ''),
     );
   }
 

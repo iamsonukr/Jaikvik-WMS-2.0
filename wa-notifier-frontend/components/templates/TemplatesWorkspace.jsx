@@ -113,22 +113,22 @@ function TemplatePreview({ template, examples = [], compact = false }) {
   const reason = templateRejectionReason(template);
 
   return (
-    <div className={`rounded-lg border border-border bg-secondary/45 p-3 ${compact ? '' : 'space-y-3'}`}>
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <div className={`rounded-lg border border-border bg-[#efeae2] p-2.5 dark:bg-slate-950 ${compact ? '' : 'space-y-2'}`}>
+      <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{template?.name || 'template_preview'}</p>
           <p className="text-xs text-muted-foreground">{template?.category || 'CATEGORY'} - {template?.language || 'language'}</p>
         </div>
         {template?.status && <StatusBadge status={String(template.status).toLowerCase()} />}
       </div>
-      <div className="max-w-sm rounded-lg rounded-tr-sm bg-card p-3 shadow-sm ring-1 ring-border">
-        {header?.text && <p className="mb-2 text-sm font-semibold">{renderWithExamples(header.text, examples)}</p>}
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{renderWithExamples(body?.text || templateBody(template), examples)}</p>
-        {footer?.text && <p className="mt-3 text-xs text-muted-foreground">{renderWithExamples(footer.text, examples)}</p>}
+      <div className="max-w-sm rounded-xl rounded-tl-[3px] bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-50 dark:ring-white/10">
+        {header?.text && <p className="mb-1.5 text-[13px] font-semibold">{renderWithExamples(header.text, examples)}</p>}
+        <p className="whitespace-pre-wrap text-[13px] leading-snug">{renderWithExamples(body?.text || templateBody(template), examples)}</p>
+        {footer?.text && <p className="mt-2 text-[11px] text-muted-foreground">{renderWithExamples(footer.text, examples)}</p>}
         {buttons.length > 0 && (
-          <div className="mt-3 space-y-1.5">
+          <div className="mt-2 space-y-1">
             {buttons.map((button, index) => (
-              <div key={`${button.text}-${index}`} className="rounded-md border border-border bg-muted/40 px-3 py-1.5 text-center text-xs font-medium text-primary">
+              <div key={`${button.text}-${index}`} className="rounded-md border border-border bg-muted/40 px-2.5 py-1 text-center text-xs font-medium text-primary">
                 {button.text || button.type}
               </div>
             ))}
@@ -147,10 +147,10 @@ function TemplatePreview({ template, examples = [], compact = false }) {
 
 function TemplateFormSection({ icon: Icon, title, children }) {
   return (
-    <section className="rounded-lg border border-border/80 bg-background/75 p-4 shadow-sm">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon size={16} />
+    <section className="rounded-lg border border-border/80 bg-background/75 p-3 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon size={15} />
         </span>
         <h3 className="text-sm font-semibold">{title}</h3>
       </div>
@@ -623,17 +623,17 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
           </>
         )}
       >
-        <div className="space-y-5">
+        <div className="space-y-4">
           {formError && (
             <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
               {formError}
             </div>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="space-y-3">
               <TemplateFormSection icon={BadgeIcon} title="Template setup">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   <Input label="Template name *" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="order_update" />
                   <Select label="Category *" value={form.category} onChange={(e) => set('category', e.target.value)}>
                     <option value="MARKETING">Marketing</option>
@@ -651,9 +651,9 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
               </TemplateFormSection>
 
               <TemplateFormSection icon={MessageSquare} title="Message content">
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   <Input label="Header text" value={form.headerText} onChange={(e) => set('headerText', e.target.value)} placeholder="New offer from Jaikvik" />
-                  <Textarea label="Body *" value={form.body} onChange={(e) => set('body', e.target.value)} placeholder="Hi {{1}}, your order {{2}} is ready." rows={6} className="min-h-[150px]" />
+                  <Textarea label="Body *" value={form.body} onChange={(e) => set('body', e.target.value)} placeholder="Hi {{1}}, your order {{2}} is ready." rows={5} className="min-h-[120px]" />
                   <Input label="Footer text" value={form.footerText} onChange={(e) => set('footerText', e.target.value)} placeholder="Reply STOP to unsubscribe" />
                 </div>
               </TemplateFormSection>
@@ -675,23 +675,23 @@ export default function TemplatesWorkspace({ mode = 'list' }) {
             </div>
 
             <aside className="lg:sticky lg:top-0 lg:self-start">
-              <div className="rounded-lg border border-border/80 bg-background p-4 shadow-card">
-                <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="rounded-lg border border-border/80 bg-background p-3 shadow-card">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold">Live preview</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">WhatsApp template message</p>
                   </div>
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-light text-brand-dark">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-brand-light text-brand-dark">
                     <Globe2 size={17} />
                   </span>
                 </div>
                 <TemplatePreview template={formPreviewTemplate} examples={formExampleValues} />
-                <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-lg border border-border bg-muted/40 p-3">
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-border bg-muted/40 p-2.5">
                     <p className="text-muted-foreground">Variables</p>
                     <p className="mt-1 font-semibold">{placeholderCount}</p>
                   </div>
-                  <div className="rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="rounded-lg border border-border bg-muted/40 p-2.5">
                     <p className="text-muted-foreground">Replies</p>
                     <p className="mt-1 font-semibold">{splitCsv(form.quickReplies).length}</p>
                   </div>
