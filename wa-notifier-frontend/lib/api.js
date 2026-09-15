@@ -6,6 +6,13 @@ const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 const api = axios.create({ baseURL });
 
+export function getApiErrorMessage(err, fallback = 'Something went wrong') {
+  const message = err?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(', ');
+  if (typeof message === 'string' && message.trim()) return message;
+  return fallback;
+}
+
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('wa_token');

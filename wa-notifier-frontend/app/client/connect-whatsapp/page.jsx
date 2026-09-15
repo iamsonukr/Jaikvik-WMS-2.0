@@ -18,12 +18,21 @@ import { ArrowRight, CheckCircle2, MessageCircle } from 'lucide-react';
 
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
+const metaBusinessAppConfigId = process.env.NEXT_PUBLIC_META_BUSINESS_APP_CONFIG_ID || metaConfigId;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 const metaSolutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID;
 const SIGNUP_FEATURE_TYPES = {
   cloud_api: 'whatsapp_embedded_signup',
   business_app: 'whatsapp_business_app_onboarding',
 };
+const getSignupConfigId = (onboardingMode) => (
+  onboardingMode === 'business_app' ? metaBusinessAppConfigId : metaConfigId
+);
+const buildSignupExtras = (onboardingMode) => ({
+  setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
+  featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
+  sessionInfoVersion: '3',
+});
 
 export default function ConnectWhatsAppPage() {
   const router = useRouter();
@@ -239,7 +248,8 @@ export default function ConnectWhatsAppPage() {
       setError(`Your current plan allows ${whatsappLimit} WhatsApp number${whatsappLimit === 1 ? '' : 's'}. Upgrade your plan to connect more numbers.`);
       return;
     }
-    if (!metaAppId || !metaConfigId) {
+    const selectedConfigId = getSignupConfigId(onboardingMode);
+    if (!metaAppId || !selectedConfigId) {
       setError('Meta Embedded Signup is not configured yet.');
       return;
     }
@@ -255,19 +265,16 @@ export default function ConnectWhatsAppPage() {
     addDebugEvent(`Opening Meta Embedded Signup (${onboardingMode})`);
 
     const redirectUri = `${window.location.origin}/client/meta-embedded-signup`;
+    const signupExtras = buildSignupExtras(onboardingMode);
     signupRef.current.redirectUri = redirectUri;
     console.log('[EmbeddedSignupDebug] Client opening Meta Embedded Signup', {
       onboardingMode,
       metaAppId,
-      metaConfigId,
+      metaConfigId: selectedConfigId,
       metaApiVersion,
       metaSolutionId,
       redirectUri,
-      extras: {
-        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
-        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
-        sessionInfoVersion: '3',
-      },
+      extras: signupExtras,
     });
 
     window.FB.login((response) => {
@@ -289,16 +296,12 @@ export default function ConnectWhatsAppPage() {
       setError('Facebook authorization was cancelled or did not complete.');
       addDebugEvent('Meta authorization did not complete');
     }, {
-      config_id: metaConfigId,
+      config_id: selectedConfigId,
       response_type: 'code',
       override_default_response_type: true,
       redirect_uri: redirectUri,
       fallback_redirect_uri: redirectUri,
-      extras: {
-        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
-        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
-        sessionInfoVersion: '3',
-      },
+      extras: signupExtras,
     });
   };
 

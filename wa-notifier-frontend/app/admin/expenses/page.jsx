@@ -19,6 +19,7 @@ const PRICE_CATEGORIES = [
   ['authentication', 'Authentication'],
   ['service', 'Service'],
 ];
+
 const text = (value) => String(value || '').toLowerCase();
 const fmtMoney = (value) => value === null || value === undefined ? '-' : `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
 const fmtPercent = (value) => value === null || value === undefined ? '-' : `${Number(value).toLocaleString('en-IN')}%`;
@@ -236,7 +237,7 @@ export default function AdminExpensesPage() {
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Client message revenue" value={fmtMoney(summary.totals.clientRevenue)} icon={IndianRupee} color="#16a34a" sub="Wallet debits minus refunds" />
-            <StatCard label="Meta charges synced" value={fmtMoney(summary.totals.metaCharged)} icon={Landmark} color="#dc2626" sub="Actual cost snapshots" />
+            {/* <StatCard label="Meta charges synced" value={fmtMoney(summary.totals.metaCharged)} icon={Landmark} color="#dc2626" sub="Actual cost snapshots" /> */}
             <StatCard label="Expected Meta cost" value={fmtMoney(summary.totals.expectedMetaCost)} icon={ReceiptText} color="#7c3aed" sub={`${Number(summary.totals.expectedBillableMessages || 0).toLocaleString('en-IN')} message(s), India INR`} />
             <StatCard label="Expected margin" value={fmtMoney(summary.totals.expectedMargin)} icon={BarChart3} color="#2563eb" sub="Client revenue minus expected Meta cost" />
           </div>

@@ -38,12 +38,21 @@ const WALLET_TYPE_LABEL = {
 const WALLET_TYPE_OPTIONS = Object.keys(WALLET_TYPE_LABEL);
 const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
 const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
+const metaBusinessAppConfigId = process.env.NEXT_PUBLIC_META_BUSINESS_APP_CONFIG_ID || metaConfigId;
 const metaApiVersion = process.env.NEXT_PUBLIC_META_API_VERSION || 'v25.0';
 const metaSolutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID;
 const SIGNUP_FEATURE_TYPES = {
   cloud_api: 'whatsapp_embedded_signup',
   business_app: 'whatsapp_business_app_onboarding',
 };
+const getSignupConfigId = (onboardingMode) => (
+  onboardingMode === 'business_app' ? metaBusinessAppConfigId : metaConfigId
+);
+const buildSignupExtras = (onboardingMode) => ({
+  setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
+  featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
+  sessionInfoVersion: '3',
+});
 const blankAccountForm = {
   name: '',
   businessId: '',
@@ -946,7 +955,8 @@ export default function TenantDetailPage() {
     setAccountError('');
     setAccountStatus('');
 
-    if (!metaAppId || !metaConfigId) {
+    const selectedConfigId = getSignupConfigId(onboardingMode);
+    if (!metaAppId || !selectedConfigId) {
       setAccountError('Meta Embedded Signup is not configured yet.');
       return;
     }
@@ -961,20 +971,17 @@ export default function TenantDetailPage() {
     setAccountStatus('Opening Facebook Embedded Signup...');
 
     const redirectUri = `${window.location.origin}/master/meta-embedded-signup`;
+    const signupExtras = buildSignupExtras(onboardingMode);
     signupRef.current.redirectUri = redirectUri;
     console.log('[EmbeddedSignupDebug] Admin opening Meta Embedded Signup', {
       tenantId: id,
       onboardingMode,
       metaAppId,
-      metaConfigId,
+      metaConfigId: selectedConfigId,
       metaApiVersion,
       metaSolutionId,
       redirectUri,
-      extras: {
-        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
-        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
-        sessionInfoVersion: '3',
-      },
+      extras: signupExtras,
     });
 
     window.FB.login((response) => {
@@ -999,16 +1006,12 @@ export default function TenantDetailPage() {
       setAccountStatus('');
       setAccountError('Facebook authorization was cancelled or did not complete.');
     }, {
-      config_id: metaConfigId,
+      config_id: selectedConfigId,
       response_type: 'code',
       override_default_response_type: true,
       redirect_uri: redirectUri,
       fallback_redirect_uri: redirectUri,
-      extras: {
-        setup: metaSolutionId ? { solutionID: metaSolutionId } : {},
-        featureType: SIGNUP_FEATURE_TYPES[onboardingMode] || SIGNUP_FEATURE_TYPES.cloud_api,
-        sessionInfoVersion: '3',
-      },
+      extras: signupExtras,
     });
   };
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { getApiErrorMessage } from '@/lib/api';
 import { useTheme } from '@/components/theme-provider';
 import { roleHomePath } from '@/hooks/useBasePath';
 import { MessageCircle, Moon, Sun, ShieldCheck, Zap, Users2 } from 'lucide-react';
@@ -36,7 +37,14 @@ export default function LoginPage() {
       const { user } = await login(form.email, form.password);
       router.replace(roleHomePath(user.role));
     } catch (err) {
-      setError(err?.response?.data?.message || 'Invalid credentials');
+      const status = err?.response?.status;
+      if (status === 404) {
+        setError('Login API endpoint was not found. Check NEXT_PUBLIC_API_URL and the backend deployment.');
+      } else if (!err?.response) {
+        setError('Could not reach the login API. Check that the backend is running and accessible.');
+      } else {
+        setError(getApiErrorMessage(err, 'Invalid credentials'));
+      }
     } finally {
       setLoading(false);
     }
