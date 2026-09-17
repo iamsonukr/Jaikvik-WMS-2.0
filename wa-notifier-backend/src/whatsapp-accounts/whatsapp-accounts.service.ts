@@ -627,6 +627,9 @@ export class WhatsAppAccountsService {
       if (currentTokenTasks.length && !currentTokenTasks.includes('MESSAGING')) {
         result.warnings.push('The WABA assigned-users list does not show the MESSAGING task. Meta will reject /messages with code 200 until MESSAGING is granted during Embedded Signup.');
       }
+      if (currentTokenTasks.length && !currentTokenTasks.includes('VIEW_COST')) {
+        result.warnings.push('The WABA assigned-users list does not show the VIEW_COST task. Meta will reject pricing analytics until VIEW_COST is granted to the token used for this WABA.');
+      }
     } catch (err) {
       const metaError = err?.response?.data?.error;
       result.assignedUsersError = metaError?.message || err?.message || 'Could not fetch WABA assigned users/tasks from Meta.';

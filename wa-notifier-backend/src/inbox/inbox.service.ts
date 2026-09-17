@@ -116,6 +116,8 @@ export class InboxService {
       type: 'text',
       text,
       waMessageId: res?.messages?.[0]?.id,
+      deliveryStatus: res?.messages?.[0]?.id ? 'sent' : 'pending',
+      sentAt: new Date(),
       messageCategory: MessageCategory.SERVICE,
       appliedUnitPrice: price.sellingPrice,
       appliedTaxPercent: price.taxPercent,
@@ -188,6 +190,8 @@ export class InboxService {
         bodyParameters,
       },
       waMessageId: res?.messages?.[0]?.id,
+      deliveryStatus: res?.messages?.[0]?.id ? 'sent' : 'pending',
+      sentAt: new Date(),
       messageCategory: category,
       appliedUnitPrice: price.sellingPrice,
       appliedTaxPercent: price.taxPercent,
@@ -248,6 +252,35 @@ export class InboxService {
 
   resolve(whatsappAccountId: string, phone: string) {
     return this.model.updateMany({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone }, { threadStatus: 'resolved' });
+  }
+
+  /** Called by webhook when Meta sends inbox message delivery/read receipts. */
+  async handleStatusUpdate(waMessageId: string, status: string, errors: any[] = []) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (!waMessageId || !['sent', 'delivered', 'read', 'failed'].includes(normalized)) return;
+
+    const message = await this.model.findOne({ waMessageId, direction: 'outbound' });
+    if (!message) return;
+    if (message.deliveryStatus === normalized) return;
+
+    const rank: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 1 };
+    if ((rank[normalized] ?? 0) <= (rank[message.deliveryStatus] ?? 0) && normalized !== 'failed') return;
+
+    const now = new Date();
+    const update: any = { deliveryStatus: normalized };
+    if (normalized === 'sent') update.sentAt = message.sentAt || now;
+    if (normalized === 'delivered') update.deliveredAt = message.deliveredAt || now;
+    if (normalized === 'read') update.readAt = message.readAt || now;
+    if (normalized === 'failed') {
+      const error = Array.isArray(errors) ? errors[0] : errors;
+      update.failedAt = now;
+      if (error) {
+        update.errorCode = error.code == null ? undefined : String(error.code);
+        update.errorMessage = error.error_data?.details || error.message || error.title;
+      }
+    }
+
+    await this.model.findByIdAndUpdate(message._id, update);
   }
 
   private latestThread(whatsappAccountId: string, phone: string) {

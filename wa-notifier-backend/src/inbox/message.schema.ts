@@ -14,6 +14,13 @@ export class Message {
   @Prop() text: string;
   @Prop({ type: Object }) media: Record<string, any>;
   @Prop() waMessageId: string;
+  @Prop() deliveryStatus: string; // pending | sent | delivered | read | failed
+  @Prop() sentAt: Date;
+  @Prop() deliveredAt: Date;
+  @Prop() readAt: Date;
+  @Prop() failedAt: Date;
+  @Prop() errorCode: string;
+  @Prop() errorMessage: string;
   @Prop() messageCategory: string;
   @Prop() appliedUnitPrice: number;
   @Prop() appliedTaxPercent: number;

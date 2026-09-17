@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import axios from 'axios';
 import { Model } from 'mongoose';
 import { MetaService } from '../common/meta.service';
+import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { WhatsAppAccount, WhatsAppAccountDocument } from '../whatsapp-accounts/whatsapp-account.schema';
 import { WalletTransaction, WalletTransactionDocument, WalletTransactionType } from '../wallet/wallet-transaction.schema';
@@ -55,6 +56,7 @@ export class ExpensesService {
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
     private cfg: ConfigService,
     private meta: MetaService,
+    private whatsappAccounts: WhatsAppAccountsService,
   ) {}
 
   async adminSummary(period: Period = 'month') {
@@ -476,10 +478,9 @@ export class ExpensesService {
     const end = window.end;
     const startSeconds = Math.floor(start.getTime() / 1000);
     const endSeconds = Math.floor(end.getTime() / 1000);
-    const providerToken = this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN');
 
     const accounts = await this.accountModel
-      .find({ tenantId: { $exists: true, $ne: null }, wabaId: { $exists: true, $ne: '' } })
+      .find({ tenantId: { $exists: true, $ne: null }, wabaId: { $exists: true, $ne: '' }, isRemoved: { $ne: true } })
       .select('tenantId name wabaId phoneNumberId accessToken')
       .lean();
 
@@ -493,7 +494,19 @@ export class ExpensesService {
     const failures = [];
 
     for (const account of accounts as any[]) {
-      const accessToken = providerToken || account.accessToken;
+      let accessToken = '';
+      try {
+        accessToken = this.whatsappAccounts.getOperationalAccessToken(account, 'pricing analytics');
+      } catch (err) {
+        failed += 1;
+        failures.push({
+          wabaId: account.wabaId,
+          accountName: account.name,
+          message: err?.message || 'Could not resolve a Meta access token for this WABA.',
+        });
+        continue;
+      }
+
       if (!accessToken) {
         skipped += 1;
         failures.push({ wabaId: account.wabaId, accountName: account.name, message: 'No Meta access token available for this WABA.' });

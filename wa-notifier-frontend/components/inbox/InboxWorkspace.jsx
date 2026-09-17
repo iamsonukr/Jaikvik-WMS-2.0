@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { AlertTriangle, ArrowLeft, CheckCheck, Clock, Download, FileAudio, FileText, FileVideo, Image as ImageIcon, Paperclip, RefreshCw, Send, SlidersHorizontal, StickyNote, Tag, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CheckCheck, Clock, Download, FileAudio, FileText, FileVideo, Image as ImageIcon, Paperclip, RefreshCw, Send, SlidersHorizontal, StickyNote, Tag, UserRound } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import { Badge, Button, Input, Select, Spinner, StatusBadge, PaginationControls, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
@@ -43,6 +43,27 @@ function mediaIcon(type, size = 14) {
   if (type === 'audio') return <FileAudio size={size} />;
   if (type === 'document') return <FileText size={size} />;
   return <Paperclip size={size} />;
+}
+
+function MessageReadStatus({ message }) {
+  if (message.direction !== 'outbound') return null;
+
+  const status = String(message.deliveryStatus || (message.readAt ? 'read' : message.deliveredAt ? 'delivered' : message.waMessageId ? 'sent' : 'pending')).toLowerCase();
+  const iconProps = { size: 14, strokeWidth: 2.4, className: 'shrink-0' };
+
+  if (status === 'read') {
+    return <CheckCheck {...iconProps} className="shrink-0 text-[#34b7f1]" aria-label="Read" />;
+  }
+  if (status === 'delivered') {
+    return <CheckCheck {...iconProps} aria-label="Delivered" />;
+  }
+  if (status === 'failed') {
+    return <AlertTriangle size={13} className="shrink-0 text-red-500" aria-label="Failed" />;
+  }
+  if (status === 'pending') {
+    return <Clock size={13} className="shrink-0" aria-label="Sending" />;
+  }
+  return <Check {...iconProps} aria-label="Sent" />;
 }
 
 function MediaPreview({ message, whatsappAccountId }) {
@@ -566,9 +587,10 @@ export default function InboxWorkspace({ allowedRoles }) {
                       {message.text && <p className="whitespace-pre-wrap leading-snug">{message.text}</p>}
                       <MediaPreview message={message} whatsappAccountId={activeClient._id} />
                       {!message.text && !message.media && <p className="leading-snug">{messageSnippet(message)}</p>}
-                      <p className={`mt-0.5 text-right text-[10px] ${message.direction === 'outbound' ? 'text-slate-600 dark:text-white/70' : 'text-muted-foreground'}`}>
-                        {message.createdAt ? format(new Date(message.createdAt), 'HH:mm') : '-'}
-                      </p>
+                      <div className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${message.direction === 'outbound' ? 'text-slate-600 dark:text-white/70' : 'text-muted-foreground'}`}>
+                        <span>{message.createdAt ? format(new Date(message.createdAt), 'HH:mm') : '-'}</span>
+                        <MessageReadStatus message={message} />
+                      </div>
                     </div>
                   </div>
                 ))}
