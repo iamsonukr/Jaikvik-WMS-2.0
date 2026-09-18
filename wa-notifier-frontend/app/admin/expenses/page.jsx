@@ -355,8 +355,8 @@ export default function AdminExpensesPage() {
                           <Badge label={account.isActive ? 'Active' : 'Inactive'} color={account.isActive ? 'green' : 'gray'} />
                         </div>
                         <div className="mt-3 flex items-end justify-between gap-3 border-t border-border pt-2">
-                          <div><p className="text-xs text-muted-foreground">Actual Meta charge</p><p className="font-semibold">{account.snapshots.length ? fmtMoney(account.metaCharged) : 'Not recorded'}</p></div>
-                          <p className="text-right text-xs text-muted-foreground">{account.snapshots[0] ? `${account.snapshots[0].source === 'manual' ? 'Manual' : 'Meta API'} | ${fmtDate(account.snapshots[0].syncedAt)}` : 'No snapshot'}</p>
+                          <div><p className="text-xs text-muted-foreground">Meta {period === 'month' ? 'month-to-date' : period === 'year' ? 'year-to-date' : 'recorded'} spend</p><p className="font-semibold">{account.snapshots.length ? fmtMoney(account.metaCharged) : 'Not recorded'}</p></div>
+                          <div className="text-right"><Badge label={account.paymentMethodAttached ? 'Payment method attached' : 'Payment method not verified'} color={account.paymentMethodAttached ? 'green' : 'yellow'} /><p className="mt-1 text-xs text-muted-foreground">{account.snapshots[0] ? `${account.snapshots[0].source === 'manual' ? 'Manual' : 'Meta API'} | ${fmtDate(account.snapshots[0].syncedAt)}` : 'No snapshot'}</p></div>
                         </div>
                       </div>
                     ))}

@@ -48,6 +48,12 @@ export class MetaExpenseSnapshot {
 
   @Prop()
   syncedAt?: Date;
+
+  @Prop()
+  primaryFundingId?: string;
+
+  @Prop({ default: false })
+  paymentMethodAttached?: boolean;
 }
 
 export const MetaExpenseSnapshotSchema = SchemaFactory.createForClass(MetaExpenseSnapshot);

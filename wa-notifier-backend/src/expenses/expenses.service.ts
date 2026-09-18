@@ -130,7 +130,7 @@ export class ExpensesService {
       ]),
       this.expenseModel.aggregate([
         ...expenseSnapshotPipeline,
-        { $project: { tenantId: 1, whatsappAccountId: 1, wabaId: 1, metaChargedAmount: 1, currency: 1, source: 1, metaInvoiceId: 1, notes: 1, syncedAt: 1, updatedAt: 1, periodStart: 1, periodEnd: 1, period: 1 } },
+        { $project: { tenantId: 1, whatsappAccountId: 1, wabaId: 1, metaChargedAmount: 1, currency: 1, source: 1, metaInvoiceId: 1, notes: 1, syncedAt: 1, updatedAt: 1, periodStart: 1, periodEnd: 1, period: 1, primaryFundingId: 1, paymentMethodAttached: 1 } },
       ]),
       this.expectedUsageByTenant(dateMatch),
     ]);
@@ -153,6 +153,7 @@ export class ExpensesService {
           metaInvoiceId: snapshot.metaInvoiceId || '',
           notes: snapshot.notes || '',
           syncedAt: snapshot.syncedAt || snapshot.updatedAt || null,
+          paymentMethodAttached: snapshot.paymentMethodAttached === true || Boolean(snapshot.primaryFundingId),
         },
       ]),
     );
@@ -382,7 +383,7 @@ export class ExpensesService {
           { $sort: { syncedAt: -1, updatedAt: -1 } },
           { $group: { _id: { wabaId: '$wabaId', periodStart: '$periodStart' }, snapshot: { $first: '$$ROOT' } } },
           { $replaceRoot: { newRoot: '$snapshot' } },
-          { $project: { whatsappAccountId: 1, wabaId: 1, metaChargedAmount: 1, currency: 1, source: 1, metaInvoiceId: 1, notes: 1, syncedAt: 1, updatedAt: 1, periodStart: 1, periodEnd: 1, period: 1 } },
+          { $project: { whatsappAccountId: 1, wabaId: 1, metaChargedAmount: 1, currency: 1, source: 1, metaInvoiceId: 1, notes: 1, syncedAt: 1, updatedAt: 1, periodStart: 1, periodEnd: 1, period: 1, primaryFundingId: 1, paymentMethodAttached: 1 } },
         ])
         : [],
       selectedAccountIds.length
@@ -513,7 +514,9 @@ export class ExpensesService {
           id: String(snapshot._id), amount: Number(snapshot.metaChargedAmount || 0), currency: snapshot.currency || 'INR',
           source: snapshot.source, metaInvoiceId: snapshot.metaInvoiceId || '', notes: snapshot.notes || '',
           periodStart: snapshot.periodStart, periodEnd: snapshot.periodEnd, syncedAt: snapshot.syncedAt || snapshot.updatedAt,
+          paymentMethodAttached: snapshot.paymentMethodAttached === true || Boolean(snapshot.primaryFundingId),
         })),
+        paymentMethodAttached: snapshots.some((snapshot) => snapshot.paymentMethodAttached === true || Boolean(snapshot.primaryFundingId)),
       };
     });
 
@@ -798,33 +801,37 @@ export class ExpensesService {
     const failures = [];
 
     for (const account of accounts as any[]) {
-      let accessToken = '';
-      try {
-        accessToken = this.whatsappAccounts.getOperationalAccessToken(account, 'pricing analytics');
-      } catch (err) {
-        failed += 1;
-        failures.push({
-          wabaId: account.wabaId,
-          accountName: account.name,
-          message: err?.message || 'Could not resolve a Meta access token for this WABA.',
-        });
-        continue;
-      }
-
-      if (!accessToken) {
+      const tokenCandidates = this.pricingAccessTokenCandidates(account);
+      if (!tokenCandidates.length) {
         skipped += 1;
         failures.push({ wabaId: account.wabaId, accountName: account.name, message: 'No Meta access token available for this WABA.' });
         continue;
       }
 
       try {
-        const response = await this.meta.getPricingAnalytics(account.wabaId, accessToken, startSeconds, endSeconds, {
-          granularity: 'DAILY',
-          metricTypes: ['COST', 'VOLUME'],
-          dimensions: ['COUNTRY', 'PRICING_CATEGORY', 'PHONE'],
-        });
+        let response: any = null;
+        let tokenSource = '';
+        let successfulToken = '';
+        const tokenErrors: string[] = [];
+        for (const candidate of tokenCandidates) {
+          try {
+            response = await this.meta.getPricingAnalytics(account.wabaId, candidate.token, startSeconds, endSeconds, {
+              granularity: 'DAILY',
+              metricTypes: ['COST', 'VOLUME'],
+              dimensions: ['COUNTRY', 'PRICING_CATEGORY', 'PHONE'],
+            });
+            tokenSource = candidate.source;
+            successfulToken = candidate.token;
+            break;
+          } catch (err) {
+            tokenErrors.push(`${candidate.source}: ${err?.message || 'Meta rejected the token'}`);
+          }
+        }
+        if (!response) throw new Error(tokenErrors.join(' | '));
+
         const metaChargedAmount = this.sumMetaCost(response);
-        const currency = this.extractCurrency(response) || this.cfg.get<string>('META_WABA_CURRENCY', 'INR');
+        const billingInfo = await this.meta.getWabaInfo(account.wabaId, successfulToken).catch(() => null);
+        const currency = this.extractCurrency(response) || billingInfo?.currency || this.cfg.get<string>('META_WABA_CURRENCY', 'INR');
 
         await this.expenseModel.findOneAndUpdate(
           { wabaId: account.wabaId, period, periodStart: start },
@@ -839,9 +846,11 @@ export class ExpensesService {
               metaChargedAmount,
               currency,
               source: MetaExpenseSource.META_API,
-              notes: 'Synced from Meta pricing_analytics.',
+              notes: `Synced from Meta pricing_analytics using the ${tokenSource} token.`,
               rawMetaResponse: response,
               syncedAt: new Date(),
+              primaryFundingId: billingInfo?.primary_funding_id || undefined,
+              paymentMethodAttached: Boolean(billingInfo?.primary_funding_id),
             },
           },
           { upsert: true, new: true, setDefaultsOnInsert: true },
@@ -866,6 +875,24 @@ export class ExpensesService {
       range: { start, end, startSeconds, endSeconds },
       summary: await this.adminSummary(period),
     };
+  }
+
+  private pricingAccessTokenCandidates(account: any) {
+    const candidates: Array<{ source: string; token: string }> = [];
+    const add = (source: string, token?: string) => {
+      const clean = String(token || '').trim();
+      if (clean && !candidates.some((candidate) => candidate.token === clean)) candidates.push({ source, token: clean });
+    };
+
+    const operationalSource = this.cfg.get<string>('META_OPERATIONAL_ACCESS_TOKEN_SOURCE', 'account').trim().toLowerCase();
+    if (operationalSource === 'provider') {
+      add('provider system-user', this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN'));
+      add('connected account', account.accessToken);
+    } else {
+      add('connected account', account.accessToken);
+      add('provider system-user', this.cfg.get<string>('META_PROVIDER_SYSTEM_USER_ACCESS_TOKEN'));
+    }
+    return candidates;
   }
 
   private periodWindow(period: Period) {
