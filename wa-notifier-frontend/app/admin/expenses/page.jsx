@@ -286,7 +286,7 @@ export default function AdminExpensesPage() {
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Client message revenue" value={fmtMoney(summary.totals.clientRevenue)} icon={IndianRupee} color="#16a34a" sub="Wallet debits minus refunds" />
             <StatCard label="Meta charges synced" value={fmtMoney(summary.totals.metaCharged)} icon={Landmark} color="#dc2626" sub="Actual cost snapshots" />
-            <StatCard label="Expected Meta cost" value={fmtMoney(summary.totals.expectedMetaCost)} icon={ReceiptText} color="#7c3aed" sub={`${Number(summary.totals.expectedBillableMessages || 0).toLocaleString('en-IN')} message(s), India INR`} />
+            <StatCard label="Expected Meta cost" value={fmtMoney(summary.totals.expectedMetaCost)} icon={ReceiptText} color="#7c3aed" sub={`${fmtMoney(summary.totals.expectedMetaSubtotal)} + ${fmtMoney(summary.totals.expectedMetaTax)} GST`} />
             <StatCard label="Expected margin" value={fmtMoney(summary.totals.expectedMargin)} icon={BarChart3} color="#2563eb" sub="Client revenue minus expected Meta cost" />
           </div>
 
@@ -392,7 +392,7 @@ export default function AdminExpensesPage() {
                           <td className="px-4 py-3 text-right"><p className="font-medium">{broadcast.billableMessages.toLocaleString('en-IN')} billed</p><p className="text-xs text-muted-foreground">{broadcast.deliveredCount} delivered | {broadcast.readCount} read | {broadcast.failedCount} failed</p></td>
                           <td className="px-4 py-3 text-right font-semibold">{fmtMoney(broadcast.clientSpend)}</td>
                           <td className="px-4 py-3 text-right"><p>{fmtMoney(broadcast.walletDebits)}</p><p className="text-xs text-muted-foreground">Refund {fmtMoney(broadcast.refunds)} | Reserved {fmtMoney(broadcast.reservedAmount)}</p></td>
-                          <td className="px-4 py-3 text-right">{fmtMoney(broadcast.expectedMetaCost)}</td>
+                          <td className="px-4 py-3 text-right"><p>{fmtMoney(broadcast.expectedMetaCost)}</p><p className="text-xs text-muted-foreground">{fmtMoney(broadcast.expectedMetaSubtotal)} + {fmtMoney(broadcast.expectedMetaTax)} GST</p></td>
                           <td className={`px-4 py-3 text-right font-semibold ${broadcast.expectedMargin < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>{fmtMoney(broadcast.expectedMargin)}</td>
                           <td className="px-4 py-3 text-right"><p>{fmtRate(broadcast.appliedUnitPrice)}</p><p className="text-xs text-muted-foreground">{broadcast.taxPercent}% tax | {broadcast.messageCategory}</p></td>
                         </tr>
@@ -442,7 +442,7 @@ export default function AdminExpensesPage() {
                 </div>
                 <div>
                   <p className="font-medium">Expected Meta cost</p>
-                  <p className="mt-1 text-muted-foreground">Calculated from sent/delivered broadcast logs and outbound inbox messages using WhatsApp's current India INR platform pricing.</p>
+                  <p className="mt-1 text-muted-foreground">Calculated per delivered/read recipient using WhatsApp's current India INR platform pricing, plus {summary.totals.expectedMetaTaxPercent}% GST.</p>
                 </div>
                 <div className="rounded-lg border border-border bg-muted/30 p-3">
                   <p className="mb-2 font-medium">Current India INR rates</p>
@@ -534,6 +534,7 @@ export default function AdminExpensesPage() {
                       <td className="px-4 py-3 text-right font-semibold">{fmtMoney(row.clientRevenue)}</td>
                       <td className="px-4 py-3 text-right">
                         <p className="font-semibold">{fmtMoney(row.expectedMetaCost)}</p>
+                        <p className="text-xs text-muted-foreground">{fmtMoney(row.expectedMetaSubtotal)} + {fmtMoney(row.expectedMetaTax)} GST</p>
                         <p className="text-xs text-muted-foreground">
                           M {row.expectedCategoryCounts?.marketing || 0} / U {row.expectedCategoryCounts?.utility || 0} / A {row.expectedCategoryCounts?.authentication || 0} / S {row.expectedCategoryCounts?.service || 0}
                         </p>

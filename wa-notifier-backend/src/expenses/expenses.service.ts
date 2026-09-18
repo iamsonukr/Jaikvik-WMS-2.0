@@ -171,11 +171,14 @@ export class ExpensesService {
     const expectedByTenant = new Map(
       expectedRows.map((row) => {
         const categoryCounts = this.normalizeCategoryCounts(row.categories || {});
-        const expectedMetaCost = this.expectedCostForCategories(categoryCounts, metaPricing.rates);
+        const expectedCost = this.expectedCostBreakdown(categoryCounts, metaPricing.rates);
         return [
           String(row.tenantId),
           {
-            expectedMetaCost,
+            expectedMetaCost: expectedCost.total,
+            expectedMetaSubtotal: expectedCost.subtotal,
+            expectedMetaTax: expectedCost.tax,
+            expectedMetaTaxPercent: expectedCost.taxPercent,
             expectedBillableMessages: Object.values(categoryCounts).reduce((sum: number, count: any) => sum + Number(count || 0), 0),
             expectedCategoryCounts: categoryCounts,
           },
@@ -189,6 +192,9 @@ export class ExpensesService {
       const expense = expenseByTenant.get(tenantId) || { metaCharged: 0, snapshotCount: 0, latestSyncedAt: null };
       const expected = expectedByTenant.get(tenantId) || {
         expectedMetaCost: 0,
+        expectedMetaSubtotal: 0,
+        expectedMetaTax: 0,
+        expectedMetaTaxPercent: this.metaExpenseTaxPercent(),
         expectedBillableMessages: 0,
         expectedCategoryCounts: this.normalizeCategoryCounts({}),
       };
@@ -224,6 +230,9 @@ export class ExpensesService {
         metaCharged,
         hasMetaCost,
         expectedMetaCost: expected.expectedMetaCost,
+        expectedMetaSubtotal: expected.expectedMetaSubtotal,
+        expectedMetaTax: expected.expectedMetaTax,
+        expectedMetaTaxPercent: expected.expectedMetaTaxPercent,
         expectedBillableMessages: expected.expectedBillableMessages,
         expectedCategoryCounts: expected.expectedCategoryCounts,
         margin,
@@ -240,6 +249,8 @@ export class ExpensesService {
       acc.refunds += row.refunds;
       acc.metaCharged += row.hasMetaCost ? row.metaCharged : 0;
       acc.expectedMetaCost += row.expectedMetaCost;
+      acc.expectedMetaSubtotal += row.expectedMetaSubtotal;
+      acc.expectedMetaTax += row.expectedMetaTax;
       acc.billableEntries += row.billableEntries;
       acc.expectedBillableMessages += row.expectedBillableMessages;
       acc.connectedWabas += row.accounts.length;
@@ -251,6 +262,8 @@ export class ExpensesService {
       refunds: 0,
       metaCharged: 0,
       expectedMetaCost: 0,
+      expectedMetaSubtotal: 0,
+      expectedMetaTax: 0,
       billableEntries: 0,
       expectedBillableMessages: 0,
       connectedWabas: 0,
@@ -268,6 +281,9 @@ export class ExpensesService {
         refunds: Number(totals.refunds.toFixed(4)),
         metaCharged: Number(totals.metaCharged.toFixed(4)),
         expectedMetaCost: Number(totals.expectedMetaCost.toFixed(4)),
+        expectedMetaSubtotal: Number(totals.expectedMetaSubtotal.toFixed(4)),
+        expectedMetaTax: Number(totals.expectedMetaTax.toFixed(4)),
+        expectedMetaTaxPercent: this.metaExpenseTaxPercent(),
         knownMargin: Number((totals.clientRevenue - totals.metaCharged).toFixed(4)),
         expectedMargin: Number((totals.clientRevenue - totals.expectedMetaCost).toFixed(4)),
       },
@@ -360,7 +376,7 @@ export class ExpensesService {
     const broadcastIdStrings = broadcastIds.map(String);
     const [logRows, transactionRows] = broadcastIds.length ? await Promise.all([
       this.broadcastLogModel.aggregate([
-        { $match: { broadcastId: { $in: broadcastIds }, status: { $in: ['sent', 'delivered', 'read'] }, ...dateMatch } },
+        { $match: { broadcastId: { $in: broadcastIds }, status: { $in: ['delivered', 'read'] }, ...dateMatch } },
         { $group: {
           _id: { broadcastId: '$broadcastId', category: '$messageCategory' },
           count: { $sum: 1 },
@@ -409,7 +425,7 @@ export class ExpensesService {
       const debits = Number(transaction?.debits || 0);
       const refunds = Number(transaction?.refunds || 0);
       const clientSpend = transaction ? debits - refunds : calculatedClientSpend;
-      const expectedMetaCost = this.expectedCostForCategories(categoryCounts, metaPricing.rates);
+      const expectedCost = this.expectedCostBreakdown(categoryCounts, metaPricing.rates);
       const account: any = accountById.get(String(broadcast.whatsappAccountId));
       return {
         id,
@@ -434,8 +450,11 @@ export class ExpensesService {
         walletDebits: Number(debits.toFixed(4)),
         refunds: Number(refunds.toFixed(4)),
         clientSpend: Number(clientSpend.toFixed(4)),
-        expectedMetaCost,
-        expectedMargin: Number((clientSpend - expectedMetaCost).toFixed(4)),
+        expectedMetaSubtotal: expectedCost.subtotal,
+        expectedMetaTax: expectedCost.tax,
+        expectedMetaTaxPercent: expectedCost.taxPercent,
+        expectedMetaCost: expectedCost.total,
+        expectedMargin: Number((clientSpend - expectedCost.total).toFixed(4)),
         transactionCount: Number(transaction?.transactionCount || 0),
         latestTransactionAt: transaction?.latestTransactionAt || null,
         createdAt: broadcast.createdAt,
@@ -475,9 +494,11 @@ export class ExpensesService {
       acc.refunds += row.refunds;
       acc.reservedAmount += row.reservedAmount;
       acc.expectedMetaCost += row.expectedMetaCost;
+      acc.expectedMetaSubtotal += row.expectedMetaSubtotal;
+      acc.expectedMetaTax += row.expectedMetaTax;
       acc.billableMessages += row.billableMessages;
       return acc;
-    }, { clientSpend: 0, walletDebits: 0, refunds: 0, reservedAmount: 0, expectedMetaCost: 0, billableMessages: 0 });
+    }, { clientSpend: 0, walletDebits: 0, refunds: 0, reservedAmount: 0, expectedMetaCost: 0, expectedMetaSubtotal: 0, expectedMetaTax: 0, billableMessages: 0 });
 
     return {
       period, start: window.start, end: window.end,
@@ -488,6 +509,9 @@ export class ExpensesService {
         clientSpend: Number(totals.clientSpend.toFixed(4)), walletDebits: Number(totals.walletDebits.toFixed(4)),
         refunds: Number(totals.refunds.toFixed(4)), reservedAmount: Number(totals.reservedAmount.toFixed(4)),
         expectedMetaCost: Number(totals.expectedMetaCost.toFixed(4)),
+        expectedMetaSubtotal: Number(totals.expectedMetaSubtotal.toFixed(4)),
+        expectedMetaTax: Number(totals.expectedMetaTax.toFixed(4)),
+        expectedMetaTaxPercent: this.metaExpenseTaxPercent(),
         expectedMargin: Number((totals.clientSpend - totals.expectedMetaCost).toFixed(4)),
         actualMetaCharged: Number(accountRows.reduce((sum, account) => sum + account.metaCharged, 0).toFixed(4)),
         broadcastCount: broadcastRows.length,
@@ -500,12 +524,13 @@ export class ExpensesService {
     const broadcastMatch = {
       ...dateMatch,
       tenantId: { $exists: true, $ne: null },
-      status: { $in: ['sent', 'delivered', 'read'] },
+      status: { $in: ['delivered', 'read'] },
     };
     const directMessageMatch = {
       ...dateMatch,
       tenantId: { $exists: true, $ne: null },
       direction: 'outbound',
+      deliveryStatus: { $in: ['delivered', 'read'] },
       messageCategory: { $exists: true, $ne: null },
     };
 
@@ -632,6 +657,18 @@ export class ExpensesService {
       return sum + this.expectedCostForCategory(count, rates[category]);
     }, 0);
     return Number(total.toFixed(4));
+  }
+
+  private metaExpenseTaxPercent() {
+    const configured = Number(this.cfg.get<string>('META_EXPENSE_TAX_PERCENT', '18'));
+    return Number.isFinite(configured) && configured >= 0 ? configured : 18;
+  }
+
+  private expectedCostBreakdown(categoryCounts: Record<PricingCategory, number>, rates: Record<PricingCategory, any>) {
+    const subtotal = this.expectedCostForCategories(categoryCounts, rates);
+    const taxPercent = this.metaExpenseTaxPercent();
+    const tax = Number((subtotal * taxPercent / 100).toFixed(4));
+    return { subtotal, tax, taxPercent, total: Number((subtotal + tax).toFixed(4)) };
   }
 
   private expectedCostForCategory(count: number, rate: { quote: number; tierList: Array<{ minVolume: number; maxVolume: number; quote: number }> }) {
