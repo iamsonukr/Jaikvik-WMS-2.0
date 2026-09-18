@@ -245,7 +245,7 @@ export default function AdminExpensesPage() {
         subtitle="Reconcile client message revenue against Meta charges per WhatsApp Business Account."
         action={(
           <>
-            <Button onClick={syncMetaExpenses} disabled={syncing}>
+            <Button onClick={syncMetaExpenses} disabled={syncing || period === 'all'} title={period === 'all' ? 'Choose this month or this year to sync Meta costs' : undefined}>
               <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
               {syncing ? 'Syncing...' : 'Sync Meta'}
             </Button>
@@ -324,12 +324,15 @@ export default function AdminExpensesPage() {
               <>
                 <div className="grid border-b border-border sm:grid-cols-2 xl:grid-cols-6">
                   {[
-                    ['Net client spend', fmtMoney(clientDetail.totals.clientSpend)],
+                    ['Client total charged', fmtMoney(clientDetail.totals.clientSpend)],
+                    ['Client subtotal', fmtMoney(clientDetail.totals.clientSubtotal)],
+                    ['Total client GST', fmtMoney(clientDetail.totals.clientTax)],
                     ['Wallet debits', fmtMoney(clientDetail.totals.walletDebits)],
                     ['Refunds', fmtMoney(clientDetail.totals.refunds)],
                     ['Actual Meta charge', fmtMoney(clientDetail.totals.actualMetaCharged)],
+                    [`Expected Meta GST (${clientDetail.totals.expectedMetaTaxPercent}%)`, fmtMoney(clientDetail.totals.expectedMetaTax)],
                     ['Expected Meta cost', fmtMoney(clientDetail.totals.expectedMetaCost)],
-                    ['Expected margin', fmtMoney(clientDetail.totals.expectedMargin)],
+                    ['Pre-GST margin', fmtMoney(clientDetail.totals.expectedMargin)],
                     ['Billable messages', Number(clientDetail.totals.billableMessages || 0).toLocaleString('en-IN')],
                   ].map(([label, value]) => (
                     <div key={label} className="border-b border-border px-4 py-3 last:border-b-0 sm:border-r xl:border-b-0">
@@ -375,7 +378,7 @@ export default function AdminExpensesPage() {
                         <th className="px-4 py-3 text-right font-semibold">Client spend</th>
                         <th className="px-4 py-3 text-right font-semibold">Debit / refund</th>
                         <th className="px-4 py-3 text-right font-semibold">Expected Meta</th>
-                        <th className="px-4 py-3 text-right font-semibold">Margin</th>
+                        <th className="px-4 py-3 text-right font-semibold">Pre-GST margin</th>
                         <th className="px-4 py-3 text-right font-semibold">Unit price / tax</th>
                       </tr>
                     </thead>
@@ -390,11 +393,47 @@ export default function AdminExpensesPage() {
                           <td className="px-4 py-3"><p>{broadcast.accountName}</p><p className="font-mono text-xs text-muted-foreground">{broadcast.wabaId}</p></td>
                           <td className="px-4 py-3"><Badge label={broadcast.status || 'unknown'} color={broadcast.status === 'done' ? 'green' : broadcast.status === 'failed' ? 'red' : 'blue'} /></td>
                           <td className="px-4 py-3 text-right"><p className="font-medium">{broadcast.billableMessages.toLocaleString('en-IN')} billed</p><p className="text-xs text-muted-foreground">{broadcast.deliveredCount} delivered | {broadcast.readCount} read | {broadcast.failedCount} failed</p></td>
-                          <td className="px-4 py-3 text-right font-semibold">{fmtMoney(broadcast.clientSpend)}</td>
+                          <td className="px-4 py-3 text-right"><p className="font-semibold">{fmtMoney(broadcast.clientSpend)}</p><p className="text-xs text-muted-foreground">{fmtMoney(broadcast.clientSubtotal)} + {fmtMoney(broadcast.clientTax)} GST</p></td>
                           <td className="px-4 py-3 text-right"><p>{fmtMoney(broadcast.walletDebits)}</p><p className="text-xs text-muted-foreground">Refund {fmtMoney(broadcast.refunds)} | Reserved {fmtMoney(broadcast.reservedAmount)}</p></td>
                           <td className="px-4 py-3 text-right"><p>{fmtMoney(broadcast.expectedMetaCost)}</p><p className="text-xs text-muted-foreground">{fmtMoney(broadcast.expectedMetaSubtotal)} + {fmtMoney(broadcast.expectedMetaTax)} GST</p></td>
                           <td className={`px-4 py-3 text-right font-semibold ${broadcast.expectedMargin < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>{fmtMoney(broadcast.expectedMargin)}</td>
                           <td className="px-4 py-3 text-right"><p>{fmtRate(broadcast.appliedUnitPrice)}</p><p className="text-xs text-muted-foreground">{broadcast.taxPercent}% tax | {broadcast.messageCategory}</p></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="border-t border-border px-4 py-3">
+                  <h2 className="text-sm font-semibold">Individual message spending</h2>
+                  <p className="text-xs text-muted-foreground">Templates and service messages sent directly to one recipient, outside a broadcast.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Recipient</th>
+                        <th className="px-4 py-3 font-semibold">Template / message</th>
+                        <th className="px-4 py-3 font-semibold">Account</th>
+                        <th className="px-4 py-3 font-semibold">Delivery</th>
+                        <th className="px-4 py-3 text-right font-semibold">Client charge</th>
+                        <th className="px-4 py-3 text-right font-semibold">Expected Meta</th>
+                        <th className="px-4 py-3 text-right font-semibold">Pre-GST margin</th>
+                        <th className="px-4 py-3 text-right font-semibold">Unit price / tax</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {!clientDetail.individualMessages?.length && <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No individual outbound messages found for this account and period.</td></tr>}
+                      {clientDetail.individualMessages?.map((message) => (
+                        <tr key={message.id} className="table-row-hover">
+                          <td className="px-4 py-3"><p className="font-medium">{message.contactName || message.phone}</p><p className="text-xs text-muted-foreground">{message.phone}</p></td>
+                          <td className="px-4 py-3"><p className="font-medium">{message.templateName || message.type}</p><p className="max-w-64 truncate text-xs text-muted-foreground">{message.messageCategory}{message.languageCode ? ` | ${message.languageCode}` : ''}</p></td>
+                          <td className="px-4 py-3"><p>{message.accountName}</p><p className="font-mono text-xs text-muted-foreground">{message.wabaId}</p></td>
+                          <td className="px-4 py-3"><Badge label={message.deliveryStatus} color={message.isMetaBillable ? 'green' : message.deliveryStatus === 'failed' ? 'red' : 'yellow'} /><p className="mt-1 text-xs text-muted-foreground">{fmtDate(message.sentAt)}</p></td>
+                          <td className="px-4 py-3 text-right"><p className="font-semibold">{fmtMoney(message.clientSpend)}</p><p className="text-xs text-muted-foreground">{fmtMoney(message.clientSubtotal)} + {fmtMoney(message.clientTax)} GST</p></td>
+                          <td className="px-4 py-3 text-right"><p>{fmtMoney(message.expectedMetaCost)}</p><p className="text-xs text-muted-foreground">{message.isMetaBillable ? `${fmtMoney(message.expectedMetaSubtotal)} + ${fmtMoney(message.expectedMetaTax)} GST` : 'Not delivered'}</p></td>
+                          <td className={`px-4 py-3 text-right font-semibold ${message.expectedMargin < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>{fmtMoney(message.expectedMargin)}</td>
+                          <td className="px-4 py-3 text-right"><p>{fmtRate(message.appliedUnitPrice)}</p><p className="text-xs text-muted-foreground">{message.taxPercent}% tax</p></td>
                         </tr>
                       ))}
                     </tbody>

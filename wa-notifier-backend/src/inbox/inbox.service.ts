@@ -278,6 +278,31 @@ export class InboxService {
         update.errorCode = error.code == null ? undefined : String(error.code);
         update.errorMessage = error.error_data?.details || error.message || error.title;
       }
+      if (['delivered', 'read'].includes(message.deliveryStatus)) return;
+      const previousStatus = message.deliveryStatus;
+      const claimed = await this.model.findOneAndUpdate(
+        { _id: message._id, deliveryStatus: previousStatus },
+        { ...update, deliveryStatus: 'refund_pending' },
+        { new: true },
+      );
+      if (!claimed) return;
+      try {
+        const charge = Number(message.chargedAmount || 0);
+        if (charge > 0 && message.tenantId) {
+          await this.wallet.refundOnce(message.tenantId, charge, `message-failed:${String(message._id)}`, {
+            description: `Refund for failed ${message.type || 'message'} to ${message.phone}`,
+            messageId: String(message._id),
+            messageCategory: message.messageCategory,
+            appliedUnitPrice: message.appliedUnitPrice,
+            tax: message.appliedTaxPercent,
+          });
+        }
+        await this.model.findByIdAndUpdate(message._id, { ...update, deliveryStatus: 'failed' });
+      } catch (err) {
+        await this.model.findByIdAndUpdate(message._id, { deliveryStatus: previousStatus });
+        throw err;
+      }
+      return;
     }
 
     await this.model.findByIdAndUpdate(message._id, update);

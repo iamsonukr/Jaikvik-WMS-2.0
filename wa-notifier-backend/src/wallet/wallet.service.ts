@@ -194,6 +194,17 @@ export class WalletService {
     return this.applyLedgerEntry({ tenantId, type: WalletTransactionType.REFUND, amount, ...meta });
   }
 
+  async refundOnce(tenantId: ObjectIdInput, amount: number, referenceId: string, meta: Partial<LedgerEntryInput> = {}) {
+    const tenantObjectId = toObjectId(tenantId, 'tenantId');
+    const existing = await this.txnModel.findOne({
+      tenantId: tenantObjectId,
+      type: WalletTransactionType.REFUND,
+      referenceId,
+    });
+    if (existing) return existing;
+    return this.applyLedgerEntry({ tenantId: tenantObjectId, type: WalletTransactionType.REFUND, amount, ...meta, referenceId });
+  }
+
   async reverseTransaction(
     tenantId: string,
     transactionId: string,

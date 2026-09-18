@@ -36,11 +36,27 @@ export class BroadcastsService {
   findAll(whatsappAccountId: string) {
     return this.broadcastModel.aggregate([
       { $match: this.whatsappAccountIdQuery(whatsappAccountId) },
+      { $lookup: { from: this.logModel.collection.name, localField: '_id', foreignField: 'broadcastId', as: '_statusRows' } },
+      {
+        $set: {
+          totalCount: { $size: '$_statusRows' },
+          sentCount: { $size: { $filter: { input: '$_statusRows', as: 'row', cond: { $in: ['$$row.status', ['sent', 'delivered', 'read']] } } } },
+          deliveredCount: { $size: { $filter: { input: '$_statusRows', as: 'row', cond: { $in: ['$$row.status', ['delivered', 'read']] } } } },
+          readCount: { $size: { $filter: { input: '$_statusRows', as: 'row', cond: { $eq: ['$$row.status', 'read'] } } } },
+          failedCount: { $size: { $filter: { input: '$_statusRows', as: 'row', cond: { $eq: ['$$row.status', 'failed'] } } } },
+          canceledCount: { $size: { $filter: { input: '$_statusRows', as: 'row', cond: { $eq: ['$$row.status', 'canceled'] } } } },
+        },
+      },
+      { $project: { _statusRows: 0 } },
       { $sort: { createdAt: -1 } },
     ]);
   }
 
-  findOne(id: string) { return this.broadcastModel.findById(id); }
+  async findOne(id: string) {
+    const broadcast = await this.broadcastModel.findById(id);
+    if (!broadcast) return null;
+    return this.recountAndUpdate(broadcast._id);
+  }
 
   async create(dto: Omit<Partial<Broadcast>, 'whatsappAccountId' | 'scheduledAt' | 'targetSegmentIds'> & { whatsappAccountId?: string; clientId?: string; scheduledAt?: string | Date; targetSegmentIds?: string[] }) {
     // Stamp tenantId at creation time (not just at send time) so the field
@@ -562,13 +578,16 @@ export class BroadcastsService {
 
   /** Called by webhook when Meta sends status update. */
   async handleStatusUpdate(waMessageId: string, status: string, errors: any[] = []) {
+    status = String(status || '').trim().toLowerCase();
+    if (!['sent', 'delivered', 'read', 'failed'].includes(status)) return;
     const log = await this.logModel.findOne({ waMessageId });
     if (!log) return;
     if (log.status === status) return; // duplicate webhook delivery — already processed
 
     // Status order: sent < delivered < read. Ignore out-of-order/duplicate retries.
     const rank: Record<string, number> = { queued: 0, sent: 1, delivered: 2, read: 3, failed: 1 };
-    if ((rank[status] ?? 0) <= (rank[log.status] ?? 0) && status !== 'failed') return;
+    if (status === 'failed' && ['delivered', 'read'].includes(log.status)) return;
+    if (status !== 'failed' && (rank[status] ?? 0) <= (rank[log.status] ?? 0)) return;
 
     const update: any = { status };
     if (status === 'failed') {
@@ -580,13 +599,40 @@ export class BroadcastsService {
         update.errorMessage = error.error_data?.details || error.message || error.title;
         update.errorDetails = { errors };
       }
+      const previousStatus = log.status;
+      const claimed = await this.logModel.findOneAndUpdate(
+        { _id: log._id, status: previousStatus },
+        { ...update, status: 'refund_pending' },
+        { new: true },
+      );
+      if (!claimed) return;
+      try {
+        const broadcast = await this.broadcastModel.findById(log.broadcastId);
+        if (broadcast) {
+          const unitPrice = Number(log.appliedUnitPrice || broadcast.appliedUnitPrice || 0);
+          const taxPercent = Number(log.appliedTaxPercent || broadcast.appliedTaxPercent || 0);
+          const amount = Number((unitPrice * (1 + taxPercent / 100)).toFixed(4));
+          if (amount > 0) {
+            await this.wallet.refundOnce(broadcast.tenantId, amount, `broadcast-failed:${String(log._id)}`, {
+              description: `Refund for failed message in campaign "${broadcast.name}"`,
+              campaignId: String(broadcast._id),
+              messageCategory: log.messageCategory || broadcast.messageCategory,
+              appliedUnitPrice: unitPrice,
+              tax: taxPercent,
+            });
+          }
+        }
+        await this.logModel.findByIdAndUpdate(log._id, { ...update, status: 'failed' });
+      } catch (err) {
+        await this.logModel.findByIdAndUpdate(log._id, { status: previousStatus });
+        throw err;
+      }
+      await this.recountAndUpdate(log.broadcastId);
+      return;
     }
 
     await this.logModel.findByIdAndUpdate(log._id, update);
 
-    const field = status === 'delivered' ? 'deliveredCount' : status === 'read' ? 'readCount' : null;
-    if (field) {
-      await this.broadcastModel.findByIdAndUpdate(log.broadcastId, { $inc: { [field]: 1 } });
-    }
+    await this.recountAndUpdate(log.broadcastId);
   }
 }

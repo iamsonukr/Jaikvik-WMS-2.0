@@ -63,7 +63,13 @@ export class ExpensesService {
   async adminSummary(period: Period = 'month') {
     const window = this.periodWindow(period);
     const dateMatch = window.start ? { createdAt: { $gte: window.start, $lte: window.end } } : {};
-    const expenseDateMatch = window.start ? { periodStart: { $lte: window.end }, periodEnd: { $gte: window.start } } : {};
+    const expenseDateMatch = this.expenseSnapshotMatch(period, window.start);
+    const expenseSnapshotPipeline: any[] = [
+      { $match: expenseDateMatch },
+      { $sort: { syncedAt: -1, updatedAt: -1 } },
+      { $group: { _id: { wabaId: '$wabaId', periodStart: '$periodStart' }, snapshot: { $first: '$$ROOT' } } },
+      { $replaceRoot: { newRoot: '$snapshot' } },
+    ];
     const metaPricing = await this.currentMetaPricing();
 
     const [tenants, accounts, revenueRows, expenseRows, expenseSnapshots, expectedRows] = await Promise.all([
@@ -112,7 +118,7 @@ export class ExpensesService {
         },
       ]),
       this.expenseModel.aggregate([
-        { $match: expenseDateMatch },
+        ...expenseSnapshotPipeline,
         {
           $group: {
             _id: '$tenantId',
@@ -122,7 +128,10 @@ export class ExpensesService {
           },
         },
       ]),
-      this.expenseModel.find(expenseDateMatch).select('tenantId whatsappAccountId wabaId metaChargedAmount currency source metaInvoiceId notes syncedAt updatedAt').lean(),
+      this.expenseModel.aggregate([
+        ...expenseSnapshotPipeline,
+        { $project: { tenantId: 1, whatsappAccountId: 1, wabaId: 1, metaChargedAmount: 1, currency: 1, source: 1, metaInvoiceId: 1, notes: 1, syncedAt: 1, updatedAt: 1, periodStart: 1, periodEnd: 1, period: 1 } },
+      ]),
       this.expectedUsageByTenant(dateMatch),
     ]);
 
@@ -312,7 +321,7 @@ export class ExpensesService {
 
     const window = this.periodWindow(period);
     await this.expenseModel.findOneAndUpdate(
-      { wabaId: account.wabaId, periodStart: window.start, periodEnd: window.end },
+      { wabaId: account.wabaId, period, periodStart: window.start },
       {
         $set: {
           tenantId: account.tenantId,
@@ -320,6 +329,7 @@ export class ExpensesService {
           wabaId: account.wabaId,
           periodStart: window.start,
           periodEnd: window.end,
+          period,
           metaChargedAmount: Number(amount.toFixed(4)),
           currency: dto?.currency || 'INR',
           source: MetaExpenseSource.MANUAL,
@@ -352,13 +362,13 @@ export class ExpensesService {
 
     const window = this.periodWindow(period);
     const dateMatch = window.start ? { createdAt: { $gte: window.start, $lte: window.end } } : {};
-    const expenseDateMatch = window.start ? { periodStart: { $lte: window.end }, periodEnd: { $gte: window.start } } : {};
+    const expenseDateMatch = this.expenseSnapshotMatch(period, window.start);
     const selectedAccountIds = selectedAccounts.map((account: any) => account._id);
     const selectedWabaIds = selectedAccounts.map((account: any) => account.wabaId).filter(Boolean);
     const accountById = new Map(selectedAccounts.map((account: any) => [String(account._id), account]));
     const metaPricing = await this.currentMetaPricing();
 
-    const [broadcasts, expenseSnapshots] = await Promise.all([
+    const [broadcasts, expenseSnapshots, individualMessages] = await Promise.all([
       selectedAccountIds.length
         ? this.broadcastModel.find({
           tenantId: normalizedTenantId,
@@ -367,8 +377,21 @@ export class ExpensesService {
         }).select('name templateName status whatsappAccountId totalCount sentCount deliveredCount readCount failedCount canceledCount messageCategory appliedUnitPrice appliedTaxPercent reservedAmount createdAt startedAt completedAt').sort({ createdAt: -1 }).lean()
         : [],
       selectedWabaIds.length
-        ? this.expenseModel.find({ wabaId: { $in: selectedWabaIds }, ...expenseDateMatch })
-          .select('whatsappAccountId wabaId metaChargedAmount currency source metaInvoiceId notes syncedAt updatedAt periodStart periodEnd').lean()
+        ? this.expenseModel.aggregate([
+          { $match: { wabaId: { $in: selectedWabaIds }, ...expenseDateMatch } },
+          { $sort: { syncedAt: -1, updatedAt: -1 } },
+          { $group: { _id: { wabaId: '$wabaId', periodStart: '$periodStart' }, snapshot: { $first: '$$ROOT' } } },
+          { $replaceRoot: { newRoot: '$snapshot' } },
+          { $project: { whatsappAccountId: 1, wabaId: 1, metaChargedAmount: 1, currency: 1, source: 1, metaInvoiceId: 1, notes: 1, syncedAt: 1, updatedAt: 1, periodStart: 1, periodEnd: 1, period: 1 } },
+        ])
+        : [],
+      selectedAccountIds.length
+        ? this.messageModel.find({
+          tenantId: normalizedTenantId,
+          whatsappAccountId: { $in: selectedAccountIds },
+          direction: 'outbound',
+          ...dateMatch,
+        }).select('whatsappAccountId phone contactName type text media waMessageId deliveryStatus messageCategory appliedUnitPrice appliedTaxPercent chargedAmount walletTransactionId sentAt deliveredAt readAt failedAt createdAt').sort({ createdAt: -1 }).lean()
         : [],
     ]);
 
@@ -425,6 +448,9 @@ export class ExpensesService {
       const debits = Number(transaction?.debits || 0);
       const refunds = Number(transaction?.refunds || 0);
       const clientSpend = transaction ? debits - refunds : calculatedClientSpend;
+      const clientTaxPercent = Number(broadcast.appliedTaxPercent || 0);
+      const clientSubtotal = clientTaxPercent > 0 ? clientSpend / (1 + clientTaxPercent / 100) : clientSpend;
+      const clientTax = clientSpend - clientSubtotal;
       const expectedCost = this.expectedCostBreakdown(categoryCounts, metaPricing.rates);
       const account: any = accountById.get(String(broadcast.whatsappAccountId));
       return {
@@ -450,11 +476,13 @@ export class ExpensesService {
         walletDebits: Number(debits.toFixed(4)),
         refunds: Number(refunds.toFixed(4)),
         clientSpend: Number(clientSpend.toFixed(4)),
+        clientSubtotal: Number(clientSubtotal.toFixed(4)),
+        clientTax: Number(clientTax.toFixed(4)),
         expectedMetaSubtotal: expectedCost.subtotal,
         expectedMetaTax: expectedCost.tax,
         expectedMetaTaxPercent: expectedCost.taxPercent,
         expectedMetaCost: expectedCost.total,
-        expectedMargin: Number((clientSpend - expectedCost.total).toFixed(4)),
+        expectedMargin: Number((clientSubtotal - expectedCost.subtotal).toFixed(4)),
         transactionCount: Number(transaction?.transactionCount || 0),
         latestTransactionAt: transaction?.latestTransactionAt || null,
         createdAt: broadcast.createdAt,
@@ -488,8 +516,53 @@ export class ExpensesService {
         })),
       };
     });
+
+    const individualRows = individualMessages.map((message: any) => {
+      const category = this.normalizePricingCategory(message.messageCategory);
+      const isMetaBillable = ['delivered', 'read'].includes(String(message.deliveryStatus || '').toLowerCase());
+      const categoryCounts = this.normalizeCategoryCounts(isMetaBillable ? { [category]: 1 } : {});
+      const expectedCost = this.expectedCostBreakdown(categoryCounts, metaPricing.rates);
+      const account: any = accountById.get(String(message.whatsappAccountId));
+      const clientSpend = Number(message.chargedAmount || 0);
+      const clientTaxPercent = Number(message.appliedTaxPercent || 0);
+      const clientSubtotal = clientTaxPercent > 0 ? clientSpend / (1 + clientTaxPercent / 100) : clientSpend;
+      const clientTax = clientSpend - clientSubtotal;
+      return {
+        id: String(message._id),
+        accountId: String(message.whatsappAccountId),
+        accountName: account?.name || 'Unknown account',
+        wabaId: account?.wabaId || '',
+        phone: message.phone,
+        contactName: message.contactName || '',
+        type: message.type,
+        templateName: message.media?.templateName || '',
+        languageCode: message.media?.languageCode || '',
+        text: message.text || '',
+        waMessageId: message.waMessageId || '',
+        deliveryStatus: message.deliveryStatus || 'pending',
+        messageCategory: category,
+        appliedUnitPrice: Number(message.appliedUnitPrice || 0),
+        taxPercent: Number(message.appliedTaxPercent || 0),
+        clientSpend: Number(clientSpend.toFixed(4)),
+        clientSubtotal: Number(clientSubtotal.toFixed(4)),
+        clientTax: Number(clientTax.toFixed(4)),
+        expectedMetaSubtotal: expectedCost.subtotal,
+        expectedMetaTax: expectedCost.tax,
+        expectedMetaTaxPercent: expectedCost.taxPercent,
+        expectedMetaCost: expectedCost.total,
+        expectedMargin: Number((clientSubtotal - expectedCost.subtotal).toFixed(4)),
+        isMetaBillable,
+        sentAt: message.sentAt || message.createdAt,
+        deliveredAt: message.deliveredAt || null,
+        readAt: message.readAt || null,
+        failedAt: message.failedAt || null,
+      };
+    });
+
     const totals = broadcastRows.reduce((acc, row) => {
       acc.clientSpend += row.clientSpend;
+      acc.clientSubtotal += row.clientSubtotal;
+      acc.clientTax += row.clientTax;
       acc.walletDebits += row.walletDebits;
       acc.refunds += row.refunds;
       acc.reservedAmount += row.reservedAmount;
@@ -498,7 +571,17 @@ export class ExpensesService {
       acc.expectedMetaTax += row.expectedMetaTax;
       acc.billableMessages += row.billableMessages;
       return acc;
-    }, { clientSpend: 0, walletDebits: 0, refunds: 0, reservedAmount: 0, expectedMetaCost: 0, expectedMetaSubtotal: 0, expectedMetaTax: 0, billableMessages: 0 });
+    }, { clientSpend: 0, clientSubtotal: 0, clientTax: 0, walletDebits: 0, refunds: 0, reservedAmount: 0, expectedMetaCost: 0, expectedMetaSubtotal: 0, expectedMetaTax: 0, billableMessages: 0 });
+    individualRows.forEach((row) => {
+      totals.clientSpend += row.clientSpend;
+      totals.clientSubtotal += row.clientSubtotal;
+      totals.clientTax += row.clientTax;
+      totals.walletDebits += row.clientSpend;
+      totals.expectedMetaCost += row.expectedMetaCost;
+      totals.expectedMetaSubtotal += row.expectedMetaSubtotal;
+      totals.expectedMetaTax += row.expectedMetaTax;
+      if (row.isMetaBillable) totals.billableMessages += 1;
+    });
 
     return {
       period, start: window.start, end: window.end,
@@ -507,16 +590,19 @@ export class ExpensesService {
       totals: {
         ...totals,
         clientSpend: Number(totals.clientSpend.toFixed(4)), walletDebits: Number(totals.walletDebits.toFixed(4)),
+        clientSubtotal: Number(totals.clientSubtotal.toFixed(4)), clientTax: Number(totals.clientTax.toFixed(4)),
         refunds: Number(totals.refunds.toFixed(4)), reservedAmount: Number(totals.reservedAmount.toFixed(4)),
         expectedMetaCost: Number(totals.expectedMetaCost.toFixed(4)),
         expectedMetaSubtotal: Number(totals.expectedMetaSubtotal.toFixed(4)),
         expectedMetaTax: Number(totals.expectedMetaTax.toFixed(4)),
         expectedMetaTaxPercent: this.metaExpenseTaxPercent(),
-        expectedMargin: Number((totals.clientSpend - totals.expectedMetaCost).toFixed(4)),
+        expectedMargin: Number((totals.clientSubtotal - totals.expectedMetaSubtotal).toFixed(4)),
         actualMetaCharged: Number(accountRows.reduce((sum, account) => sum + account.metaCharged, 0).toFixed(4)),
         broadcastCount: broadcastRows.length,
+        individualMessageCount: individualRows.length,
       },
       broadcasts: broadcastRows,
+      individualMessages: individualRows,
     };
   }
 
@@ -688,6 +774,9 @@ export class ExpensesService {
   }
 
   async syncMetaPricing(period: Period = 'month') {
+    if (period === 'all') {
+      throw new BadRequestException('Meta cost sync requires a specific month or year. All-time totals are built from monthly snapshots.');
+    }
     const window = this.periodWindow(period);
     const start = window.start || new Date(new Date().getFullYear(), 0, 1);
     const end = window.end;
@@ -738,7 +827,7 @@ export class ExpensesService {
         const currency = this.extractCurrency(response) || this.cfg.get<string>('META_WABA_CURRENCY', 'INR');
 
         await this.expenseModel.findOneAndUpdate(
-          { wabaId: account.wabaId, periodStart: start, periodEnd: end },
+          { wabaId: account.wabaId, period, periodStart: start },
           {
             $set: {
               tenantId: account.tenantId,
@@ -746,6 +835,7 @@ export class ExpensesService {
               wabaId: account.wabaId,
               periodStart: start,
               periodEnd: end,
+              period,
               metaChargedAmount,
               currency,
               source: MetaExpenseSource.META_API,
@@ -784,6 +874,16 @@ export class ExpensesService {
     if (period === 'year') return { start: new Date(now.getFullYear(), 0, 1), end };
     if (period === 'all') return { start: null, end };
     return { start: new Date(now.getFullYear(), now.getMonth(), 1), end };
+  }
+
+  private expenseSnapshotMatch(period: Period, periodStart: Date | null) {
+    if (period === 'all') {
+      return { $or: [{ period: 'month' }, { period: { $exists: false } }] };
+    }
+    return {
+      periodStart,
+      $or: [{ period }, { period: { $exists: false } }],
+    };
   }
 
   private sumMetaCost(value: any): number {

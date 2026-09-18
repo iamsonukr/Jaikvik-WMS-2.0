@@ -25,6 +25,9 @@ export class MetaExpenseSnapshot {
   @Prop({ required: true })
   periodEnd: Date;
 
+  @Prop({ enum: ['month', 'year'] })
+  period?: 'month' | 'year';
+
   @Prop({ required: true, default: 0 })
   metaChargedAmount: number;
 
@@ -50,4 +53,5 @@ export class MetaExpenseSnapshot {
 export const MetaExpenseSnapshotSchema = SchemaFactory.createForClass(MetaExpenseSnapshot);
 MetaExpenseSnapshotSchema.index({ tenantId: 1, periodStart: -1 });
 MetaExpenseSnapshotSchema.index({ wabaId: 1, periodStart: -1 });
+MetaExpenseSnapshotSchema.index({ wabaId: 1, period: 1, periodStart: 1 });
 MetaExpenseSnapshotSchema.index({ wabaId: 1, periodStart: 1, periodEnd: 1 }, { unique: true });
