@@ -13,6 +13,20 @@ export class ExpensesController {
     return this.svc.adminSummary(['month', 'year', 'all'].includes(String(period)) ? period : 'month');
   }
 
+  @Get('admin/client-detail')
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
+  adminClientDetail(
+    @Query('tenantId') tenantId: string,
+    @Query('accountId') accountId?: string,
+    @Query('period') period?: 'month' | 'year' | 'all',
+  ) {
+    return this.svc.adminClientDetail(
+      ['month', 'year', 'all'].includes(String(period)) ? period : 'month',
+      tenantId,
+      accountId,
+    );
+  }
+
   @Post('admin/sync')
   @Roles(UserRole.ADMIN, UserRole.MASTER)
   syncMetaPricing(@Query('period') period?: 'month' | 'year' | 'all') {

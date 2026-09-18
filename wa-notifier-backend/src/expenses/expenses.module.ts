@@ -7,7 +7,7 @@ import { MetaService } from '../common/meta.service';
 import { ExpensesController } from './expenses.controller';
 import { MetaExpenseSnapshot, MetaExpenseSnapshotSchema } from './meta-expense.schema';
 import { ExpensesService } from './expenses.service';
-import { BroadcastLog, BroadcastLogSchema } from '../broadcasts/broadcast.schema';
+import { Broadcast, BroadcastLog, BroadcastLogSchema, BroadcastSchema } from '../broadcasts/broadcast.schema';
 import { Message, MessageSchema } from '../inbox/message.schema';
 import { WhatsAppAccountsModule } from '../whatsapp-accounts/whatsapp-accounts.module';
 
@@ -18,6 +18,7 @@ import { WhatsAppAccountsModule } from '../whatsapp-accounts/whatsapp-accounts.m
       { name: WhatsAppAccount.name, schema: WhatsAppAccountSchema },
       { name: WalletTransaction.name, schema: WalletTransactionSchema },
       { name: MetaExpenseSnapshot.name, schema: MetaExpenseSnapshotSchema },
+      { name: Broadcast.name, schema: BroadcastSchema },
       { name: BroadcastLog.name, schema: BroadcastLogSchema },
       { name: Message.name, schema: MessageSchema },
     ]),

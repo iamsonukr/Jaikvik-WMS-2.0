@@ -9,7 +9,7 @@ import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { WhatsAppAccount, WhatsAppAccountDocument } from '../whatsapp-accounts/whatsapp-account.schema';
 import { WalletTransaction, WalletTransactionDocument, WalletTransactionType } from '../wallet/wallet-transaction.schema';
 import { MetaExpenseSnapshot, MetaExpenseSnapshotDocument, MetaExpenseSource } from './meta-expense.schema';
-import { BroadcastLog, BroadcastLogDocument } from '../broadcasts/broadcast.schema';
+import { Broadcast, BroadcastDocument, BroadcastLog, BroadcastLogDocument } from '../broadcasts/broadcast.schema';
 import { Message, MessageDocument } from '../inbox/message.schema';
 
 type Period = 'month' | 'year' | 'all';
@@ -52,6 +52,7 @@ export class ExpensesService {
     @InjectModel(WhatsAppAccount.name) private accountModel: Model<WhatsAppAccountDocument>,
     @InjectModel(WalletTransaction.name) private txnModel: Model<WalletTransactionDocument>,
     @InjectModel(MetaExpenseSnapshot.name) private expenseModel: Model<MetaExpenseSnapshotDocument>,
+    @InjectModel(Broadcast.name) private broadcastModel: Model<BroadcastDocument>,
     @InjectModel(BroadcastLog.name) private broadcastLogModel: Model<BroadcastLogDocument>,
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
     private cfg: ConfigService,
@@ -316,6 +317,183 @@ export class ExpensesService {
     );
 
     return { saved: true, summary: await this.adminSummary(period) };
+  }
+
+  async adminClientDetail(period: Period, tenantId: string, accountId?: string) {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) throw new BadRequestException('Client is required.');
+
+    const tenant = await this.tenantModel.findById(normalizedTenantId).select('name contactEmail status').lean();
+    if (!tenant) throw new NotFoundException('Client not found.');
+
+    const accounts = await this.accountModel
+      .find({ tenantId: normalizedTenantId, isRemoved: { $ne: true } })
+      .select('name wabaId phoneNumberId phone isActive')
+      .sort({ name: 1 })
+      .lean();
+    const selectedAccounts = accountId ? accounts.filter((account: any) => String(account._id) === accountId) : accounts;
+    if (accountId && !selectedAccounts.length) throw new NotFoundException('WhatsApp account not found for this client.');
+
+    const window = this.periodWindow(period);
+    const dateMatch = window.start ? { createdAt: { $gte: window.start, $lte: window.end } } : {};
+    const expenseDateMatch = window.start ? { periodStart: { $lte: window.end }, periodEnd: { $gte: window.start } } : {};
+    const selectedAccountIds = selectedAccounts.map((account: any) => account._id);
+    const selectedWabaIds = selectedAccounts.map((account: any) => account.wabaId).filter(Boolean);
+    const accountById = new Map(selectedAccounts.map((account: any) => [String(account._id), account]));
+    const metaPricing = await this.currentMetaPricing();
+
+    const [broadcasts, expenseSnapshots] = await Promise.all([
+      selectedAccountIds.length
+        ? this.broadcastModel.find({
+          tenantId: normalizedTenantId,
+          whatsappAccountId: { $in: selectedAccountIds },
+          ...dateMatch,
+        }).select('name templateName status whatsappAccountId totalCount sentCount deliveredCount readCount failedCount canceledCount messageCategory appliedUnitPrice appliedTaxPercent reservedAmount createdAt startedAt completedAt').sort({ createdAt: -1 }).lean()
+        : [],
+      selectedWabaIds.length
+        ? this.expenseModel.find({ wabaId: { $in: selectedWabaIds }, ...expenseDateMatch })
+          .select('whatsappAccountId wabaId metaChargedAmount currency source metaInvoiceId notes syncedAt updatedAt periodStart periodEnd').lean()
+        : [],
+    ]);
+
+    const broadcastIds = broadcasts.map((broadcast: any) => broadcast._id);
+    const broadcastIdStrings = broadcastIds.map(String);
+    const [logRows, transactionRows] = broadcastIds.length ? await Promise.all([
+      this.broadcastLogModel.aggregate([
+        { $match: { broadcastId: { $in: broadcastIds }, status: { $in: ['sent', 'delivered', 'read'] }, ...dateMatch } },
+        { $group: {
+          _id: { broadcastId: '$broadcastId', category: '$messageCategory' },
+          count: { $sum: 1 },
+          averageUnitPrice: { $avg: '$appliedUnitPrice' },
+          averageTaxPercent: { $avg: '$appliedTaxPercent' },
+        } },
+      ]),
+      this.txnModel.aggregate([
+        { $match: {
+          tenantId: (tenant as any)._id,
+          type: { $in: [WalletTransactionType.CAMPAIGN_RESERVATION, WalletTransactionType.MESSAGE_DEBIT, WalletTransactionType.REFUND] },
+          $or: [{ campaignId: { $in: broadcastIds } }, { referenceId: { $in: broadcastIdStrings } }],
+          ...dateMatch,
+        } },
+        { $group: {
+          _id: { $ifNull: ['$campaignId', '$referenceId'] },
+          debits: { $sum: { $cond: [{ $in: ['$type', [WalletTransactionType.CAMPAIGN_RESERVATION, WalletTransactionType.MESSAGE_DEBIT]] }, '$debitAmount', 0] } },
+          refunds: { $sum: { $cond: [{ $eq: ['$type', WalletTransactionType.REFUND] }, '$creditAmount', 0] } },
+          transactionCount: { $sum: 1 },
+          latestTransactionAt: { $max: '$createdAt' },
+        } },
+      ]),
+    ]) : [[], []];
+
+    const logsByBroadcast = new Map<string, any[]>();
+    logRows.forEach((row: any) => {
+      const id = String(row._id.broadcastId);
+      if (!logsByBroadcast.has(id)) logsByBroadcast.set(id, []);
+      logsByBroadcast.get(id).push(row);
+    });
+    const transactionsByBroadcast = new Map(transactionRows.map((row: any) => [String(row._id), row]));
+
+    const broadcastRows = broadcasts.map((broadcast: any) => {
+      const id = String(broadcast._id);
+      const logs = logsByBroadcast.get(id) || [];
+      const categoryCounts = this.normalizeCategoryCounts({});
+      let calculatedClientSpend = 0;
+      logs.forEach((row: any) => {
+        const category = this.normalizePricingCategory(row._id.category || broadcast.messageCategory);
+        const count = Number(row.count || 0);
+        categoryCounts[category] += count;
+        calculatedClientSpend += count * Number(row.averageUnitPrice || broadcast.appliedUnitPrice || 0)
+          * (1 + Number(row.averageTaxPercent || broadcast.appliedTaxPercent || 0) / 100);
+      });
+      const transaction = transactionsByBroadcast.get(id);
+      const debits = Number(transaction?.debits || 0);
+      const refunds = Number(transaction?.refunds || 0);
+      const clientSpend = transaction ? debits - refunds : calculatedClientSpend;
+      const expectedMetaCost = this.expectedCostForCategories(categoryCounts, metaPricing.rates);
+      const account: any = accountById.get(String(broadcast.whatsappAccountId));
+      return {
+        id,
+        name: broadcast.name,
+        templateName: broadcast.templateName,
+        status: broadcast.status,
+        accountId: String(broadcast.whatsappAccountId),
+        accountName: account?.name || 'Unknown account',
+        wabaId: account?.wabaId || '',
+        totalCount: Number(broadcast.totalCount || 0),
+        sentCount: Number(broadcast.sentCount || 0),
+        deliveredCount: Number(broadcast.deliveredCount || 0),
+        readCount: Number(broadcast.readCount || 0),
+        failedCount: Number(broadcast.failedCount || 0),
+        canceledCount: Number(broadcast.canceledCount || 0),
+        billableMessages: Object.values(categoryCounts).reduce((sum, count) => sum + count, 0),
+        categoryCounts,
+        messageCategory: this.normalizePricingCategory(broadcast.messageCategory),
+        appliedUnitPrice: Number(broadcast.appliedUnitPrice || 0),
+        taxPercent: Number(broadcast.appliedTaxPercent || 0),
+        reservedAmount: Number(broadcast.reservedAmount || 0),
+        walletDebits: Number(debits.toFixed(4)),
+        refunds: Number(refunds.toFixed(4)),
+        clientSpend: Number(clientSpend.toFixed(4)),
+        expectedMetaCost,
+        expectedMargin: Number((clientSpend - expectedMetaCost).toFixed(4)),
+        transactionCount: Number(transaction?.transactionCount || 0),
+        latestTransactionAt: transaction?.latestTransactionAt || null,
+        createdAt: broadcast.createdAt,
+        startedAt: broadcast.startedAt || null,
+        completedAt: broadcast.completedAt || null,
+      };
+    });
+
+    const expenseByAccount = new Map<string, any[]>();
+    const expenseByWaba = new Map<string, any[]>();
+    expenseSnapshots.forEach((snapshot: any) => {
+      const id = String(snapshot.whatsappAccountId || '');
+      if (id) {
+        if (!expenseByAccount.has(id)) expenseByAccount.set(id, []);
+        expenseByAccount.get(id).push(snapshot);
+      }
+      const wabaId = String(snapshot.wabaId || '');
+      if (!expenseByWaba.has(wabaId)) expenseByWaba.set(wabaId, []);
+      expenseByWaba.get(wabaId).push(snapshot);
+    });
+    const accountRows = selectedAccounts.map((account: any) => {
+      const snapshots = expenseByAccount.get(String(account._id)) || expenseByWaba.get(String(account.wabaId)) || [];
+      return {
+        id: String(account._id), name: account.name, wabaId: account.wabaId,
+        phoneNumberId: account.phoneNumberId, phone: account.phone, isActive: account.isActive !== false,
+        metaCharged: Number(snapshots.reduce((sum, snapshot) => sum + Number(snapshot.metaChargedAmount || 0), 0).toFixed(4)),
+        snapshots: snapshots.map((snapshot) => ({
+          id: String(snapshot._id), amount: Number(snapshot.metaChargedAmount || 0), currency: snapshot.currency || 'INR',
+          source: snapshot.source, metaInvoiceId: snapshot.metaInvoiceId || '', notes: snapshot.notes || '',
+          periodStart: snapshot.periodStart, periodEnd: snapshot.periodEnd, syncedAt: snapshot.syncedAt || snapshot.updatedAt,
+        })),
+      };
+    });
+    const totals = broadcastRows.reduce((acc, row) => {
+      acc.clientSpend += row.clientSpend;
+      acc.walletDebits += row.walletDebits;
+      acc.refunds += row.refunds;
+      acc.reservedAmount += row.reservedAmount;
+      acc.expectedMetaCost += row.expectedMetaCost;
+      acc.billableMessages += row.billableMessages;
+      return acc;
+    }, { clientSpend: 0, walletDebits: 0, refunds: 0, reservedAmount: 0, expectedMetaCost: 0, billableMessages: 0 });
+
+    return {
+      period, start: window.start, end: window.end,
+      client: { id: String((tenant as any)._id), name: (tenant as any).name, contactEmail: (tenant as any).contactEmail, status: (tenant as any).status },
+      selectedAccountId: accountId || 'all', accounts: accountRows, metaPricing,
+      totals: {
+        ...totals,
+        clientSpend: Number(totals.clientSpend.toFixed(4)), walletDebits: Number(totals.walletDebits.toFixed(4)),
+        refunds: Number(totals.refunds.toFixed(4)), reservedAmount: Number(totals.reservedAmount.toFixed(4)),
+        expectedMetaCost: Number(totals.expectedMetaCost.toFixed(4)),
+        expectedMargin: Number((totals.clientSpend - totals.expectedMetaCost).toFixed(4)),
+        actualMetaCharged: Number(accountRows.reduce((sum, account) => sum + account.metaCharged, 0).toFixed(4)),
+        broadcastCount: broadcastRows.length,
+      },
+      broadcasts: broadcastRows,
+    };
   }
 
   private async expectedUsageByTenant(dateMatch: Record<string, any>) {

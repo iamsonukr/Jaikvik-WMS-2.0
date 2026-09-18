@@ -21,7 +21,7 @@ const PRICE_CATEGORIES = [
 ];
 
 const text = (value) => String(value || '').toLowerCase();
-const fmtMoney = (value) => value === null || value === undefined ? '-' : `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+const fmtMoney = (value) => value === null || value === undefined ? '-' : `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 const fmtPercent = (value) => value === null || value === undefined ? '-' : `${Number(value).toLocaleString('en-IN')}%`;
 const fmtDate = (value) => value ? new Date(value).toLocaleString('en-IN') : '-';
 const fmtRate = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
@@ -60,6 +60,11 @@ export default function AdminExpensesPage() {
   const [manualForm, setManualForm] = useState({ accountId: '', metaChargedAmount: '', metaInvoiceId: '', notes: '' });
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState('all');
+  const [clientDetail, setClientDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
   const loadSummary = () => {
     setSummary(null);
@@ -139,6 +144,49 @@ export default function AdminExpensesPage() {
   };
 
   const rows = summary?.rows || [];
+  const selectedClient = rows.find((row) => row.tenantId === selectedTenantId) || null;
+
+  useEffect(() => {
+    if (!rows.length) {
+      setSelectedTenantId('');
+      return;
+    }
+    if (!rows.some((row) => row.tenantId === selectedTenantId)) {
+      setSelectedTenantId(rows[0].tenantId);
+      setSelectedAccountId('all');
+    }
+  }, [rows, selectedTenantId]);
+
+  useEffect(() => {
+    if (selectedAccountId !== 'all' && !selectedClient?.accounts?.some((account) => account.id === selectedAccountId)) {
+      setSelectedAccountId('all');
+    }
+  }, [selectedClient, selectedAccountId]);
+
+  useEffect(() => {
+    if (!selectedTenantId || !summary) {
+      setClientDetail(null);
+      return;
+    }
+    let active = true;
+    setDetailLoading(true);
+    setDetailError('');
+    const accountQuery = selectedAccountId === 'all' ? '' : `&accountId=${encodeURIComponent(selectedAccountId)}`;
+    api.get(`/expenses/admin/client-detail?period=${period}&tenantId=${encodeURIComponent(selectedTenantId)}${accountQuery}`)
+      .then((res) => { if (active) setClientDetail(res.data); })
+      .catch((err) => {
+        if (!active) return;
+        setClientDetail(null);
+        setDetailError(err?.response?.data?.message || 'Could not load client expense details.');
+      })
+      .finally(() => { if (active) setDetailLoading(false); });
+    return () => { active = false; };
+  }, [period, selectedTenantId, selectedAccountId, summary]);
+
+  const selectClient = (tenantId) => {
+    setSelectedTenantId(tenantId);
+    setSelectedAccountId('all');
+  };
   const filteredRows = useMemo(() => {
     const query = text(search.trim());
     return rows.filter((row) => {
@@ -237,10 +285,126 @@ export default function AdminExpensesPage() {
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Client message revenue" value={fmtMoney(summary.totals.clientRevenue)} icon={IndianRupee} color="#16a34a" sub="Wallet debits minus refunds" />
-            {/* <StatCard label="Meta charges synced" value={fmtMoney(summary.totals.metaCharged)} icon={Landmark} color="#dc2626" sub="Actual cost snapshots" /> */}
+            <StatCard label="Meta charges synced" value={fmtMoney(summary.totals.metaCharged)} icon={Landmark} color="#dc2626" sub="Actual cost snapshots" />
             <StatCard label="Expected Meta cost" value={fmtMoney(summary.totals.expectedMetaCost)} icon={ReceiptText} color="#7c3aed" sub={`${Number(summary.totals.expectedBillableMessages || 0).toLocaleString('en-IN')} message(s), India INR`} />
             <StatCard label="Expected margin" value={fmtMoney(summary.totals.expectedMargin)} icon={BarChart3} color="#2563eb" sub="Client revenue minus expected Meta cost" />
           </div>
+
+          <Card className="mb-6 overflow-hidden p-0">
+            <div className="border-b border-border p-4">
+              <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_minmax(240px,1fr)_auto] lg:items-end">
+                <Select label="Client account" value={selectedTenantId} onChange={(e) => selectClient(e.target.value)}>
+                  {rows.map((row) => (
+                    <option key={row.tenantId} value={row.tenantId}>{row.clientName} - {row.contactEmail || 'No email'}</option>
+                  ))}
+                </Select>
+                <Select
+                  label="WhatsApp account"
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  disabled={!selectedClient?.accounts?.length}
+                >
+                  <option value="all">All WhatsApp accounts</option>
+                  {selectedClient?.accounts?.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name} - {account.phone || account.wabaId}</option>
+                  ))}
+                </Select>
+                {selectedClient && (
+                  <Button variant="outline" onClick={() => openManualCost(selectedClient)} disabled={!selectedClient.accounts?.length || period === 'all'}>
+                    <Pencil size={15} />Update Meta cost
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {detailError && <p className="m-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{detailError}</p>}
+            {detailLoading ? (
+              <div className="flex justify-center py-14"><Spinner /></div>
+            ) : clientDetail ? (
+              <>
+                <div className="grid border-b border-border sm:grid-cols-2 xl:grid-cols-6">
+                  {[
+                    ['Net client spend', fmtMoney(clientDetail.totals.clientSpend)],
+                    ['Wallet debits', fmtMoney(clientDetail.totals.walletDebits)],
+                    ['Refunds', fmtMoney(clientDetail.totals.refunds)],
+                    ['Actual Meta charge', fmtMoney(clientDetail.totals.actualMetaCharged)],
+                    ['Expected Meta cost', fmtMoney(clientDetail.totals.expectedMetaCost)],
+                    ['Expected margin', fmtMoney(clientDetail.totals.expectedMargin)],
+                    ['Billable messages', Number(clientDetail.totals.billableMessages || 0).toLocaleString('en-IN')],
+                  ].map(([label, value]) => (
+                    <div key={label} className="border-b border-border px-4 py-3 last:border-b-0 sm:border-r xl:border-b-0">
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="mt-1 font-semibold">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-b border-border p-4">
+                  <div className="flex flex-wrap gap-3">
+                    {clientDetail.accounts.map((account) => (
+                      <div key={account.id} className="min-w-64 flex-1 rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{account.name}</p>
+                            <p className="text-xs text-muted-foreground">{account.phone || account.phoneNumberId || '-'}</p>
+                            <p className="font-mono text-xs text-muted-foreground">WABA {account.wabaId}</p>
+                          </div>
+                          <Badge label={account.isActive ? 'Active' : 'Inactive'} color={account.isActive ? 'green' : 'gray'} />
+                        </div>
+                        <div className="mt-3 flex items-end justify-between gap-3 border-t border-border pt-2">
+                          <div><p className="text-xs text-muted-foreground">Actual Meta charge</p><p className="font-semibold">{account.snapshots.length ? fmtMoney(account.metaCharged) : 'Not recorded'}</p></div>
+                          <p className="text-right text-xs text-muted-foreground">{account.snapshots[0] ? `${account.snapshots[0].source === 'manual' ? 'Manual' : 'Meta API'} | ${fmtDate(account.snapshots[0].syncedAt)}` : 'No snapshot'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="px-4 py-3">
+                  <h2 className="text-sm font-semibold">Broadcast spending</h2>
+                  <p className="text-xs text-muted-foreground">Campaign-level wallet spend, refunds, Meta cost estimate, pricing, tax, and delivery results.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Broadcast</th>
+                        <th className="px-4 py-3 font-semibold">Account</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                        <th className="px-4 py-3 text-right font-semibold">Messages</th>
+                        <th className="px-4 py-3 text-right font-semibold">Client spend</th>
+                        <th className="px-4 py-3 text-right font-semibold">Debit / refund</th>
+                        <th className="px-4 py-3 text-right font-semibold">Expected Meta</th>
+                        <th className="px-4 py-3 text-right font-semibold">Margin</th>
+                        <th className="px-4 py-3 text-right font-semibold">Unit price / tax</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {!clientDetail.broadcasts.length && <tr><td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">No broadcasts found for this account and period.</td></tr>}
+                      {clientDetail.broadcasts.map((broadcast) => (
+                        <tr key={broadcast.id} className="table-row-hover">
+                          <td className="px-4 py-3">
+                            <p className="font-medium">{broadcast.name}</p>
+                            <p className="text-xs text-muted-foreground">{broadcast.templateName} | {fmtDate(broadcast.createdAt)}</p>
+                          </td>
+                          <td className="px-4 py-3"><p>{broadcast.accountName}</p><p className="font-mono text-xs text-muted-foreground">{broadcast.wabaId}</p></td>
+                          <td className="px-4 py-3"><Badge label={broadcast.status || 'unknown'} color={broadcast.status === 'done' ? 'green' : broadcast.status === 'failed' ? 'red' : 'blue'} /></td>
+                          <td className="px-4 py-3 text-right"><p className="font-medium">{broadcast.billableMessages.toLocaleString('en-IN')} billed</p><p className="text-xs text-muted-foreground">{broadcast.deliveredCount} delivered | {broadcast.readCount} read | {broadcast.failedCount} failed</p></td>
+                          <td className="px-4 py-3 text-right font-semibold">{fmtMoney(broadcast.clientSpend)}</td>
+                          <td className="px-4 py-3 text-right"><p>{fmtMoney(broadcast.walletDebits)}</p><p className="text-xs text-muted-foreground">Refund {fmtMoney(broadcast.refunds)} | Reserved {fmtMoney(broadcast.reservedAmount)}</p></td>
+                          <td className="px-4 py-3 text-right">{fmtMoney(broadcast.expectedMetaCost)}</td>
+                          <td className={`px-4 py-3 text-right font-semibold ${broadcast.expectedMargin < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>{fmtMoney(broadcast.expectedMargin)}</td>
+                          <td className="px-4 py-3 text-right"><p>{fmtRate(broadcast.appliedUnitPrice)}</p><p className="text-xs text-muted-foreground">{broadcast.taxPercent}% tax | {broadcast.messageCategory}</p></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="p-5"><Empty icon={ReceiptText} title="Select a client" description="Choose a client and WhatsApp account to inspect expenses." /></div>
+            )}
+          </Card>
 
           <div className="mb-6 grid gap-5 lg:grid-cols-3">
             <Card className="overflow-hidden lg:col-span-2">
@@ -299,6 +463,10 @@ export default function AdminExpensesPage() {
           </div>
 
           <Card className="overflow-hidden p-0">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="text-sm font-semibold">All clients overview</h2>
+              <p className="text-xs text-muted-foreground">Compare revenue, Meta costs, and reconciliation status across every client.</p>
+            </div>
             <div className="grid gap-3 border-b border-border p-4 lg:grid-cols-[1fr_170px_170px]">
               <div className="relative">
                 <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
