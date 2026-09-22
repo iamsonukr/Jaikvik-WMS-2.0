@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner, Textarea, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
+import { matchesSegment, segmentOperators } from '@/lib/segments.mjs';
 import { CheckCircle2, Clock, Download, Pencil, Plus, Search, Send, Settings2, Tag, Trash2, Upload, Users, X } from 'lucide-react';
 
 const blank = { name: '', phone: '', tags: [], customFields: {} };
@@ -162,6 +163,7 @@ export default function ContactsWorkspace() {
   const [segments, setSegments] = useState([]);
   const [tag, setTag] = useState('');
   const [segmentTags, setSegmentTags] = useState([]);
+  const [segmentConditions, setSegmentConditions] = useState([]);
   const [segmentMatchMode, setSegmentMatchMode] = useState('any');
   const [selectedSegmentId, setSelectedSegmentId] = useState('');
   const [groupPanelOpen, setGroupPanelOpen] = useState(false);
@@ -223,7 +225,11 @@ export default function ContactsWorkspace() {
   const selectedTemplate = approvedTemplates.find((template) => template.name === selectedTemplateName);
   const requiredParams = bodyPlaceholderCount(selectedTemplate);
 
+  const currentAccountId = useRef(activeClient?._id);
+  currentAccountId.current = activeClient?._id;
+  const contactsLoadVersion = useRef(0);
   const load = () => {
+    const version = ++contactsLoadVersion.current;
     if (!activeClient) return;
     setLoading(true);
     setLoadError('');
@@ -234,6 +240,7 @@ export default function ContactsWorkspace() {
       api.get(`/contacts/segments?whatsappAccountId=${activeClient._id}`).catch(() => ({ data: [] })),
       api.get(`/templates?whatsappAccountId=${activeClient._id}`),
     ]).then(([contactsRes, tagsRes, customFieldsRes, segmentsRes, templatesRes]) => {
+      if (version !== contactsLoadVersion.current) return;
       setContacts(asArray(contactsRes.data).map(normalizeContact));
       setTags(asArray(tagsRes.data).map(normalizeTag).filter((tagItem) => tagItem.name));
       setCustomFields(asArray(customFieldsRes.data).map(normalizeCustomField).filter((field) => field.label && field.key));
@@ -241,9 +248,9 @@ export default function ContactsWorkspace() {
       setTemplates(asArray(templatesRes.data));
     })
       .catch((err) => {
-        setLoadError(err?.response?.data?.message || 'Could not load contacts for the selected client.');
+        if (version === contactsLoadVersion.current) setLoadError(err?.response?.data?.message || 'Could not load contacts for the selected client.');
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (version === contactsLoadVersion.current) setLoading(false); });
   };
 
   useEffect(() => { load(); }, [activeClient]);
@@ -321,6 +328,8 @@ export default function ContactsWorkspace() {
   const clearSegment = () => {
     setTag('');
     setSegmentTags([]);
+    setSegmentConditions([]);
+    setGroupForm(blankGroup);
     setSelectedSegmentId('');
     setSegmentMatchMode('any');
     setGroupError('');
@@ -328,7 +337,6 @@ export default function ContactsWorkspace() {
 
   const toggleSegmentTag = (tagName) => {
     setTag('');
-    setSelectedSegmentId('');
     setGroupError('');
     setSegmentTags((current) => (
       current.includes(tagName)
@@ -344,37 +352,56 @@ export default function ContactsWorkspace() {
     const segment = segments.find((item) => item._id === segmentId);
     if (!segment) {
       setSegmentTags([]);
+      setSegmentConditions([]);
+      setGroupForm(blankGroup);
       setSegmentMatchMode('any');
       return;
     }
     setSegmentTags(segment.tags || []);
+    setSegmentConditions(segment.conditions || []);
     setSegmentMatchMode(segment.matchMode || 'any');
-    setGroupForm((prev) => ({ ...prev, name: segment.name }));
+    setGroupForm({ name: segment.name, description: segment.description || '' });
   };
 
+  const updateCondition = (index, patch) => {
+    setSegmentConditions(current => current.map((condition, i) => i === index ? { ...condition, ...patch } : condition));
+  };
+
+  useEffect(() => {
+    clearSegment(); setSelectedContactIds([]); setContacts([]); setTags([]); setSegments([]); setCustomFields([]);
+  }, [activeClient?._id]);
+
   const createGroup = async () => {
-    if (!activeClient || !segmentTags.length) return;
+    if (!activeClient || (!segmentTags.length && !segmentConditions.length)) return;
     const name = groupForm.name.trim();
     if (!name) {
-      setGroupError('Enter a group name before saving.');
+      setGroupError('Enter a segment name before saving.');
       return;
     }
+    const accountId = activeClient._id;
     setGroupSaving(true);
     setGroupError('');
     try {
-      const { data } = await api.post('/contacts/segments', {
-        whatsappAccountId: activeClient._id,
+      const payload = {
+        ...(selectedSegmentId ? {} : { whatsappAccountId: activeClient._id }),
         name,
         description: groupForm.description,
         tags: segmentTags,
         matchMode: segmentMatchMode,
-      });
+        conditions: segmentConditions,
+      };
+      const { data } = selectedSegmentId
+        ? await api.patch(`/contacts/segments/${selectedSegmentId}`, payload)
+        : await api.post('/contacts/segments', payload);
+      if (currentAccountId.current !== accountId) return;
       const saved = normalizeSegment(data);
       setSegments((current) => [saved, ...current.filter((item) => item._id !== saved._id)]);
       setSelectedSegmentId(saved._id);
-      setGroupForm(blankGroup);
+      setGroupForm({ name: saved.name, description: saved.description });
     } catch (err) {
-      setGroupError(err?.response?.data?.message || 'Could not save group.');
+      if (currentAccountId.current !== accountId) return;
+      const message = err?.response?.data?.message;
+      setGroupError(Array.isArray(message) ? message.join('. ') : message || 'Could not save segment.');
     } finally {
       setGroupSaving(false);
     }
@@ -382,13 +409,15 @@ export default function ContactsWorkspace() {
 
   const deleteGroup = async (segmentId) => {
     if (!segmentId) return;
-    if (!confirm('Delete this saved group?')) return;
+    if (!confirm('Delete this saved segment?')) return;
+    const accountId = activeClient?._id;
     try {
       await api.delete(`/contacts/segments/${segmentId}`);
+      if (currentAccountId.current !== accountId) return;
       setSegments((current) => current.filter((item) => item._id !== segmentId));
       if (selectedSegmentId === segmentId) clearSegment();
     } catch {
-      setGroupError('Could not delete group.');
+      if (currentAccountId.current === accountId) setGroupError('Could not delete segment.');
     }
   };
 
@@ -667,12 +696,9 @@ export default function ContactsWorkspace() {
     const matchesStatus = statusFilter === 'all'
       || (statusFilter === 'active' && !contact.isOptedOut)
       || (statusFilter === 'opted_out' && contact.isOptedOut);
-    const contactTags = contact.tags || [];
-    const matchesTags = activeFilterTags.length === 0
-      || (segmentMatchMode === 'all'
-        ? activeFilterTags.every((tagName) => contactTags.includes(tagName))
-        : activeFilterTags.some((tagName) => contactTags.includes(tagName)));
-    return matchesSearch && matchesStatus && matchesTags;
+    const matchesRules = matchesSegment(contact, activeFilterTags, segmentConditions, segmentMatchMode);
+    const emptySavedSegment = selectedSegmentId && !activeFilterTags.length && !segmentConditions.length;
+    return matchesSearch && matchesStatus && matchesRules && !emptySavedSegment;
   });
   const sortedContacts = sortItems(filtered, contactSort, {
     name: (contact) => contact.name,
@@ -682,7 +708,7 @@ export default function ContactsWorkspace() {
   });
   const contactsPage = usePagination(sortedContacts, {
     initialPageSize: 25,
-    resetKey: `${search}|${tag}|${segmentTags.join('|')}|${segmentMatchMode}|${statusFilter}|${contactSort.key}|${contactSort.direction}`,
+    resetKey: `${search}|${tag}|${segmentTags.join('|')}|${segmentMatchMode}|${JSON.stringify(segmentConditions)}|${statusFilter}|${contactSort.key}|${contactSort.direction}`,
   });
   const selectedContactSet = useMemo(() => new Set(selectedContactIds), [selectedContactIds]);
   const currentPageContactIds = contactsPage.pageItems.map((contact) => contact._id).filter(Boolean);
@@ -783,7 +809,7 @@ export default function ContactsWorkspace() {
               <Settings2 size={15} />Manage Fields
             </Button>
             <Button variant="outline" onClick={() => setGroupPanelOpen((open) => !open)} disabled={!activeClient}>
-              <Users size={15} />Create Group
+              <Users size={15} />Segments
             </Button>
             <Button onClick={() => { setForm(blank); setFormError(''); setModal(true); }} disabled={!activeClient}>
               <Plus size={15} />Add Contact
@@ -813,21 +839,21 @@ export default function ContactsWorkspace() {
             <div className="min-w-0 flex-1">
               <div className="mb-3 flex items-center gap-2">
                 <Users size={15} className="text-primary" />
-                <h2 className="text-sm font-semibold">Contact Groups</h2>
+                <h2 className="text-sm font-semibold">Contact Segments</h2>
                 <Badge label={`${filtered.length} shown`} color="blue" />
               </div>
               <div className="grid gap-3 md:grid-cols-[1fr_140px_140px]">
                 <Select value={selectedSegmentId} onChange={(e) => applySegment(e.target.value)}>
-                  <option value="">Saved groups</option>
+                  <option value="">New segment / saved segments</option>
                   {segments.map((segment) => (
                     <option key={segment._id} value={segment._id}>
-                      {segment.name} ({segment.tags.length})
+                      {segment.name} ({segment.tags.length + (segment.conditions?.length || 0)} rules)
                     </option>
                   ))}
                 </Select>
-                <Select value={segmentMatchMode} onChange={(e) => { setSelectedSegmentId(''); setSegmentMatchMode(e.target.value); }}>
-                  <option value="any">Any tag</option>
-                  <option value="all">All tags</option>
+                <Select value={segmentMatchMode} onChange={(e) => setSegmentMatchMode(e.target.value)}>
+                  <option value="any">Match any (OR)</option>
+                  <option value="all">Match all (AND)</option>
                 </Select>
                 <Button variant="outline" onClick={exportCurrentSegment} disabled={!sortedContacts.length}>
                   <Download size={14} />Export CSV
@@ -851,7 +877,25 @@ export default function ContactsWorkspace() {
                     </button>
                   );
                 })}
-                {!tags.length && <span className="text-xs text-muted-foreground">Create tags first to build groups.</span>}
+                {!tags.length && <span className="text-xs text-muted-foreground">Add a field condition below, or create tags to group contacts.</span>}
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">Segments update as contact data changes. Match the selected tags and field conditions using the rule above.</p>
+              <div className="mt-3 space-y-2">
+                {segmentConditions.map((condition, index) => (
+                  <div key={index} className="flex flex-wrap items-center gap-2">
+                    <Select aria-label={`Condition ${index + 1} field`} value={condition.field} onChange={(e) => updateCondition(index, { field: e.target.value })}>
+                      <option value="name">Name</option><option value="phone">Phone</option>
+                      {customFields.map(field => <option key={field.key} value={`customFields.${field.key}`}>{field.label}</option>)}
+                    </Select>
+                    <Select aria-label={`Condition ${index + 1} operator`} value={condition.operator} onChange={(e) => updateCondition(index, { operator: e.target.value })}>
+                      {Object.entries(segmentOperators).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </Select>
+                    {!['is_set', 'is_not_set'].includes(condition.operator) && <Input aria-label={`Condition ${index + 1} value`} placeholder="Value" type={['before', 'after'].includes(condition.operator) ? 'date' : ['greater_than', 'less_than'].includes(condition.operator) ? 'number' : 'text'} step="any" maxLength={500} value={condition.value || ''} onChange={(e) => updateCondition(index, { value: e.target.value })} />}
+                    <Button variant="outline" aria-label={`Remove condition ${index + 1}`} onClick={() => setSegmentConditions(current => current.filter((_, i) => i !== index))}><X size={14} /></Button>
+                  </div>
+                ))}
+                <Button variant="outline" disabled={segmentConditions.length >= 30} onClick={() => setSegmentConditions(current => [...current, { field: 'name', operator: 'equals', value: '' }])}><Plus size={14} />Add condition</Button>
               </div>
             </div>
 
@@ -859,7 +903,7 @@ export default function ContactsWorkspace() {
               <Input
                 value={groupForm.name}
                 onChange={(e) => setGroupForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Group name"
+                placeholder="Segment name"
               />
               <Input
                 value={groupForm.description}
@@ -868,10 +912,10 @@ export default function ContactsWorkspace() {
               />
               {groupError && <p className="text-xs text-red-600 dark:text-red-400">{groupError}</p>}
               <div className="flex flex-wrap gap-2">
-                <Button onClick={createGroup} disabled={groupSaving || !segmentTags.length}>
-                  <Plus size={14} />{groupSaving ? 'Saving...' : 'Save Group'}
+                <Button onClick={createGroup} disabled={groupSaving || (!segmentTags.length && !segmentConditions.length)}>
+                  <Plus size={14} />{groupSaving ? 'Saving...' : selectedSegmentId ? 'Update Segment' : 'Save Segment'}
                 </Button>
-                <Button variant="outline" onClick={clearSegment} disabled={!segmentTags.length && !tag && !selectedSegmentId}>
+                <Button variant="outline" onClick={clearSegment} disabled={!segmentTags.length && !segmentConditions.length && !tag && !selectedSegmentId}>
                   <X size={14} />Clear
                 </Button>
                 {selectedSegmentId && (
@@ -895,7 +939,7 @@ export default function ContactsWorkspace() {
             className="pl-8"
           />
         </div>
-        <Select value={tag} onChange={(e) => { setSegmentTags([]); setSelectedSegmentId(''); setTag(e.target.value); }}>
+        <Select value={tag} onChange={(e) => { clearSegment(); setTag(e.target.value); }}>
           <option value="">All tags</option>
           {tags.map((tagItem) => <option key={tagItem._id} value={tagItem.name}>{tagItem.name}</option>)}
         </Select>

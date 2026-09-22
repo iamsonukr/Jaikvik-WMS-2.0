@@ -30,21 +30,36 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
   const [form, setForm] = useState({ name: '', templateName: '', languageCode: 'en' });
 
   useEffect(() => {
-    if (!activeClient) { setTemplates([]); setTags([]); setSegments([]); return; }
-    api.get(`/templates?whatsappAccountId=${activeClient._id}`).then(r => setTemplates(r.data)).catch(() => setTemplates([]));
-    api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`).then(r => setTags((r.data || []).map(tagName).filter(Boolean))).catch(() => setTags([]));
-    api.get(`/contacts/segments?whatsappAccountId=${activeClient._id}`).then(r => setSegments((r.data || []).map(normalizeSegment).filter(segment => segment.name))).catch(() => setSegments([]));
-  }, [activeClient]);
+    let cancelled = false;
+    setTemplates([]); setTags([]); setSegments([]);
+    setSelectedTags([]); setSelectedSegmentIds([]);
+    setForm({ name: '', templateName: '', languageCode: 'en' });
+    if (!activeClient) return;
+    Promise.all([
+      api.get(`/templates?whatsappAccountId=${activeClient._id}`),
+      api.get(`/contacts/tags?whatsappAccountId=${activeClient._id}`),
+      api.get(`/contacts/segments?whatsappAccountId=${activeClient._id}`),
+    ]).then(([templatesRes, tagsRes, segmentsRes]) => {
+      if (cancelled) return;
+      setTemplates(templatesRes.data);
+      setTags((tagsRes.data || []).map(tagName).filter(Boolean));
+      setSegments((segmentsRes.data || []).map(normalizeSegment).filter(segment => segment.name));
+    }).catch(() => { if (!cancelled) setError('Could not load the audience options. Please reload.'); });
+    return () => { cancelled = true; };
+  }, [activeClient?._id]);
 
   useEffect(() => {
-    if (!activeClient) { setCount(null); return; }
+    let cancelled = false;
+    setCount(null);
+    if (!activeClient) return;
     const params = new URLSearchParams({ whatsappAccountId: activeClient._id });
     if (selectedSegmentIds.length) selectedSegmentIds.forEach(id => params.append('segmentId', id));
     else selectedTags.forEach(t => params.append('tag', t));
     api.get(`/contacts/count?${params.toString()}`)
-      .then(r => setCount(r.data.count))
-      .catch(() => setCount(null));
-  }, [activeClient, selectedTags, selectedSegmentIds]);
+      .then(r => { if (!cancelled) setCount(r.data.count); })
+      .catch(() => { if (!cancelled) setCount(null); });
+    return () => { cancelled = true; };
+  }, [activeClient?._id, selectedTags, selectedSegmentIds]);
 
   const toggleTag = (tag) => {
     setSelectedSegmentIds([]);
@@ -127,11 +142,11 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
 
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold">Target Audience</h3>
-          <p className="mb-3 text-xs text-muted-foreground">Select saved groups or tags to target opted-in active contacts. Leave empty to send to every opted-in active contact.</p>
+          <p className="mb-3 text-xs text-muted-foreground">Select saved segments or tags to target opted-in active contacts. Leave empty to send to every opted-in active contact.</p>
 
           {segments.length > 0 && (
             <>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Groups</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Segments</p>
               <div className="mb-4 flex flex-wrap gap-2">
                 {segments.map(segment => (
                   <button key={segment._id} type="button" onClick={() => toggleSegment(segment._id)}
@@ -140,7 +155,7 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
                     }`}>
                     {selectedSegmentIds.includes(segment._id) && <span className="mr-1">+</span>}
                     {segment.name}
-                    <span className="ml-1 opacity-75">({segment.matchMode === 'all' ? 'all' : 'any'}: {segment.tags.length})</span>
+                    <span className="ml-1 opacity-75">({segment.matchMode === 'all' ? 'all' : 'any'}: {segment.tags.length + (segment.conditions?.length || 0)} rules)</span>
                   </button>
                 ))}
               </div>

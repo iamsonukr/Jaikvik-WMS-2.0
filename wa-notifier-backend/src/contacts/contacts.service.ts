@@ -5,6 +5,7 @@ import { Contact, ContactDocument } from './contact.schema';
 import { ContactTag, ContactTagDocument } from './contact-tag.schema';
 import { ContactImport, ContactImportDocument } from './contact-import.schema';
 import { ContactSegment, ContactSegmentDocument } from './contact-segment.schema';
+import { buildSegmentQuery, validateSegmentConditions, SegmentCondition } from './segment-query';
 import { ContactCustomField, ContactCustomFieldDocument, ContactCustomFieldType } from './contact-custom-field.schema';
 import { WhatsAppAccountsService } from '../whatsapp-accounts/whatsapp-accounts.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -375,14 +376,17 @@ export class ContactsService {
       .sort({ createdAt: -1 });
   }
 
-  async createSegment(dto: { whatsappAccountId?: string; clientId?: string; name: string; description?: string; tags: string[]; matchMode?: 'any' | 'all' }) {
+  async createSegment(dto: { whatsappAccountId?: string; clientId?: string; name: string; description?: string; tags?: string[]; conditions?: SegmentCondition[]; matchMode?: 'any' | 'all' }) {
+    this.validateSegmentTags(dto.tags);
     const whatsappAccountId = String(resolveWhatsAppAccountId(dto));
     const account = await this.clients.findOne(whatsappAccountId);
     const name = String(dto.name || '').trim().replace(/\s+/g, ' ');
-    if (!name) throw new BadRequestException('Group name is required');
+    if (!name) throw new BadRequestException('Segment name is required');
     const allowed = await this.allowedTagSet(whatsappAccountId);
     const tags = this.filterAllowedTags(dto.tags || [], allowed);
-    if (!tags.length) throw new BadRequestException('Select at least one existing tag to create a group');
+    const conditions = dto.conditions || [];
+    validateSegmentConditions(conditions);
+    if (!tags.length && !conditions.length) throw new BadRequestException('Add at least one tag or field condition');
 
     try {
       return await this.segmentModel.create({
@@ -390,39 +394,52 @@ export class ContactsService {
         tenantId: account?.tenantId,
         name,
         description: dto.description,
+        conditions,
         tags,
         matchMode: dto.matchMode === 'all' ? 'all' : 'any',
         isActive: true,
       });
     } catch (err) {
-      if (err?.code === 11000) throw new BadRequestException('A group with this name already exists for this WhatsApp account');
+      if (err?.code === 11000) throw new BadRequestException('A segment with this name already exists for this WhatsApp account');
       throw err;
     }
   }
 
   async updateSegment(id: string, dto: Partial<ContactSegment>) {
+    this.validateSegmentTags(dto.tags);
     const existing = await this.segmentModel.findById(id);
-    if (!existing) throw new NotFoundException('Group not found');
+    if (!existing) throw new NotFoundException('Segment not found');
     const next: Partial<ContactSegment> = { ...dto };
     if (dto.name !== undefined) {
       const name = String(dto.name || '').trim().replace(/\s+/g, ' ');
-      if (!name) throw new BadRequestException('Group name is required');
+      if (!name) throw new BadRequestException('Segment name is required');
       next.name = name;
     }
     if (dto.tags !== undefined) {
       next.tags = this.filterAllowedTags(dto.tags, await this.allowedTagSet(String(existing.whatsappAccountId || (existing as any).clientId)));
     }
+    next.conditions = dto.conditions ?? existing.conditions ?? [];
+    validateSegmentConditions(next.conditions);
+    if (!(next.tags ?? existing.tags ?? []).length && !(dto.conditions ?? existing.conditions ?? []).length) {
+      throw new BadRequestException('Add at least one tag or field condition');
+    }
     if (dto.matchMode !== undefined) next.matchMode = dto.matchMode === 'all' ? 'all' : 'any';
     try {
       return await this.segmentModel.findByIdAndUpdate(id, next, { new: true });
     } catch (err) {
-      if (err?.code === 11000) throw new BadRequestException('A group with this name already exists for this WhatsApp account');
+      if (err?.code === 11000) throw new BadRequestException('A segment with this name already exists for this WhatsApp account');
       throw err;
     }
   }
 
   removeSegment(id: string) {
     return this.segmentModel.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  }
+
+  private validateSegmentTags(tags: unknown) {
+    if (tags !== undefined && (!Array.isArray(tags) || tags.some(tag => typeof tag !== 'string'))) {
+      throw new BadRequestException('Segment tags must be an array of strings');
+    }
   }
 
   async countBySegmentIds(whatsappAccountId: string, segmentIds: string[]) {
@@ -443,17 +460,12 @@ export class ContactsService {
       _id: { $in: ids },
       isActive: true,
     });
-    const groupQueries = segments
-      .filter((segment) => Array.isArray(segment.tags) && segment.tags.length > 0)
-      .map((segment) => ({
-        tags: segment.matchMode === 'all' ? { $all: segment.tags } : { $in: segment.tags },
-      }));
+    const groupQueries = segments.map((segment) => buildSegmentQuery(segment));
     if (!groupQueries.length) return [];
     return this.model.find({
-      ...this.whatsappAccountIdQuery(whatsappAccountId),
       isOptedOut: false,
       isActive: true,
-      $or: groupQueries,
+      $and: [this.whatsappAccountIdQuery(whatsappAccountId), { $or: groupQueries }],
     });
   }
 

@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { SegmentCondition } from './segment-query';
 
 export type ContactSegmentDocument = ContactSegment & Document;
 
@@ -9,6 +10,7 @@ export class ContactSegment {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true, trim: true }) name: string;
   @Prop({ type: [String], default: [] }) tags: string[];
+  @Prop({ type: [Object], default: [] }) conditions: SegmentCondition[];
   @Prop({ default: 'any', enum: ['any', 'all'] }) matchMode: 'any' | 'all';
   @Prop() description?: string;
   @Prop({ default: true }) isActive: boolean;
