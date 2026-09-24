@@ -2,7 +2,7 @@
 
 Open **Contacts → Segments**, select tags and add field conditions, choose **Match all (AND)** or **Match any (OR)**, enter a name, then save. Select a saved segment to edit or delete it. Choose **New segment / saved segments** to start another segment.
 
-Supported fields are name, phone and contact custom fields. Operators include equality, inequality, case-insensitive contains, does not contain, has/no value, numeric comparisons and before/after dates. Equality is case-sensitive. Missing values count as empty; they do not match numeric or date comparisons. Numeric comparisons accept decimal numbers, and date comparisons accept valid ISO dates (`YYYY-MM-DD` or UTC timestamps). Every selected tag and field condition participates in the selected AND/OR rule.
+Supported fields are name, phone and contact custom fields. Operators include equality, inequality, case-insensitive contains, does not contain, has/no value, numeric comparisons and before/after dates. Equality is case-sensitive. Missing values count as empty; they do not match numeric or date comparisons. Numeric comparisons accept decimal numbers, and date comparisons accept valid ISO dates (`YYYY-MM-DD` or UTC timestamps). Every selected tag and field condition participates in the selected AND/OR rule. 
 
 The contact table previews matching contacts and can export them as CSV. Search and status filters further narrow that table but are not saved as segment rules. Broadcasts can select saved segments and resolve their current membership when preparing recipients. Multiple segments form a union; only active contacts that have not opted out are eligible. Existing tag-only groups remain supported without a data migration.
 

@@ -10,6 +10,7 @@ const SENSITIVE_QUERY_KEYS = new Set([
   'password',
   'secret',
   'token',
+  'state',
 ]);
 
 function sanitizeUrl(originalUrl: string) {

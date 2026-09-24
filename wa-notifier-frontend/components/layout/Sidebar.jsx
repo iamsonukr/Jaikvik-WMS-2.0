@@ -6,7 +6,7 @@ import {
   LayoutDashboard, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, X,
   Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound, Users, Receipt, Bell, LifeBuoy,
-  ChevronsLeft, ChevronsRight, Landmark,
+  ChevronsLeft, ChevronsRight, Landmark, FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
@@ -18,6 +18,7 @@ import api from '@/lib/api';
 // manage contacts/templates, shared inbox). Lives under /master/*.
 // Admin (supreme) and Master (runs campaigns for any client) both get this.
 const masterCompanyNav = [
+  { href: '/master/google-sheets', label: 'Google Sheets', icon: FileSpreadsheet },
   { href: '/master/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
   { href: '/master/alerts',      label: 'Notifications', icon: Bell },
   { href: '/master/broadcasts',  label: 'Broadcasts',  icon: Megaphone },
@@ -56,6 +57,7 @@ const controlPanelNav = [
 ];
 
 const adminOperationsNav = [
+  { href: '/admin/google-sheets', label: 'Google Sheets', icon: FileSpreadsheet },
   { href: '/admin/broadcasts',  label: 'Broadcasts', icon: Megaphone },
   { href: '/admin/inbox',       label: 'Inbox',      icon: Inbox },
   { href: '/admin/contacts',    label: 'Contacts',   icon: UserCircle },
@@ -68,6 +70,7 @@ const adminOperationsNav = [
 // tenant automatically by the backend, plus billing/team screens that only
 // make sense from a tenant's own point of view.
 const clientNav = [
+  { href: '/client/google-sheets', label: 'Google Sheets', icon: FileSpreadsheet, ownerOnly: true },
   { href: '/client/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
   { href: '/client/alerts',      label: 'Notifications', icon: Bell, badgeKey: 'notifications' },
   { href: '/client/broadcasts',  label: 'Broadcasts',  icon: Megaphone, badgeKey: 'broadcasts' },
