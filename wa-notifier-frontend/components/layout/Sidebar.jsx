@@ -6,7 +6,7 @@ import {
   LayoutDashboard, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, X,
   Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound, Users, Receipt, Bell, LifeBuoy,
-  ChevronsLeft, ChevronsRight, Landmark, FileSpreadsheet,
+  ChevronsLeft, ChevronsRight, Landmark, Plug,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
@@ -18,7 +18,6 @@ import api from '@/lib/api';
 // manage contacts/templates, shared inbox). Lives under /master/*.
 // Admin (supreme) and Master (runs campaigns for any client) both get this.
 const masterCompanyNav = [
-  { href: '/master/google-sheets', label: 'Google Sheets', icon: FileSpreadsheet },
   { href: '/master/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
   { href: '/master/alerts',      label: 'Notifications', icon: Bell },
   { href: '/master/broadcasts',  label: 'Broadcasts',  icon: Megaphone },
@@ -27,6 +26,7 @@ const masterCompanyNav = [
   { href: '/master/templates',   label: 'Templates',   icon: FileText },
   { href: '/master/chatbot',     label: 'Chatbot',     icon: Bot },
   { href: '/master/analytics',   label: 'Analytics',   icon: BarChart2 },
+  { href: '/master/integrations', label: 'Integrations', icon: Plug },
 ];
 
 const masterGlobalNav = [
@@ -57,20 +57,19 @@ const controlPanelNav = [
 ];
 
 const adminOperationsNav = [
-  { href: '/admin/google-sheets', label: 'Google Sheets', icon: FileSpreadsheet },
   { href: '/admin/broadcasts',  label: 'Broadcasts', icon: Megaphone },
   { href: '/admin/inbox',       label: 'Inbox',      icon: Inbox },
   { href: '/admin/contacts',    label: 'Contacts',   icon: UserCircle },
   { href: '/admin/templates',   label: 'Templates',  icon: FileText },
   { href: '/admin/chatbot',     label: 'Chatbot',    icon: Bot },
   { href: '/admin/analytics',   label: 'Analytics',  icon: BarChart2 },
+  { href: '/admin/integrations', label: 'Integrations', icon: Plug },
 ];
 
 // Client (tenant) dashboard — same messaging tools, scoped to their own
 // tenant automatically by the backend, plus billing/team screens that only
 // make sense from a tenant's own point of view.
 const clientNav = [
-  { href: '/client/google-sheets', label: 'Google Sheets', icon: FileSpreadsheet, ownerOnly: true },
   { href: '/client/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
   { href: '/client/alerts',      label: 'Notifications', icon: Bell, badgeKey: 'notifications' },
   { href: '/client/broadcasts',  label: 'Broadcasts',  icon: Megaphone, badgeKey: 'broadcasts' },
@@ -79,6 +78,7 @@ const clientNav = [
   { href: '/client/templates',   label: 'Templates',   icon: FileText, badgeKey: 'templates' },
   { href: '/client/chatbot',     label: 'Chatbot',     icon: Bot, badgeKey: 'chatbot' },
   { href: '/client/analytics',   label: 'Analytics',   icon: BarChart2 },
+  { href: '/client/integrations', label: 'Integrations', icon: Plug, ownerOnly: true },
   { href: '/client/connect-whatsapp', label: 'WhatsApp Setup', icon: MessageCircle, ownerOnly: true, badgeKey: 'whatsapp' },
   { href: '/client/team',        label: 'Team',        icon: Users, badgeKey: 'team' },
   { href: '/client/plans',      label: 'Plans',       icon: CreditCard, badgeKey: 'plans' },

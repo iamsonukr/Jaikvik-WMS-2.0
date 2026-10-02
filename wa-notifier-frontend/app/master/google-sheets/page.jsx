@@ -1,6 +1,4 @@
-'use client';
-import AppShell from '@/components/layout/AppShell';
-import GoogleSheetsWorkspace from '@/components/integrations/GoogleSheetsWorkspace';
+import { redirect } from 'next/navigation';
 export default function GoogleSheetsPage() {
-  return <AppShell allowedRoles={['admin', 'master']}><GoogleSheetsWorkspace /></AppShell>;
+  redirect('/master/integrations/google-sheets');
 }

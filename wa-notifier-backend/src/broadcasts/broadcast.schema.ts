@@ -71,3 +71,4 @@ export const BroadcastLogSchema = SchemaFactory.createForClass(BroadcastLog);
 BroadcastLogSchema.index({ broadcastId: 1 });
 BroadcastLogSchema.index({ whatsappAccountId: 1 });
 BroadcastLogSchema.index({ waMessageId: 1 });
+BroadcastLogSchema.index({ whatsappAccountId: 1, updatedAt: 1, _id: 1 });

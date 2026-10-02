@@ -20,3 +20,4 @@ export class Contact {
 export const ContactSchema = SchemaFactory.createForClass(Contact);
 ContactSchema.index({ whatsappAccountId: 1, phone: 1 }, { unique: true });
 ContactSchema.index({ tenantId: 1 });
+ContactSchema.index({ whatsappAccountId: 1, createdAt: 1, _id: 1 });

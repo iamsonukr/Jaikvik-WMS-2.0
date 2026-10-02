@@ -1,6 +1,6 @@
 # Google Sheets integration
 
-Google Sheets is available in the Client owner, Master and Admin navigation. Each WhatsApp account has its own Google connection and one source-tab configuration. Client team members cannot manage the integration.
+Google Sheets is available under **Integrations → Google Sheets** in the Client owner, Master and Admin navigation. Each WhatsApp account has its own Google connection and one source-tab configuration. Client team members cannot manage the integration.
 
 ## Server setup
 
@@ -27,7 +27,7 @@ References: [Google web-server OAuth](https://developers.google.com/identity/pro
 
 ## Client workflow
 
-1. Select the WhatsApp account and open **Google Sheets**. Connect Google and grant permission.
+1. Select the WhatsApp account and open **Integrations → Google Sheets**. Connect Google and grant permission.
 2. Paste a spreadsheet URL or ID, select its source tab, and load columns/preview.
 3. Map the phone column and optionally name, comma-separated tags and existing contact custom fields. Create custom fields in Contacts first for lead status, salesperson and next follow-up if needed.
 4. Select contact import, inbound lead export and/or report export.

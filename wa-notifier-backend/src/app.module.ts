@@ -23,6 +23,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { SheetsModule } from './google-sheets/sheets.module';
+import { ZapierModule } from './zapier/zapier.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ResourceOwnershipGuard } from './common/guards/resource-ownership.guard';
@@ -55,6 +56,7 @@ import { ResourceOwnershipGuard } from './common/guards/resource-ownership.guard
     TicketsModule,
     ExpensesModule,
     SheetsModule,
+    ZapierModule,
   ],
   providers: [
     // Guards run in registration order: JwtAuthGuard populates req.user first

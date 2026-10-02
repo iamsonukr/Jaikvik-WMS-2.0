@@ -18,7 +18,7 @@ export class Subscription {
   @Prop({ required: true }) startDate: Date;
   @Prop({ required: true }) endDate: Date;
 
-  @Prop({ required: true, enum: Object.values(SubscriptionStatus), default: SubscriptionStatus.ACTIVE })
+  @Prop({ required: true, enum : Object.values(SubscriptionStatus), default: SubscriptionStatus.ACTIVE })
   status: SubscriptionStatus;
 
   // Snapshot of the plan's commercial terms at the moment this subscription

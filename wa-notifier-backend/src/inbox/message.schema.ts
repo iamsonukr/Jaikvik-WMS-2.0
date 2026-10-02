@@ -43,3 +43,5 @@ export class Message {
 export const MessageSchema = SchemaFactory.createForClass(Message);
 MessageSchema.index({ whatsappAccountId: 1, phone: 1 });
 MessageSchema.index({ tenantId: 1 });
+MessageSchema.index({ whatsappAccountId: 1, createdAt: 1, _id: 1 });
+MessageSchema.index({ whatsappAccountId: 1, updatedAt: 1, _id: 1 });
