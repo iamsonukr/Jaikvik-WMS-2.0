@@ -13,6 +13,7 @@ export class Message {
   @Prop({ required: true }) type: string;      // text | image | audio | video | document | sticker | template
   @Prop() text: string;
   @Prop({ type: Object }) media: Record<string, any>;
+  @Prop({ type: Object }) payload: Record<string, any>;
   @Prop() waMessageId: string;
   @Prop() deliveryStatus: string; // pending | sent | delivered | read | failed
   @Prop() sentAt: Date;

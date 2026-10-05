@@ -101,7 +101,7 @@ export class WebhooksController {
               continue;
             }
 
-            const contact = val.contacts?.[0];
+            const contact = val.contacts?.find((item: any) => item.wa_id === msg.from) || val.contacts?.[0];
             const msgRecord = await this.inbox.save({
               whatsappAccountId: client._id,
               tenantId: client.tenantId,
@@ -111,6 +111,7 @@ export class WebhooksController {
               type: msg.type,
               text: msg.text?.body,
               media: msg.image || msg.audio || msg.video || msg.document || msg.sticker,
+              payload: msg,
               waMessageId: msg.id,
               timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
               threadStatus: 'open',

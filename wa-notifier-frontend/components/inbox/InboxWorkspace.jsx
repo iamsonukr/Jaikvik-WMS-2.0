@@ -33,6 +33,13 @@ function messageSnippet(message) {
   if (type === 'video') return message.media?.caption || 'Video';
   if (type === 'audio') return 'Voice/audio message';
   if (type === 'document') return message.media?.filename || 'Document';
+  if (type === 'interactive') return message.payload?.interactive?.button_reply?.title || message.payload?.interactive?.list_reply?.title || message.payload?.interactive?.nfm_reply?.body || 'Form / interactive reply';
+  if (type === 'button') return message.payload?.button?.text || 'Button reply';
+  if (type === 'location') return message.payload?.location?.name || 'Location';
+  if (type === 'contacts') return 'Contact card';
+  if (type === 'reaction') return message.payload?.reaction?.emoji || 'Reaction removed';
+  if (['revoked', 'revoke', 'deleted'].includes(type)) return 'Message deleted';
+  if (['unknown', 'unsupported'].includes(type)) return 'Message content unavailable from WhatsApp';
   if (type === 'template') return message.media?.templateName ? `Template: ${message.media.templateName}` : 'Template message';
   return type ? `${type} message` : 'Message';
 }
@@ -72,12 +79,15 @@ function MediaPreview({ message, whatsappAccountId }) {
   const [objectUrl, setObjectUrl] = useState(media.url || media.link || media.previewUrl || '');
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let localUrl = '';
 
-    if (!media.id || !message._id || !whatsappAccountId || media.url || media.link || media.previewUrl) {
+    setObjectUrl('');
+    setLoading(false);
+    if (!media.id || !message._id || !whatsappAccountId) {
       setObjectUrl(media.url || media.link || media.previewUrl || '');
       setFailed(false);
       return undefined;
@@ -102,13 +112,22 @@ function MediaPreview({ message, whatsappAccountId }) {
       cancelled = true;
       if (localUrl) URL.revokeObjectURL(localUrl);
     };
-  }, [message._id, media.id, media.url, media.link, media.previewUrl, whatsappAccountId]);
+  }, [message._id, media.id, media.url, media.link, media.previewUrl, whatsappAccountId, retry]);
 
-  if (!message.media && !['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;
+  if (!['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;
 
-  const url = objectUrl;
+  const url = failed ? '' : objectUrl;
   const label = mediaLabel(media) || `${type || 'media'} attachment`;
-  const caption = media.caption && media.caption !== label ? media.caption : '';
+  const caption = media.caption || '';
+
+  if (failed || (!loading && !url)) return (
+    <div className="mt-2 rounded-lg border border-border bg-background/70 px-3 py-2 text-xs">
+      <p>{media.filename || `${type} attachment`}</p>
+      <p className="mt-1 text-muted-foreground">Attachment unavailable. It may have expired or access may have changed.</p>
+      {media.id && <button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-2 underline">Retry download</button>}
+      {caption && <p className="mt-1 whitespace-pre-wrap">{caption}</p>}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -122,7 +141,7 @@ function MediaPreview({ message, whatsappAccountId }) {
   if (url && ['image', 'sticker'].includes(type)) {
     return (
       <div className="mt-2 overflow-hidden rounded-lg border border-border bg-background">
-        <img src={url} alt={media.caption || 'Attachment'} className="max-h-72 w-full object-contain" />
+        <img src={url} onError={() => setFailed(true)} alt={media.caption || 'Attachment'} className="max-h-72 w-full object-contain" />
         {caption && <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{caption}</p>}
       </div>
     );
@@ -130,7 +149,7 @@ function MediaPreview({ message, whatsappAccountId }) {
   if (url && type === 'video') {
     return (
       <div className="mt-2 overflow-hidden rounded-lg border border-border bg-background">
-        <video src={url} controls className="max-h-72 w-full" />
+        <video src={url} onError={() => setFailed(true)} controls className="max-h-72 w-full" />
         {caption && <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{caption}</p>}
       </div>
     );
@@ -139,13 +158,13 @@ function MediaPreview({ message, whatsappAccountId }) {
     return (
       <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2">
         <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">{mediaIcon(type)} <span>{label}</span></div>
-        <audio src={url} controls className="w-full" />
+        <audio src={url} onError={() => setFailed(true)} controls className="w-full" />
       </div>
     );
   }
 
   return (
-    <a
+    <div><a
       href={url || undefined}
       target="_blank"
       rel="noreferrer"
@@ -155,8 +174,43 @@ function MediaPreview({ message, whatsappAccountId }) {
       {mediaIcon(type)}
       <span className="min-w-0 flex-1 truncate">{failed ? 'Could not load attachment' : label}</span>
       {url && <Download size={13} />}
-    </a>
+    </a>{caption && <p className="mt-1 whitespace-pre-wrap text-xs">{caption}</p>}</div>
   );
+}
+
+function StructuredMessage({ message }) {
+  const payload = message.payload || {};
+  const type = String(message.type || '').toLowerCase();
+  const showValue = (value) => typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '');
+  const fields = (data) => <dl className="space-y-1">{Object.entries(data || {}).map(([key, value]) => (
+    <div key={key}><dt className="text-xs font-semibold">{key.replace(/_/g, ' ')}</dt><dd className="whitespace-pre-wrap break-words">{showValue(value)}</dd></div>
+  ))}</dl>;
+
+  if (type === 'interactive') {
+    const interactive = payload.interactive || {};
+    const reply = interactive.button_reply || interactive.list_reply;
+    if (reply) return <div><p>{reply.title || reply.id}</p>{reply.description && <p className="text-xs">{reply.description}</p>}</div>;
+    if (interactive.nfm_reply) {
+      const form = interactive.nfm_reply;
+      let response = form.response_json;
+      try { if (typeof response === 'string') response = JSON.parse(response); } catch { /* Keep malformed submissions readable. */ }
+      return <div className="space-y-2"><p className="font-semibold">{form.body || 'Form submitted'}</p>{response && (typeof response === 'object' ? fields(response) : <p className="whitespace-pre-wrap">{response}</p>)}</div>;
+    }
+  }
+  if (type === 'button' && payload.button) return <p>{payload.button.text || payload.button.payload}</p>;
+  if (type === 'location' && payload.location) {
+    const location = payload.location;
+    const lat = Number(location.latitude);
+    const lng = Number(location.longitude);
+    return <div><p className="font-semibold">{location.name || 'Shared location'}</p><p>{location.address}</p>{location.latitude != null && location.longitude != null && Number.isFinite(lat) && Number.isFinite(lng) && <a className="underline" href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer">View location ({lat}, {lng})</a>}</div>;
+  }
+  if (type === 'contacts' && payload.contacts) return <div className="space-y-2">{payload.contacts.map((contact, index) => <div key={index}><p className="font-semibold">{contact.name?.formatted_name || [contact.name?.first_name, contact.name?.last_name].filter(Boolean).join(' ') || 'Contact'}</p>{fields(Object.fromEntries(Object.entries(contact).filter(([key]) => key !== 'name')))}</div>)}</div>;
+  if (type === 'reaction' && payload.reaction) return <p>{payload.reaction.emoji ? `Reaction: ${payload.reaction.emoji}` : 'Reaction removed'}{payload.reaction.message_id && <span className="mt-1 block break-all text-xs text-muted-foreground">To message: {payload.reaction.message_id}</span>}</p>;
+  if (['revoked', 'revoke', 'deleted'].includes(type)) return <p className="italic text-muted-foreground">Message deleted</p>;
+  if (['unknown', 'unsupported'].includes(type)) return <div><p>WhatsApp did not provide this message’s content.</p>{payload.errors?.map((error, index) => <p key={index} className="mt-1 text-xs text-muted-foreground">{error.error_data?.details || error.message || error.title || `WhatsApp error ${error.code}`}</p>)}</div>;
+  if (message.text || ['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;
+  const data = payload[type];
+  return <div><p>{messageSnippet(message)}</p>{data && <div className="mt-2">{typeof data === 'object' ? fields(data) : showValue(data)}</div>}</div>;
 }
 
 export default function InboxWorkspace({ allowedRoles }) {
@@ -586,7 +640,7 @@ export default function InboxWorkspace({ allowedRoles }) {
                       : 'rounded-bl-[3px] bg-white text-slate-900 ring-slate-200 dark:bg-slate-900 dark:text-slate-50 dark:ring-white/10'}`}>
                       {message.text && <p className="whitespace-pre-wrap leading-snug">{message.text}</p>}
                       <MediaPreview message={message} whatsappAccountId={activeClient._id} />
-                      {!message.text && !message.media && <p className="leading-snug">{messageSnippet(message)}</p>}
+                      <StructuredMessage message={message} />
                       <div className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${message.direction === 'outbound' ? 'text-slate-600 dark:text-white/70' : 'text-muted-foreground'}`}>
                         <span>{message.createdAt ? format(new Date(message.createdAt), 'HH:mm') : '-'}</span>
                         <MessageReadStatus message={message} />
