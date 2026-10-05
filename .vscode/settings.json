@@ -26,7 +26,8 @@
         "statusBar.debuggingBackground": "#c4042b",
         "statusBar.debuggingForeground": "#e7e7e7",
         "activityBar.activeBorder": "#e7e7e7",
-        "activityBarTop.activeBorder": "#e7e7e7"
+        "activityBarTop.activeBorder": "#e7e7e7",
+        "statusBar.inactiveBackground": "#c4042b"
     },
     "peacock.color": "#c4042b",
     "workbench.experimental.modernUI": false
