@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ArrowRight, FileSpreadsheet, Plug, Zap } from 'lucide-react';
+import { ArrowRight, CalendarDays, FileSpreadsheet, Plug, Zap } from 'lucide-react';
 import { buttonVariants } from '@/components/ui';
 
 export default function IntegrationsWorkspace({ basePath }) {
@@ -11,6 +11,11 @@ export default function IntegrationsWorkspace({ basePath }) {
         <p className="mt-1 text-sm text-muted-foreground">Connect your business apps to sync data and automate WhatsApp workflows.</p>
       </div>
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <article className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6">
+          <div className="flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-3 text-blue-600 dark:text-blue-400"><CalendarDays size={26} /></div><h2 className="text-lg font-semibold">Calendly</h2></div>
+          <p className="flex-1 text-sm text-muted-foreground">Send WhatsApp booking confirmations, cancellation updates and appointment reminders from Calendly.</p>
+          <Link href={`${basePath}/integrations/calendly`} className={buttonVariants({ variant: 'outline' })}>Manage Calendly<ArrowRight size={16} /></Link>
+        </article>
         <article className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-emerald-500/10 p-3 text-emerald-600 dark:text-emerald-400"><FileSpreadsheet size={26} /></div>
