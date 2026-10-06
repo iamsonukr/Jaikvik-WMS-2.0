@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { Badge, Button, Input, Modal, Select } from '@/components/ui';
+import { Button, Input, Modal, Select } from '@/components/ui';
 import api, { getApiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import AccountSecuritySummary from './AccountSecuritySummary';
 
 export default function AdminTwoFactorControl({ member, onUpdated }) {
   const { setSession } = useAuth();
@@ -21,10 +22,11 @@ export default function AdminTwoFactorControl({ member, onUpdated }) {
     finally { setBusy(false); }
   };
   return <>
-    <div className="flex items-center gap-2"><Badge label={member.twoFactorEnabled ? '2FA on' : '2FA off'} color={member.twoFactorEnabled ? 'green' : 'gray'} /><Button size="sm" variant="outline" onClick={() => { setAction(member.twoFactorEnabled ? 'disable' : 'enable'); setOpen(true); setError(''); setPassword(''); }}>Manage 2FA</Button></div>
-    <Modal open={open} onClose={() => { if (!busy) { setOpen(false); setPassword(''); } }} title={`Manage 2FA: ${member.name || member.email}`} footer={<Button onClick={save} disabled={busy || !password}>{busy ? 'Saving...' : 'Confirm'}</Button>}>
+    <div className="min-w-[230px] space-y-3"><AccountSecuritySummary member={member} /><Button size="sm" variant="outline" onClick={() => { setAction(member.twoFactorEnabled ? 'disable' : 'enable'); setOpen(true); setError(''); setPassword(''); }}>Manage security</Button></div>
+    <Modal open={open} onClose={() => { if (!busy) { setOpen(false); setPassword(''); } }} title={`Manage security: ${member.name || member.email}`} footer={<Button onClick={save} disabled={busy || !password}>{busy ? 'Saving...' : 'Confirm'}</Button>}>
       <div className="space-y-3">
-        <Select label="Action" value={action} onChange={(event) => setAction(event.target.value)}><option value="enable">Force-enable 2FA</option><option value="disable">Force-disable 2FA</option><option value="reset">Reset pending codes and sessions</option></Select>
+        <AccountSecuritySummary member={member} />
+        <Select label="Action" value={action} onChange={(event) => setAction(event.target.value)}><option value="enable">Force-enable 2FA</option><option value="disable">Force-disable 2FA</option><option value="reset">Reset pending codes and sessions</option>{member.role !== 'admin' && member.secondaryEmail && <option value="remove-secondary">Remove secondary email and use registered email</option>}</Select>
         <p className="text-sm text-muted-foreground">All actions clear pending codes and sign out existing sessions. Reset keeps the current 2FA setting.</p>
         <Input label="Your current admin password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         {error && <p role="alert" className="text-sm text-red-500">{error}</p>}

@@ -1,5 +1,15 @@
 # Email two-factor authentication
 
+Settings now uses horizontal tabs: Profile, Plans, Billing, WhatsApp and Security for client accounts; General, Plans & billing and Security for platform accounts.
+
+Admin Staff & roles and each tenant's login-user table show per-account 2FA status, registered-email verification status, linked secondary email and its verification status, and the effective OTP destination. Manage security supports the existing 2FA actions and password-confirmed removal of a secondary email. Removal preserves 2FA, switches delivery to the registered email, and invalidates sessions and pending verification challenges. Admin recipients remain environment-managed. Email verification can only be completed with a valid OTP; the admin panel does not mark addresses as verified manually.
+
+Public signup requests a code using `POST /auth/register/start`, then submits the account details and code to `POST /auth/register`. No user, tenant or session is created before a valid code. `POST /auth/register/resend` rotates the code with a 60-second cooldown and preserves the five-attempt budget. Signup verification proves the registered email and does not enable login 2FA automatically. Admin-created staff and tenant users verify their registered email at first login, including when login 2FA is disabled. Admins with 2FA enabled must then complete the environment-routed second factor.
+
+Master and client accounts can link a secondary email in the Security tab. Linking requires the current password and an OTP sent to the new address; successful verification selects it for login OTPs. Users can switch between their verified secondary and registered emails with password confirmation. Changing the email or preference signs out other sessions and invalidates pending login codes. Admin routing remains exclusively controlled by `ADMIN_OTP_EMAILS`; admin Settings cannot override it.
+
+Re-run `npm run migrate:two-factor` before deploying this update to backfill legacy accounts as already verified and create email-verification TTL indexes. Newly created accounts explicitly require verification. The migration is idempotent and does not mark new, explicitly unverified users as verified. No additional environment variables are required.
+
 Sign-in emails use **Jaikvik Whatsapp Marketing System**. Resend is called only by `EmailService`, with HTML and plain-text versions. Configure these backend environment variables:
 
 ```dotenv

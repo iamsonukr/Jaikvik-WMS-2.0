@@ -8,6 +8,10 @@ async function main() {
     const users = mongoose.connection.collection('users');
     const flag = await users.updateMany({ twoFactorEnabled: { $exists: false } }, { $set: { twoFactorEnabled: false } });
     await users.updateMany({ securityVersion: { $exists: false } }, { $set: { securityVersion: 0 } });
+    await users.updateMany({ emailVerified: { $exists: false } }, { $set: { emailVerified: true, useSecondaryEmailForOtp: false } });
+    const verification = mongoose.connection.collection('emailverifications');
+    await verification.createIndex({ tokenHash: 1 }, { unique: true });
+    await verification.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
     const challenges = mongoose.connection.collection('loginchallenges');
     await challenges.createIndex({ tokenHash: 1 }, { unique: true });
     await challenges.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });

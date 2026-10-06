@@ -50,6 +50,10 @@ export default function LoginPage() {
     event.preventDefault(); setError(''); setLoading(true);
     try {
       const { data } = await api.post('/auth/2fa/verify', { challengeToken: challenge.challengeToken, otp });
+      if (data.twoFactorRequired) {
+        setChallenge(data); setOtp(''); setRecipientId(data.recipientOptions?.[0]?.id || ''); setNow(Date.now());
+        return;
+      }
       setSession(data);
       router.replace(roleHomePath(data.user.role));
     } catch (err) { setError(getApiErrorMessage(err, 'Verification failed. Please sign in again.')); }
@@ -156,7 +160,7 @@ export default function LoginPage() {
             {challenge ? (
               <form onSubmit={verifyOtp} className="space-y-4">
                 <h2 className="font-semibold">Verify your sign-in</h2>
-                <p className="text-sm text-muted-foreground">{challenge.sent ? `Enter the 6-digit code sent to ${challenge.recipientLabel}. It expires in 5 minutes.` : 'Choose where to receive your verification code.'}</p>
+                <p className="text-sm text-muted-foreground">{challenge.sent ? `Enter the 6-digit code sent to ${challenge.recipientLabel}. It expires in 5 minutes.` : challenge.requiresRecipientSelection ? 'Choose where to receive your verification code.' : `Send your login verification code to ${challenge.recipientLabel}.`}</p>
                 {challenge.requiresRecipientSelection && <Select label="Send code to" value={recipientId} disabled={loading} onChange={(event) => setRecipientId(event.target.value)}>
                   {challenge.recipientOptions.map((recipient) => <option key={recipient.id} value={recipient.id}>{recipient.label}</option>)}
                 </Select>}

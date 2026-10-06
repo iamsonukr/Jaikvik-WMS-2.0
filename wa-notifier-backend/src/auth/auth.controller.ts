@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/role.enum';
 import { OtpSendDto, OtpVerifyDto, TwoFactorSettingsDto, TwoFactorAdminDto, ProfileDto, ChangePasswordDto } from './auth.dto';
+import { EmailVerificationStartDto, SecondaryEmailStartDto, SecondaryEmailPreferenceDto } from './auth.dto';
 
 @Controller('auth')
 @UseGuards(JwtAuthGuard)
@@ -15,6 +16,12 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Public() @Post('register') register(@Body() dto: RegisterDto) { return this.authService.register(dto); }
+  @Public() @Post('register/start') startRegistration(@Body() dto: EmailVerificationStartDto) { return this.authService.startRegistration(dto.email); }
+  @Public() @Post('register/resend') resendRegistration(@Body() dto: OtpSendDto) { return this.authService.resendRegistration(dto.challengeToken); }
+  @Post('secondary-email/start') startSecondary(@CurrentUser() user: any, @Body() dto: SecondaryEmailStartDto) { return this.authService.startSecondaryEmail(user._id, dto.email, dto.currentPassword); }
+  @Post('secondary-email/resend') resendSecondary(@CurrentUser() user: any, @Body() dto: OtpSendDto) { return this.authService.resendSecondaryEmail(user._id, dto.challengeToken); }
+  @Post('secondary-email/verify') verifySecondary(@CurrentUser() user: any, @Body() dto: OtpVerifyDto) { return this.authService.verifySecondaryEmail(user._id, dto.challengeToken, dto.otp); }
+  @Patch('secondary-email/preference') secondaryPreference(@CurrentUser() user: any, @Body() dto: SecondaryEmailPreferenceDto) { return this.authService.secondaryEmailPreference(user._id, dto.useSecondary, dto.currentPassword); }
   @Public() @Post('login')    login(@Body() dto: LoginDto)       { return this.authService.login(dto); }
   @Public() @Post('2fa/send') sendOtp(@Body() dto: OtpSendDto) { return this.authService.sendOtp(dto); }
   @Public() @Post('2fa/verify') verifyOtp(@Body() dto: OtpVerifyDto) { return this.authService.verifyOtp(dto); }

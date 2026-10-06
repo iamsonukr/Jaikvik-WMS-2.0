@@ -13,7 +13,7 @@ export class TwoFactorSettingsDto {
   @IsString() @MinLength(1) @MaxLength(200) currentPassword: string;
 }
 export class TwoFactorAdminDto {
-  @IsIn(['enable', 'disable', 'reset']) action: 'enable' | 'disable' | 'reset';
+  @IsIn(['enable', 'disable', 'reset', 'remove-secondary']) action: 'enable' | 'disable' | 'reset' | 'remove-secondary';
   @IsString() @MinLength(1) @MaxLength(200) currentPassword: string;
 }
 export class ProfileDto {
@@ -32,11 +32,23 @@ export class ChangePasswordDto {
 }
 
 export class RegisterDto {
+  @IsString() @Matches(/^[a-f0-9]{64}$/) challengeToken: string;
+  @IsString() @Matches(/^\d{6}$/) otp: string;
   @IsEmail() email: string;
   @IsString() @MinLength(6) password: string;
   @IsString() name: string;
   // Public self-signup always provisions a brand-new Tenant with this user as its owner.
   @IsString() @MinLength(1) companyName: string;
+}
+export class EmailVerificationStartDto {
+  @IsEmail() email: string;
+}
+export class SecondaryEmailStartDto extends EmailVerificationStartDto {
+  @IsString() @MinLength(1) @MaxLength(200) currentPassword: string;
+}
+export class SecondaryEmailPreferenceDto {
+  @IsBoolean() useSecondary: boolean;
+  @IsString() @MinLength(1) @MaxLength(200) currentPassword: string;
 }
 
 export class CreateStaffDto {

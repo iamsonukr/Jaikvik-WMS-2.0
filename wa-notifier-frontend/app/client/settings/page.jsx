@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 import TwoFactorSettings from '@/components/security/TwoFactorSettings';
+import SettingsTabs from '@/components/settings/SettingsTabs';
 import {
   CalendarDays, CheckCircle2, CreditCard, ExternalLink, KeyRound, MessageCircle,
   RefreshCw, ShieldCheck, UserCircle, Wallet as WalletIcon,
@@ -92,6 +93,7 @@ export default function SettingsPage() {
   const [billingProfile, setBillingProfile] = useState(null);
   const [billingForm, setBillingForm] = useState({});
   const [savingBilling, setSavingBilling] = useState(false);
+  const [activeTab, setActiveTab] = useState('profile');
 
   useEffect(() => {
     if (user) setProfile({ name: user.name || '', email: user.email || '' });
@@ -208,19 +210,21 @@ export default function SettingsPage() {
         }
       />
 
-      <TwoFactorSettings />
-      {loadingAccount && !subscription ? (
+      <SettingsTabs active={activeTab} onChange={setActiveTab} tabs={[{ id: 'profile', label: 'Profile' }, { id: 'plans', label: 'Plans' }, { id: 'billing', label: 'Billing' }, { id: 'whatsapp', label: 'WhatsApp' }, { id: 'security', label: 'Security' }]} />
+      <div id={`settings-panel-${activeTab}`} role="tabpanel" aria-labelledby={`settings-tab-${activeTab}`}>
+      {activeTab === 'security' && <TwoFactorSettings />}
+      {loadingAccount && !subscription && ['plans', 'billing', 'whatsapp'].includes(activeTab) ? (
         <div className="flex justify-center py-20"><Spinner size={32} /></div>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={activeTab === 'plans' ? 'grid gap-4 sm:grid-cols-2 xl:grid-cols-4' : 'hidden'}>
             <StatCard label="Current plan" value={plan?.name || 'No plan'} icon={CreditCard} color="#3b82f6" sub={subscriptionStatus || 'Not assigned'} />
             <StatCard label="WhatsApp numbers" value={clients.length} icon={MessageCircle} color="#25D366" sub={`Limit ${fmtLimit(limitValue(plan, 'whatsappNumbers'))}`} />
             <StatCard label="Wallet balance" value={wallet ? fmtMoney(wallet.balance) : '-'} icon={WalletIcon} color="#f59e0b" sub="Available funds" />
             <StatCard label="Renewal date" value={fmtDate(subscription?.endDate)} icon={CalendarDays} color="#6366f1" sub={cycleLabel(subscription?.billingCycleSnapshot)} />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+          <div className={activeTab === 'plans' ? 'grid gap-5 xl:grid-cols-[1.25fr_0.75fr]' : 'hidden'}>
             <Card className="p-5">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -267,8 +271,8 @@ export default function SettingsPage() {
             </Card>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-            <Card className="p-5">
+          <div className={['whatsapp', 'billing'].includes(activeTab) ? 'grid gap-5' : 'hidden'}>
+            <Card className={activeTab === 'whatsapp' ? 'p-5' : 'hidden'}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold">Connected WhatsApp Numbers</h2>
                 <Link href="/client/connect-whatsapp">
@@ -297,7 +301,7 @@ export default function SettingsPage() {
               )}
             </Card>
 
-            <Card className="p-5">
+            <Card className={activeTab === 'billing' ? 'p-5' : 'hidden'}>
               <h2 className="mb-4 text-sm font-semibold">Billing Snapshot</h2>
               <div className="grid gap-4 sm:grid-cols-3">
                 <DetailItem label="Available balance" value={wallet ? fmtMoney(wallet.balance) : '-'} />
@@ -310,7 +314,7 @@ export default function SettingsPage() {
             </Card>
           </div>
 
-          <Card className="p-5">
+          <Card className={activeTab === 'billing' ? 'p-5' : 'hidden'}>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <CreditCard size={16} className="text-primary" />
@@ -384,8 +388,8 @@ export default function SettingsPage() {
             )}
           </Card>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Card className="p-5 space-y-4">
+          <div className={['profile', 'security'].includes(activeTab) ? 'grid gap-5' : 'hidden'}>
+            <Card className={activeTab === 'profile' ? 'p-5 space-y-4' : 'hidden'}>
               <div className="flex items-center gap-2">
                 <UserCircle size={16} className="text-primary" />
                 <h2 className="text-sm font-semibold">Profile</h2>
@@ -398,7 +402,7 @@ export default function SettingsPage() {
               <Button onClick={saveProfile} disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save profile'}</Button>
             </Card>
 
-            <Card className="p-5 space-y-4">
+            <Card className={activeTab === 'security' ? 'p-5 space-y-4' : 'hidden'}>
               <div className="flex items-center gap-2">
                 <KeyRound size={16} className="text-primary" />
                 <h2 className="text-sm font-semibold">Security</h2>
@@ -412,7 +416,7 @@ export default function SettingsPage() {
             </Card>
           </div>
 
-          <Card className="p-5">
+          <Card className={activeTab === 'whatsapp' ? 'p-5' : 'hidden'}>
             <div className="mb-4 flex items-center gap-2">
               <ShieldCheck size={16} className="text-primary" />
               <h2 className="text-sm font-semibold">Meta Webhook Configuration</h2>
@@ -447,6 +451,7 @@ export default function SettingsPage() {
           )}
         </div>
       )}
+      </div>
     </AppShell>
   );
 }

@@ -9,6 +9,7 @@ import { normalizeRole } from '@/lib/roles';
 import Link from 'next/link';
 import api from '@/lib/api';
 import AdminTwoFactorControl from '@/components/security/AdminTwoFactorControl';
+import AccountSecuritySummary from '@/components/security/AccountSecuritySummary';
 import {
   isFacebookOrigin,
   isSuccessfulEmbeddedSignupEvent,
@@ -1232,13 +1233,14 @@ export default function TenantDetailPage() {
                       <SortableTh label="User" sortKey="user" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
                       <SortableTh label="Role" sortKey="role" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
                       <SortableTh label="Status" sortKey="status" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
+                      <th className="py-2 pr-3 font-semibold">Security & email verification</th>
                       <SortableTh label="Last login" sortKey="lastLoginAt" sort={tenantUserSort} onSort={setTenantUserSort} className="px-0 pr-3" />
                       <th className="py-2 text-right font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {!sortedTenantUsers.length && (
-                      <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">No login users match these filters.</td></tr>
+                      <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">No login users match these filters.</td></tr>
                     )}
                     {tenantUsersPage.pageItems.map((u) => {
                     const busy = userBusyId === u._id;
@@ -1251,7 +1253,9 @@ export default function TenantDetailPage() {
                         <td className="py-3 pr-3">{ROLE_LABEL[u.role] || u.role}</td>
                         <td className="py-3 pr-3">
                           <Badge label={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} />
-                          {role === 'admin' && <AdminTwoFactorControl member={u} onUpdated={(updated) => setTenantUsers((previous) => previous.map((member) => member._id === updated._id ? { ...member, ...updated } : member))} />}
+                        </td>
+                        <td className="py-3 pr-3">
+                          {role === 'admin' ? <AdminTwoFactorControl member={u} onUpdated={(updated) => setTenantUsers((previous) => previous.map((member) => member._id === updated._id ? updated : member))} /> : <AccountSecuritySummary member={u} />}
                         </td>
                         <td className="py-3 pr-3 text-muted-foreground">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : 'Never'}</td>
                         <td className="py-3 text-right">

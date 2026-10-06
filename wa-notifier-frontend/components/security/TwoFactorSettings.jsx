@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Button, Card, Input, Badge } from '@/components/ui';
 import api, { getApiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import SecondaryEmailSettings from './SecondaryEmailSettings';
 
 export default function TwoFactorSettings() {
   const { setSession } = useAuth();
@@ -21,7 +22,7 @@ export default function TwoFactorSettings() {
     } catch (err) { setError(getApiErrorMessage(err, 'Could not update two-factor authentication.')); }
     finally { setBusy(false); }
   };
-  return <Card className="mb-6 max-w-xl p-6">
+  return <><Card className="mb-6 max-w-xl p-6">
     <form onSubmit={save} className="space-y-3">
       <div className="flex items-center justify-between"><h2 className="font-semibold">Email two-factor authentication</h2><Badge label={enabled == null ? 'Loading' : enabled ? 'Enabled' : 'Disabled'} color={enabled ? 'green' : 'gray'} /></div>
       <p className="text-sm text-muted-foreground">Require an email verification code at sign-in. Confirm your current password to change this setting.</p>
@@ -30,5 +31,5 @@ export default function TwoFactorSettings() {
       {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
       {message && <p role="status" className="text-sm text-emerald-600">{message}</p>}
     </form>
-  </Card>;
+  </Card><SecondaryEmailSettings /></>;
 }

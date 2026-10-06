@@ -8,6 +8,7 @@ const { EmailService, OTP_APP_NAME } = require('../dist/common/email.service');
 const { Resend } = require('resend');
 const { UserSchema } = require('../dist/auth/user.schema');
 const { LoginChallengeSchema } = require('../dist/auth/login-challenge.schema');
+const { EmailVerificationService } = require('../dist/auth/email-verification.service');
 
 const id = '507f1f77bcf86cd799439011';
 const adminId = '507f1f77bcf86cd799439012';
@@ -52,7 +53,11 @@ function repository(initial = []) {
     findById(value) { return query(rows.find((row) => String(row._id) === String(value))); },
     findOne(filter) { return query(rows.find((row) => matches(row, filter))); },
     findOneAndUpdate(filter, changes, options = {}) {
-      const row = rows.find((row) => matches(row, filter));
+      let row = rows.find((row) => matches(row, filter));
+      if (!row && options.upsert) {
+        if (rows.some((item) => item._id === filter._id)) throw Object.assign(new Error('Duplicate key'), { code: 11000 });
+        row = { _id: filter._id }; rows.push(row);
+      }
       if (!row) return query(null);
       const old = { ...row }; update(row, changes);
       return query(options.new ? row : old);
@@ -65,7 +70,7 @@ function repository(initial = []) {
   };
 }
 function fixture(role = 'master', configValues = {}) {
-  const users = repository([{ _id: id, email: 'member@example.com', password: passwordHash, role, isActive: true, twoFactorEnabled: true, securityVersion: 0 }]);
+  const users = repository([{ _id: id, email: 'member@example.com', password: passwordHash, role, isActive: true, twoFactorEnabled: true, securityVersion: 0, emailVerified: true }]);
   const challenges = repository();
   const config = { get(key) { return ({ JWT_SECRET: 'test-only-signing-secret', ADMIN_OTP_EMAILS: ' a@example.com, b@example.com ,a@example.com', RESEND_API_KEY: 'test-only', RESEND_FROM_EMAIL: 'security@example.com', ...configValues })[key]; } };
   const delivered = [];
@@ -290,4 +295,155 @@ test('Resend template has exact software name, HTML/text, six-digit code and exp
     assert.ok(body.includes(OTP_APP_NAME)); assert.ok(body.includes('012345'));
     assert.ok(body.includes('5 minutes')); assert.ok(body.includes("wasn't you"));
   }
+});
+
+function verificationFixture() {
+  const base = fixture();
+  const verifications = repository();
+  const verification = new EmailVerificationService(verifications, base.config, base.email);
+  return { ...base, verifications, verification };
+}
+
+test('signup proof is bound to email and purpose, hashed, five-minute expiry and single-use', async () => {
+  const { verification, verifications, delivered } = verificationFixture();
+  const start = await verification.issue('signup', ' NEW@EXAMPLE.COM ');
+  assert.equal(delivered[0].to, 'new@example.com');
+  assert.notEqual(verifications.rows[0].tokenHash, start.challengeToken);
+  assert.notEqual(verifications.rows[0].otpHash, delivered[0].otp);
+  assert.ok(verifications.rows[0].otpExpiresAt > new Date());
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'signup', 'other@example.com'), rejected(400));
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'secondary', 'new@example.com'), rejected(400));
+  assert.equal(await verification.consume(start.challengeToken, delivered[0].otp, 'signup', 'new@example.com'), 'new@example.com');
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'signup', 'new@example.com'), rejected(400));
+  await assert.rejects(() => verification.issue('signup', 'new@example.com'), rejected(429));
+});
+
+test('signup cooldown survives fresh requests; resends rotate token without resetting attempts', async () => {
+  const { verification, verifications, delivered } = verificationFixture();
+  const start = await verification.issue('signup', 'new@example.com');
+  await assert.rejects(() => verification.issue('signup', 'new@example.com'), rejected(429));
+  await assert.rejects(() => verification.resend(start.challengeToken, 'signup'), rejected(429));
+  const wrong = delivered[0].otp === '000000' ? '111111' : '000000';
+  await assert.rejects(() => verification.consume(start.challengeToken, wrong, 'signup'), rejected(400));
+  verifications.rows[0].nextSendAt = new Date(0);
+  const resend = await verification.resend(start.challengeToken, 'signup');
+  assert.notEqual(resend.challengeToken, start.challengeToken);
+  assert.equal(verifications.rows[0].attempts, 1);
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'signup'), rejected(400));
+  assert.equal(await verification.consume(resend.challengeToken, delivered[1].otp, 'signup'), 'new@example.com');
+});
+
+test('expired signup codes and five wrong attempts cannot create accounts', async () => {
+  const { verification, verifications, delivered } = verificationFixture();
+  let start = await verification.issue('signup', 'new@example.com');
+  verifications.rows[0].otpExpiresAt = new Date(0);
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'signup'), rejected(400));
+  verifications.rows[0].nextSendAt = new Date(0);
+  start = await verification.issue('signup', 'new@example.com');
+  const wrong = delivered[1].otp === '000000' ? '111111' : '000000';
+  for (let index = 0; index < 5; index++) await assert.rejects(() => verification.consume(start.challengeToken, wrong, 'signup'), rejected(400));
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[1].otp, 'signup'), rejected(400));
+  await assert.rejects(() => verification.resend(start.challengeToken, 'signup'), rejected(400));
+});
+
+test('account creation provisions no tenant/user or session before signup proof', async () => {
+  const { service, users, verification, delivered } = verificationFixture();
+  let tenants = 0; let sessions = 0;
+  const auth = new AuthService(users, { sign() { sessions++; return 'session'; } }, { async create() { tenants++; return { _id: id }; } }, { async findSignupTrialPlan() { return {}; }, async activateSignupTrial() {} }, service, verification);
+  const dto = { email: 'new@example.com', name: 'New User', companyName: 'Company', password, challengeToken: 'a'.repeat(64), otp: '000000' };
+  await assert.rejects(() => auth.register(dto), rejected(400));
+  assert.equal(tenants, 0); assert.equal(sessions, 0); assert.equal(users.rows.length, 1);
+  const start = await auth.startRegistration(dto.email);
+  assert.equal(tenants, 0); assert.equal(sessions, 0);
+  const result = await auth.register({ ...dto, challengeToken: start.challengeToken, otp: delivered[0].otp });
+  assert.equal(tenants, 1); assert.equal(sessions, 1);
+  assert.equal(result.user.emailVerified, true);
+  assert.equal(result.user.role, 'client_owner');
+});
+
+test('secondary email requires password and proof bound to user/session version before routing', async () => {
+  const { service, users, verification, delivered } = verificationFixture();
+  const auth = new AuthService(users, { sign() { return 'session'; } }, {}, {}, service, verification);
+  await assert.rejects(() => auth.startSecondaryEmail(id, 'second@example.com', 'wrong'), rejected(400));
+  const start = await auth.startSecondaryEmail(id, 'second@example.com', password);
+  assert.equal(users.rows[0].secondaryEmail, undefined);
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'secondary', undefined, adminId, 0), rejected(400));
+  await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'secondary', undefined, id, 1), rejected(400));
+  const result = await auth.verifySecondaryEmail(id, start.challengeToken, delivered[0].otp);
+  assert.equal(result.user.secondaryEmail, 'second@example.com');
+  assert.ok(result.user.secondaryEmailVerifiedAt);
+  assert.equal(result.user.useSecondaryEmailForOtp, true);
+  assert.equal(users.rows[0].securityVersion, 1);
+  await service.begin(await users.findById(id));
+  assert.equal(delivered[1].to, 'second@example.com');
+  await auth.secondaryEmailPreference(id, false, password);
+  assert.equal(users.rows[0].useSecondaryEmailForOtp, false);
+});
+
+test('admin routing cannot be overridden by secondary email, and unverified addresses are unusable', async () => {
+  const { service, users, verification } = verificationFixture();
+  const auth = new AuthService(users, {}, {}, {}, service, verification);
+  await assert.rejects(() => auth.secondaryEmailPreference(id, true, password), rejected(400));
+  users.rows[0].role = 'admin';
+  await assert.rejects(() => auth.startSecondaryEmail(id, 'second@example.com', password), rejected(400));
+  await assert.rejects(() => auth.secondaryEmailPreference(id, true, password), rejected(400));
+});
+
+test('admin-created accounts require primary-email verification even with 2FA off', async () => {
+  for (const role of ['admin', 'master', 'client_owner', 'client_user']) {
+    const { service, users, delivered } = fixture(role);
+    users.rows[0].twoFactorEnabled = false; users.rows[0].emailVerified = false; users.rows[0].tenantId = id;
+    let sessions = 0;
+    const auth = new AuthService(users, { sign() { sessions++; return 'session'; } }, { async findOne() { return { status: 'active' }; } }, {}, service);
+    const start = await auth.login({ email: users.rows[0].email, password });
+    assert.equal(start.twoFactorRequired, true);
+    assert.equal(start.requiresRecipientSelection, false);
+    assert.equal(delivered[0].to, users.rows[0].email);
+    assert.equal(sessions, 0);
+    const result = await auth.verifyOtp({ challengeToken: start.challengeToken, otp: delivered[0].otp });
+    assert.equal(result.user.emailVerified, true);
+    assert.equal(sessions, 1);
+  }
+});
+
+test('unverified admin with 2FA on still requires env-routed OTP after primary verification', async () => {
+  const { service, users, delivered } = fixture('admin');
+  users.rows[0].emailVerified = false;
+  let sessions = 0;
+  const auth = new AuthService(users, { sign() { sessions++; return 'session'; } }, {}, {}, service);
+  const primary = await auth.login({ email: users.rows[0].email, password });
+  const second = await auth.verifyOtp({ challengeToken: primary.challengeToken, otp: delivered[0].otp });
+  assert.equal(second.twoFactorRequired, true);
+  assert.equal(second.requiresRecipientSelection, true);
+  assert.equal(second.sent, false);
+  assert.equal(sessions, 0);
+  users.rows[0].otpNextSendAt = new Date(0);
+  await service.send(second.challengeToken, '1');
+  assert.equal(delivered[1].to, 'b@example.com');
+  const session = await auth.verifyOtp({ challengeToken: second.challengeToken, otp: delivered[1].otp });
+  assert.equal(session.access_token, 'session');
+  assert.equal(sessions, 1);
+});
+
+test('admin removal of secondary email requires password, keeps 2FA and invalidates pending codes', async () => {
+  const { service, users, challenges, verification, verifications, delivered } = verificationFixture();
+  Object.assign(users.rows[0], { secondaryEmail: 'secondary@example.com', secondaryEmailVerifiedAt: new Date(), useSecondaryEmailForOtp: true });
+  users.rows.push({ ...users.rows[0], _id: adminId, role: 'admin' });
+  await service.begin(await users.findById(id));
+  const pending = await verification.issue('secondary', 'replacement@example.com', id, 0);
+  await assert.rejects(() => service.setEnabled(adminId, id, undefined, 'wrong', true), rejected(400));
+  assert.equal(users.rows[0].secondaryEmail, 'secondary@example.com');
+  const updated = await service.setEnabled(adminId, id, undefined, password, true);
+  assert.equal(updated.password, undefined);
+  assert.equal(updated.secondaryEmail, undefined);
+  assert.equal(updated.secondaryEmailVerifiedAt, undefined);
+  assert.equal(updated.useSecondaryEmailForOtp, false);
+  assert.equal(updated.twoFactorEnabled, true);
+  assert.equal(updated.emailVerified, true);
+  assert.equal(updated.securityVersion, 1);
+  assert.equal(challenges.rows.length, 0);
+  await assert.rejects(() => verification.consume(pending.challengeToken, delivered[1].otp, 'secondary', undefined, id, 1), rejected(400));
+  users.rows[0].otpNextSendAt = new Date(0);
+  await service.begin(await users.findById(id));
+  assert.equal(delivered[2].to, users.rows[0].email);
 });

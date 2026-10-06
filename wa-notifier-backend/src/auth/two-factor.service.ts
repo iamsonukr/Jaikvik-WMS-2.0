@@ -26,7 +26,7 @@ export class TwoFactorService {
 
   private hash(value: string) { return createHash('sha256').update(value).digest('hex'); }
   private credentials(user: UserDocument) {
-    return this.hash(JSON.stringify([user.password, user.email, user.role, user.twoFactorEnabled, user.securityVersion || 0]));
+    return this.hash(JSON.stringify([user.password, user.email, user.role, user.twoFactorEnabled, user.securityVersion || 0, user.secondaryEmail, user.useSecondaryEmailForOtp, user.emailVerified]));
   }
   private otpHash(tokenHash: string, otp: string) {
     return createHmac('sha256', this.config.get<string>('JWT_SECRET')).update(`${tokenHash}:${otp}`).digest('hex');
@@ -38,13 +38,14 @@ export class TwoFactorService {
     }
     return [...new Set(entries)];
   }
-  async begin(user: UserDocument) {
+  async begin(user: UserDocument, purpose = 'login', deferSend = false) {
     this.email.assertConfigured();
-    const admin = normalizeUserRole(user.role) === UserRole.ADMIN;
+    const admin = purpose === 'login' && normalizeUserRole(user.role) === UserRole.ADMIN;
     const recipients = admin ? this.adminRecipients() : [];
     const token = randomBytes(32).toString('hex');
-    await this.challenges.create({ tokenHash: this.hash(token), userId: user._id, credentialHash: this.credentials(user), expiresAt: new Date(Date.now() + 10 * 60000) });
+    await this.challenges.create({ purpose, tokenHash: this.hash(token), userId: user._id, credentialHash: this.credentials(user), expiresAt: new Date(Date.now() + 10 * 60000) });
     const result = { twoFactorRequired: true, challengeToken: token, recipientOptions: recipients.map((email, index) => ({ id: String(index), label: maskEmail(email) })), requiresRecipientSelection: admin };
+    if (deferSend) return { ...result, sent: false, resendAt: user.otpNextSendAt?.toISOString(), recipientLabel: maskEmail(!admin && user.useSecondaryEmailForOtp && user.secondaryEmailVerifiedAt ? user.secondaryEmail : user.email) };
     if (!admin) {
       try { return { ...result, ...await this.send(token) }; }
       catch (error) { await this.challenges.deleteOne({ tokenHash: this.hash(token) }); throw error; }
@@ -55,13 +56,13 @@ export class TwoFactorService {
     const challenge = await this.challenges.findOne({ tokenHash: this.hash(token), expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } });
     if (!challenge) throw invalid();
     const user = await this.users.findById(challenge.userId);
-    if (!user || !user.isActive || !user.twoFactorEnabled || challenge.credentialHash !== this.credentials(user)) throw invalid();
+    if (!user || !user.isActive || (challenge.purpose === 'primary' ? user.emailVerified : !user.twoFactorEnabled) || challenge.credentialHash !== this.credentials(user)) throw invalid();
     return { challenge, user };
   }
   async send(token: string, recipientId?: string) {
     const { challenge, user } = await this.lookup(token);
-    let recipient = user.email;
-    if (normalizeUserRole(user.role) === UserRole.ADMIN) {
+    let recipient = challenge.purpose !== 'primary' && user.useSecondaryEmailForOtp && user.secondaryEmailVerifiedAt ? user.secondaryEmail : user.email;
+    if (challenge.purpose !== 'primary' && normalizeUserRole(user.role) === UserRole.ADMIN) {
       const recipients = this.adminRecipients();
       if (recipientId == null && challenge.recipient) recipient = challenge.recipient;
       else if (recipientId != null && /^(0|[1-9]\d*)$/.test(recipientId)) recipient = recipients[Number(recipientId)];
@@ -77,7 +78,7 @@ export class TwoFactorService {
     const otpExpiresAt = new Date(now.getTime() + 5 * 60000);
     const updated = await this.challenges.findOneAndUpdate({ _id: challenge._id, expiresAt: { $gt: now }, attempts: { $lt: 5 } }, { $set: { recipient }, $unset: { otpHash: 1, otpExpiresAt: 1 } });
     if (!updated) throw invalid();
-    await this.email.sendOtpEmail(recipient, otp);
+    await this.email.sendOtpEmail(recipient, otp, challenge.purpose === 'primary' ? 'account verification' : 'sign-in');
     const ready = await this.challenges.findOneAndUpdate({ _id: challenge._id, expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } }, { $set: { otpHash, otpExpiresAt } });
     if (!ready) throw invalid();
     return { sent: true, recipientLabel: maskEmail(recipient), resendAt: next.toISOString(), otpExpiresAt: otpExpiresAt.toISOString() };
@@ -95,6 +96,7 @@ export class TwoFactorService {
     }
     const consumed = await this.challenges.findOneAndDelete({ _id: challenge._id, otpHash: actualHash, otpExpiresAt: { $gt: new Date() }, expiresAt: { $gt: new Date() }, attempts: { $lte: 5 } });
     if (!consumed) throw invalid();
+    (user as any).verifiedPrimaryEmail = challenge.purpose === 'primary';
     return user;
   }
   async confirmPassword(userId: string, password: string) {
@@ -108,7 +110,7 @@ export class TwoFactorService {
     await this.users.updateOne({ _id: user._id }, { $set: { securityPasswordAttempts: 0 } });
     return user;
   }
-  async setEnabled(actorId: string, targetId: string, enabled: boolean | undefined, password: string) {
+  async setEnabled(actorId: string, targetId: string, enabled: boolean | undefined, password: string, removeSecondary = false) {
     const actor = await this.confirmPassword(actorId, password);
     if (String(actor._id) !== String(targetId) && normalizeUserRole(actor.role) !== UserRole.ADMIN) throw invalid();
     const target = await this.users.findById(toObjectId(targetId, 'userId'));
@@ -117,7 +119,11 @@ export class TwoFactorService {
       this.email.assertConfigured();
       if (normalizeUserRole(target.role) === UserRole.ADMIN) this.adminRecipients();
     }
-    const updated = await this.users.findByIdAndUpdate(target._id, { ...(enabled == null ? {} : { $set: { twoFactorEnabled: enabled } }), $inc: { securityVersion: 1 } }, { new: true }).select('-password');
+    const updated = await this.users.findByIdAndUpdate(target._id, {
+      ...((enabled == null && !removeSecondary) ? {} : { $set: { ...(enabled == null ? {} : { twoFactorEnabled: enabled }), ...(removeSecondary ? { useSecondaryEmailForOtp: false } : {}) } }),
+      ...(removeSecondary ? { $unset: { secondaryEmail: 1, secondaryEmailVerifiedAt: 1 } } : {}),
+      $inc: { securityVersion: 1 },
+    }, { new: true }).select('-password');
     await this.challenges.deleteMany({ userId: target._id });
     return updated;
   }

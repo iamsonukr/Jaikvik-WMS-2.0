@@ -11,6 +11,7 @@ import { toObjectId } from '../common/mongo-id';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { TwoFactorService } from './two-factor.service';
 import { OtpSendDto, OtpVerifyDto, TwoFactorSettingsDto, TwoFactorAdminDto, ProfileDto } from './auth.dto';
+import { EmailVerificationService } from './email-verification.service';
 
 @Injectable()
 export class AuthService {
@@ -20,9 +21,12 @@ export class AuthService {
     private tenantsService: TenantsService,
     private subscriptionsService: SubscriptionsService,
     private twoFactor: TwoFactorService,
+    private emailVerification: EmailVerificationService,
   ) {}
 
   async register(dto: RegisterDto) {
+    dto.email = dto.email.trim().toLowerCase();
+    await this.emailVerification.consume(dto.challengeToken, dto.otp, 'signup', dto.email);
     const exists = await this.userModel.findOne({ email: dto.email });
     if (exists) throw new ConflictException('Email already in use');
     const signupTrialPlan = await this.subscriptionsService.findSignupTrialPlan();
@@ -38,6 +42,7 @@ export class AuthService {
       password: dto.password,
       name: dto.name,
       role: UserRole.CLIENT_OWNER,
+      emailVerified: true,
       tenantId: tenant._id,
     });
     await this.subscriptionsService.activateSignupTrial(String(tenant._id), signupTrialPlan);
@@ -51,6 +56,7 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
     try { await this.assertTenantActive(user); } catch { throw new UnauthorizedException('Invalid credentials'); }
+    if (user.emailVerified === false) return this.twoFactor.begin(user, 'primary');
     if (user.twoFactorEnabled) return this.twoFactor.begin(user);
     user.lastLoginAt = new Date();
     await user.save();
@@ -60,11 +66,23 @@ export class AuthService {
   sendOtp(dto: OtpSendDto) { return this.twoFactor.send(dto.challengeToken, dto.recipientId); }
   async verifyOtp(dto: OtpVerifyDto) {
     const verified = await this.twoFactor.verify(dto.challengeToken, dto.otp);
-    const user = await this.userModel.findById(verified._id);
+    const user = await this.userModel.findById(verified._id).select('+otpNextSendAt');
     if (!user || !user.isActive || user.password !== verified.password || user.email !== verified.email || (user.securityVersion || 0) !== (verified.securityVersion || 0)) {
       throw new UnauthorizedException('Verification failed. Please sign in again.');
     }
     try { await this.assertTenantActive(user); } catch { throw new UnauthorizedException('Verification failed. Please sign in again.'); }
+    if ((verified as any).verifiedPrimaryEmail) {
+      user.emailVerified = true;
+      await user.save();
+      if (user.twoFactorEnabled) {
+        // The primary code already proved control of the registered email. An admin
+        // still needs the environment-routed second factor; other accounts use the
+        // just-verified primary code for this sign-in only.
+        if (normalizeUserRole(user.role) === UserRole.ADMIN || user.useSecondaryEmailForOtp) {
+          return this.twoFactor.begin(user, 'login', true);
+        }
+      }
+    }
     user.lastLoginAt = new Date();
     await user.save();
     return this.tokenFor(user);
@@ -74,7 +92,7 @@ export class AuthService {
     return this.tokenFor(user);
   }
   async manageTwoFactor(actorId: string, targetId: string, dto: TwoFactorAdminDto) {
-    const user = await this.twoFactor.setEnabled(actorId, targetId, dto.action === 'reset' ? undefined : dto.action === 'enable', dto.currentPassword);
+    const user = await this.twoFactor.setEnabled(actorId, targetId, ['reset', 'remove-secondary'].includes(dto.action) ? undefined : dto.action === 'enable', dto.currentPassword, dto.action === 'remove-secondary');
     return String(actorId) === String(targetId) ? this.tokenFor(user) : { user };
   }
 
@@ -84,6 +102,37 @@ export class AuthService {
     const normalized = user.toObject();
     normalized.role = normalizeUserRole(normalized.role) as any;
     return normalized;
+  }
+
+  startRegistration(email: string) { return this.emailVerification.issue('signup', email); }
+  resendRegistration(token: string) { return this.emailVerification.resend(token, 'signup'); }
+  async startSecondaryEmail(userId: string, email: string, password: string) {
+    const user = await this.twoFactor.confirmPassword(userId, password);
+    if (normalizeUserRole(user.role) === UserRole.ADMIN) throw new BadRequestException('Admin OTP recipients are configured through the environment.');
+    if (email.trim().toLowerCase() === user.email) throw new BadRequestException('Use a different secondary email address.');
+    return this.emailVerification.issue('secondary', email, String(user._id), user.securityVersion || 0);
+  }
+  async resendSecondaryEmail(userId: string, token: string) {
+    const user = await this.userModel.findById(userId);
+    return this.emailVerification.resend(token, 'secondary', String(user._id), user.securityVersion || 0);
+  }
+  async verifySecondaryEmail(userId: string, token: string, otp: string) {
+    const user = await this.userModel.findById(userId);
+    if (normalizeUserRole(user.role) === UserRole.ADMIN) throw new BadRequestException('Admin OTP recipients are configured through the environment.');
+    const email = await this.emailVerification.consume(token, otp, 'secondary', undefined, String(user._id), user.securityVersion || 0);
+    const updated = await this.userModel.findOneAndUpdate({ _id: user._id, password: user.password, isActive: true, $or: [{ securityVersion: user.securityVersion || 0 }, { securityVersion: { $exists: false } }] }, {
+      $set: { secondaryEmail: email, secondaryEmailVerifiedAt: new Date(), useSecondaryEmailForOtp: true }, $inc: { securityVersion: 1 },
+    }, { new: true });
+    if (!updated) throw new BadRequestException('Security settings changed. Verify the secondary email again.');
+    return this.tokenFor(updated);
+  }
+  async secondaryEmailPreference(userId: string, useSecondary: boolean, password: string) {
+    const user = await this.twoFactor.confirmPassword(userId, password);
+    if (normalizeUserRole(user.role) === UserRole.ADMIN) throw new BadRequestException('Admin OTP recipients are configured through the environment.');
+    if (useSecondary && (!user.secondaryEmail || !user.secondaryEmailVerifiedAt)) throw new BadRequestException('Verify a secondary email first.');
+    user.useSecondaryEmailForOtp = useSecondary;
+    await user.save();
+    return this.tokenFor(user);
   }
 
   // ── Staff management (admin only, enforced at the controller) ──
@@ -102,6 +151,7 @@ export class AuthService {
       password: dto.password,
       name: dto.name,
       role: dto.role,
+      emailVerified: false,
       tenantId: null, // platform staff are never scoped to a tenant
       permissions: dto.permissions || [],
     });
@@ -136,6 +186,7 @@ export class AuthService {
       name: dto.name,
       role: dto.role,
       tenantId: toObjectId(tenantId, 'tenantId'),
+      emailVerified: false,
     });
 
     const created = user.toObject();
@@ -245,6 +296,7 @@ export class AuthService {
       if (!email) throw new BadRequestException('Email is required');
       const exists = await this.userModel.findOne({ email, _id: { $ne: user._id } });
       if (exists) throw new ConflictException('Email already in use');
+      if (email !== user.email) user.emailVerified = false;
       user.email = email;
     }
     if (dto.name !== undefined) user.name = dto.name.trim();
@@ -273,7 +325,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Unable to update profile.');
     const email = dto.email?.trim().toLowerCase();
     if (email && email !== user.email && user.twoFactorEnabled) await this.twoFactor.confirmPassword(userId, dto.currentPassword || '');
-    if (email) user.email = email;
+    if (email && email !== user.email) { user.email = email; user.emailVerified = false; }
     if (dto.name !== undefined) user.name = dto.name;
     await user.save();
     const updated = user.toObject();
@@ -333,6 +385,10 @@ export class AuthService {
         tenantId: user.tenantId ?? null,
         permissions: user.permissions ?? [],
         twoFactorEnabled: user.twoFactorEnabled || false,
+        secondaryEmail: user.secondaryEmail,
+        secondaryEmailVerifiedAt: user.secondaryEmailVerifiedAt,
+        useSecondaryEmailForOtp: user.useSecondaryEmailForOtp || false,
+        emailVerified: user.emailVerified,
       },
     };
   }

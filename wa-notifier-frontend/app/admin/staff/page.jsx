@@ -119,13 +119,14 @@ export default function StaffPage() {
                   <SortableTh label="Role" sortKey="role" sort={sort} onSort={setSort} />
                   <SortableTh label="Permissions" sortKey="permissions" sort={sort} onSort={setSort} />
                   <SortableTh label="Status" sortKey="status" sort={sort} onSort={setSort} />
+                  <th className="px-4 py-3 font-semibold">Security & email verification</th>
                   <SortableTh label="Created" sortKey="createdAt" sort={sort} onSort={setSort} />
                   <th className="px-4 py-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {!filteredStaff.length && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No staff match these filters.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No staff match these filters.</td></tr>
                 )}
                 {staffPage.pageItems.map((s) => (
                   <tr key={s._id} className="table-row-hover">
@@ -149,6 +150,8 @@ export default function StaffPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge label={s.isActive ? 'Active' : 'Disabled'} color={s.isActive ? 'green' : 'red'} />
+                    </td>
+                    <td className="px-4 py-3">
                       <AdminTwoFactorControl member={s} onUpdated={load} />
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDate(s.createdAt)}</td>
@@ -178,6 +181,7 @@ export default function StaffPage() {
           <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <Input label="Temporary password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <p className="text-xs text-muted-foreground">The new account must verify its registered email with an OTP at first login.</p>
           <Select label="Role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="master">Master</option>
             <option value="admin">Admin</option>

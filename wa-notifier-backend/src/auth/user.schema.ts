@@ -27,6 +27,10 @@ export class User {
   @Prop() name: string;
   @Prop() lastLoginAt?: Date;
   @Prop({ default: false }) twoFactorEnabled: boolean;
+  @Prop({ lowercase: true }) secondaryEmail?: string;
+  @Prop() secondaryEmailVerifiedAt?: Date;
+  @Prop({ default: false }) useSecondaryEmailForOtp: boolean;
+  @Prop({ default: false }) emailVerified: boolean;
   @Prop({ default: 0 }) securityVersion: number;
   @Prop({ select: false }) otpNextSendAt?: Date;
   @Prop({ select: false }) securityPasswordAttempts?: number;
@@ -37,7 +41,7 @@ export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ tenantId: 1 });
 
 UserSchema.pre('save', async function (next) {
-  if (!this.isNew && ['password', 'email', 'role', 'isActive'].some((field) => this.isModified(field))) {
+  if (!this.isNew && ['password', 'email', 'role', 'isActive', 'secondaryEmail', 'useSecondaryEmailForOtp'].some((field) => this.isModified(field))) {
     this.securityVersion = (this.securityVersion || 0) + 1;
   }
   if (!this.isModified('password')) return next();

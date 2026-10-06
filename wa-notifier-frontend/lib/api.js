@@ -24,7 +24,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    const isLoginCall = ['/auth/login', '/auth/2fa/send', '/auth/2fa/verify'].some((path) => err.config?.url?.includes(path));
+    const isLoginCall = ['/auth/login', '/auth/register', '/auth/2fa/send', '/auth/2fa/verify'].some((path) => err.config?.url?.includes(path));
     if (err.response?.status === 401 && !isLoginCall && typeof window !== 'undefined') {
       localStorage.removeItem('wa_token');
       window.location.href = '/login';

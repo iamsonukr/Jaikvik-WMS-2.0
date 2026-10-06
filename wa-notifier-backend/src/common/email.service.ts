@@ -16,15 +16,15 @@ export class EmailService {
     }
   }
 
-  async sendOtpEmail(to: string, otp: string) {
+  async sendOtpEmail(to: string, otp: string, purpose = 'sign-in') {
     this.assertConfigured();
-    const text = `${OTP_APP_NAME}\n\nYour sign-in code is ${otp}. It expires in 5 minutes and can only be used once.\n\nDo not share this code. If this wasn't you, ignore this email.`;
+    const text = `${OTP_APP_NAME}\n\nYour ${purpose} code is ${otp}. It expires in 5 minutes and can only be used once.\n\nDo not share this code. If this wasn't you, ignore this email.`;
     try {
       const resend = new Resend(this.config.get<string>('RESEND_API_KEY'));
       const { error } = await resend.emails.send({
         from: `${OTP_APP_NAME} <${this.config.get<string>('RESEND_FROM_EMAIL')}>`,
-        to, subject: `${OTP_APP_NAME} - Your sign-in code`, text,
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;color:#172033"><h2>${OTP_APP_NAME}</h2><p>Your sign-in code:</p><p style="font-size:32px;font-weight:bold;letter-spacing:8px">${otp}</p><p>This code expires in <strong>5 minutes</strong> and can only be used once.</p><p>Do not share this code. If this wasn't you, ignore this email.</p></div>`,
+        to, subject: `${OTP_APP_NAME} - Your ${purpose} code`, text,
+        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;color:#172033"><h2>${OTP_APP_NAME}</h2><p>Your ${purpose} code:</p><p style="font-size:32px;font-weight:bold;letter-spacing:8px">${otp}</p><p>This code expires in <strong>5 minutes</strong> and can only be used once.</p><p>Do not share this code. If this wasn't you, ignore this email.</p></div>`,
       }, { signal: AbortSignal.timeout(15000) });
       if (error) throw new Error('provider rejected delivery');
     } catch {

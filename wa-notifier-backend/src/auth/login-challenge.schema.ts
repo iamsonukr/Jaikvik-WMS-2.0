@@ -4,6 +4,7 @@ import { Document, Types, Schema as MongoSchema } from 'mongoose';
 export type LoginChallengeDocument = LoginChallenge & Document;
 @Schema({ timestamps: true })
 export class LoginChallenge {
+  @Prop({ default: 'login' }) purpose: string;
   @Prop({ required: true, unique: true }) tokenHash: string;
   @Prop({ type: MongoSchema.Types.ObjectId, required: true }) userId: Types.ObjectId;
   @Prop({ required: true }) credentialHash: string;
