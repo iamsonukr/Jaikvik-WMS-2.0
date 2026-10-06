@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { InboxService } from './inbox.service';
 import { TenantOwnershipGuard } from '../common/guards/tenant-ownership.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -17,7 +19,8 @@ export class InboxController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="inbox-leads.csv"');
     res.setHeader('Cache-Control', 'no-store');
-    return res.send(csv);
+    res.setHeader('X-Accel-Buffering', 'no');
+    await pipeline(Readable.from(csv), res);
   }
 
   @UseGuards(TenantOwnershipGuard)

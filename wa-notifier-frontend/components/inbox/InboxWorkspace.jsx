@@ -227,7 +227,9 @@ export default function InboxWorkspace({ allowedRoles }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [exportMode, setExportMode] = useState('conversations');
+  const [showExport, setShowExport] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportBytes, setExportBytes] = useState(0);
   const [exportError, setExportError] = useState('');
   const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -335,6 +337,7 @@ export default function InboxWorkspace({ allowedRoles }) {
   const exportLeads = async () => {
     if (!activeClient || invalidDateRange || exporting) return;
     setExporting(true);
+    setExportBytes(0);
     setExportError('');
     try {
       const end = dateTo ? new Date(`${dateTo}T00:00:00`) : null;
@@ -347,6 +350,7 @@ export default function InboxWorkspace({ allowedRoles }) {
           to: end?.toISOString(),
         },
         responseType: 'blob',
+        onDownloadProgress: (event) => setExportBytes(event.loaded || 0),
       });
       const url = URL.createObjectURL(data);
       const link = document.createElement('a');
@@ -356,8 +360,15 @@ export default function InboxWorkspace({ allowedRoles }) {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setExportError('Could not export leads. Please try again.');
+    } catch (error) {
+      let message = 'Could not export leads. Please try again.';
+      if (error.response?.data instanceof Blob) {
+        try {
+          const body = JSON.parse(await error.response.data.text());
+          if (typeof body.message === 'string') message = body.message;
+        } catch { /* Keep the fallback for proxy errors or interrupted streams. */ }
+      }
+      setExportError(message);
     } finally {
       setExporting(false);
     }
@@ -466,12 +477,16 @@ export default function InboxWorkspace({ allowedRoles }) {
           <div className="border-b border-border px-3 py-2">
             <div className="mb-1.5 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Inbox</h2>
+              <Button size="sm" variant="outline" aria-expanded={showExport} aria-controls="inbox-export-options" onClick={() => setShowExport((value) => !value)}>
+                <Download size={13} /> Export
+              </Button>
               <button onClick={loadThreads} className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Refresh threads">
                 <RefreshCw size={14} />
               </button>
             </div>
             <div className="grid gap-1.5">
               <Input className="h-8 text-xs" placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              {showExport && <div id="inbox-export-options" className="grid gap-2 rounded-lg border border-border p-2">
               <div className="grid grid-cols-2 gap-2">
                 <Input label="From date" type="date" className="h-8 text-xs" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                 <Input label="To date" type="date" className="h-8 text-xs" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
@@ -484,9 +499,11 @@ export default function InboxWorkspace({ allowedRoles }) {
                 <option value="conversations">Contacts + conversations (CSV)</option>
               </Select>
               <Button size="sm" variant="outline" onClick={exportLeads} disabled={!activeClient || exporting || invalidDateRange || !filteredThreads.length}>
-                <Download size={13} /> {exporting ? 'Exporting...' : `Export leads (${filteredThreads.length})`}
+                <Download size={13} /> {exporting ? 'Exporting...' : `Download CSV (${filteredThreads.length})`}
               </Button>
+              {exporting && <p role="status" className="text-xs text-muted-foreground">{exportBytes ? `Downloaded ${(exportBytes / 1048576).toFixed(1)} MB...` : 'Preparing export...'}</p>}
               {exportError && <p role="alert" className="text-xs text-red-600">{exportError}</p>}
+              </div>}
               <div className="grid grid-cols-2 gap-2">
                 <Select className="h-8 text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="all">All statuses</option>

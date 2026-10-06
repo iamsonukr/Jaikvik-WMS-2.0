@@ -26,14 +26,15 @@ export class InboxService {
   ) { }
 
   /** All unique threads (latest message per phone) */
-  async threads(whatsappAccountId: string) {
+  async threads(whatsappAccountId: string, exportOnly = false) {
     return this.model.aggregate([
       { $match: this.whatsappAccountIdQuery(whatsappAccountId) },
+      ...(exportOnly ? [{ $project: { phone: 1, contactName: 1, text: 1, createdAt: 1, threadStatus: 1, priority: 1, threadTags: 1, assignedTo: 1 } }] : []),
       { $sort: { createdAt: -1 } },
       { $group: { _id: '$phone', latest: { $first: '$$ROOT' } } },
       { $replaceRoot: { newRoot: '$latest' } },
       { $sort: { createdAt: -1 } },
-    ]);
+    ]).allowDiskUse(true);
   }
 
   messages(whatsappAccountId: string, phone: string) {
@@ -66,7 +67,7 @@ export class InboxService {
     if (from && to && from >= to) throw new BadRequestException('Start date must be before end date.');
     if (!['contacts', 'conversations'].includes(options.mode)) throw new BadRequestException('Invalid export mode.');
     const query = String(options.search || '').trim().toLowerCase();
-    const threads = (await this.threads(whatsappAccountId)).filter((thread) => {
+    const threads = (await this.threads(whatsappAccountId, true)).filter((thread) => {
       const tags = Array.isArray(thread.threadTags) ? thread.threadTags : [];
       const date = new Date(thread.createdAt);
       return (!(from || to) || (Boolean(thread.createdAt) && Number.isFinite(date.getTime())))
@@ -89,12 +90,16 @@ export class InboxService {
         if (wantedPhones.has(phone)) byPhone.set(phone, contact);
       }
       // Outbound messages often omit contactName. Recover the latest known profile name.
-      const names = await this.model.aggregate([
-        { $match: { ...scope, phone: { $in: phones }, contactName: { $type: 'string', $ne: '' } } },
+      const namesByPhone = new Map<string, string>();
+      for (let offset = 0; offset < phones.length; offset += 500) {
+        const names = await this.model.aggregate([
+        { $match: { ...scope, phone: { $in: phones.slice(offset, offset + 500) }, contactName: { $type: 'string', $ne: '' } } },
+        { $project: { phone: 1, contactName: 1, createdAt: 1 } },
         { $sort: { createdAt: -1, _id: -1 } },
         { $group: { _id: '$phone', name: { $first: '$contactName' } } },
-      ]);
-      const namesByPhone = new Map(names.map((entry) => [entry._id, entry.name]));
+      ]).allowDiskUse(true);
+        for (const entry of names) namesByPhone.set(entry._id, entry.name);
+      }
       for (const thread of threads) {
         if (!thread.contactName) thread.contactName = namesByPhone.get(thread.phone);
       }
@@ -111,21 +116,32 @@ export class InboxService {
       return [contact?.name || thread.contactName, thread.phone, contact?.tags || [], contact?.customFields || {}, contact?.variables || {}, thread.threadStatus, thread.priority, thread.threadTags || [], thread.createdAt];
     };
     const headers = ['Name', 'Phone', 'Contact tags', 'Custom contact fields', 'Contact variables', 'Conversation status', 'Priority', 'Conversation tags', 'Latest activity (UTC)'];
-    const lines: string[] = [];
-    const append = (row: any[]) => lines.push(row.map(cell).join(','));
-    if (options.mode === 'contacts') {
-      append(headers);
-      for (const thread of threads) append(details(thread));
-    } else {
+    if (options.mode === 'conversations') {
       headers.push('Message date (UTC)', 'Direction', 'Type', 'Text', 'Media details', 'Structured content', 'Delivery status');
-      append(headers);
-      // Export the complete history, independently of the 200-message inbox preview limit.
-      const cursor = this.model.find({ ...scope, phone: { $in: phones } }).sort({ phone: 1, createdAt: 1, _id: 1 }).lean().cursor();
-      for await (const message of cursor) {
-        append([...details(threadByPhone.get(message.phone)), (message as any).createdAt, message.direction, message.type, message.text, message.media, message.payload, message.deliveryStatus]);
-      }
     }
-    return '\uFEFF' + lines.join('\r\n');
+    const model = this.model;
+    // Produce one row at a time; HTTP backpressure bounds memory for large histories.
+    return (async function* () {
+      yield '\uFEFF' + headers.map(cell).join(',') + '\r\n';
+      if (options.mode === 'contacts') {
+        for (const thread of threads) yield details(thread).map(cell).join(',') + '\r\n';
+        return;
+      }
+      // Bound query size too: a huge phone list can exceed MongoDB's BSON limit.
+      for (let offset = 0; offset < phones.length; offset += 500) {
+        const cursor = model.find({ ...scope, phone: { $in: phones.slice(offset, offset + 500) } })
+          .select('phone createdAt direction type text media payload deliveryStatus')
+          .sort({ phone: 1, createdAt: 1, _id: 1 }).allowDiskUse(true).lean().cursor({ batchSize: 100 });
+        try {
+          for await (const message of cursor) {
+            yield [...details(threadByPhone.get(message.phone)), (message as any).createdAt, message.direction, message.type, message.text, message.media, message.payload, message.deliveryStatus]
+              .map(cell).join(',') + '\r\n';
+          }
+        } finally {
+          await cursor.close();
+        }
+      }
+    })();
   }
 
   async mediaAttachment(whatsappAccountId: string, messageId: string) {

@@ -13,15 +13,17 @@ const contacts = [{ phone: '+' + phone, name: 'Saved lead', customFields: { emai
 function fixture(threads = [baseThread], savedContacts = contacts) {
   const queries = [];
   const model = {
-    async aggregate(pipeline) {
+    aggregate(pipeline) {
       queries.push(pipeline[0].$match);
-      return [{ _id: phone, name: 'WhatsApp name' }];
+      return { allowDiskUse() { return Promise.resolve([{ _id: phone, name: 'WhatsApp name' }]); } };
     },
     find(filter) {
       queries.push(filter);
       return {
-        sort() { return this; }, lean() { return this; },
-        async *cursor() {
+        sort() { return this; }, select() { return this; }, allowDiskUse() { return this; }, lean() { return this; },
+        async close() {},
+        cursor() { return this; },
+        async *[Symbol.asyncIterator]() {
           for (const number of filter.phone.$in) {
             for (let i = 0; i < 205; i++) {
               yield { phone: number, createdAt: new Date('2026-09-01T00:00:00Z'), direction: i % 2 ? 'outbound' : 'inbound', type: 'text', text: '=SUM(1,2)\n"quoted"', media: { caption: 'Photo' }, payload: { button: { text: 'Yes' } } };
@@ -39,7 +41,13 @@ function fixture(threads = [baseThread], savedContacts = contacts) {
   };
   const service = new InboxService(model, null, null, null, null, null, null, contactModel);
   service.threads = async () => threads.map((thread) => ({ ...thread }));
-  return { service, queries };
+  const streamExport = service.exportLeads.bind(service);
+  service.exportLeads = async (...args) => {
+    let csv = '';
+    for await (const chunk of await streamExport(...args)) csv += chunk;
+    return csv.trimEnd();
+  };
+  return { service, queries, streamExport };
 }
 
 test('exports full history, saved contact fields, structured content and safe CSV', async () => {
@@ -110,4 +118,19 @@ test('ownership guard rejects exports for another tenant and missing accounts', 
   await assert.rejects(() => guard.canActivate(context({})), (error) => error.getStatus() === 403);
   const allowedGuard = new TenantOwnershipGuard({ async findOne() { return { tenantId: 'my-tenant' }; } });
   assert.equal(await allowedGuard.canActivate(context({ whatsappAccountId: accountId })), true);
+});
+
+test('streams before reading history and splits large lead lists into bounded queries', async () => {
+  const threads = Array.from({ length: 1001 }, (_, index) => ({ ...baseThread, phone: String(910000000000 + index) }));
+  const { streamExport, queries } = fixture(threads, []);
+  const stream = await streamExport(accountId, { mode: 'conversations' });
+  const header = await stream.next();
+  assert.ok(header.value.startsWith('\uFEFF'));
+  assert.equal(queries.filter((query) => query.phone && !query.contactName).length, 0);
+  let count = 0;
+  for await (const row of stream) { assert.ok(row.endsWith('\r\n')); count++; }
+  assert.equal(count, 1001 * 205);
+  const historyQueries = queries.filter((query) => query.phone && !query.contactName);
+  assert.deepEqual(historyQueries.map((query) => query.phone.$in.length), [500, 500, 1]);
+  assert.ok(queries.filter((query) => query.contactName).every((query) => query.phone.$in.length <= 500));
 });
