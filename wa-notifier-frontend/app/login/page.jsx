@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { getApiErrorMessage } from '@/lib/api';
+import api, { getApiErrorMessage } from '@/lib/api';
 import { useTheme } from '@/components/theme-provider';
 import { roleHomePath } from '@/hooks/useBasePath';
 import { MessageCircle, Moon, Sun, ShieldCheck, Zap, Users2 } from 'lucide-react';
-import { Button, Input, Card } from '@/components/ui';
+import { Button, Input, Card, Select } from '@/components/ui';
 
 const highlights = [
   { icon: Zap, text: 'Real-time broadcast delivery tracking' },
@@ -16,12 +16,45 @@ const highlights = [
 ];
 
 export default function LoginPage() {
-  const { login, user, loading: authLoading } = useAuth();
+  const { login, setSession, user, loading: authLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [challenge, setChallenge] = useState(null);
+  const [otp, setOtp] = useState('');
+  const [recipientId, setRecipientId] = useState('');
+  const [now, setNow] = useState(Date.now());
+  const cooldown = challenge?.resendAt ? Math.max(0, Math.ceil((new Date(challenge.resendAt).getTime() - now) / 1000)) : 0;
+  useEffect(() => {
+    if (!challenge) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [challenge]);
+  const sendOtp = async () => {
+    setError(''); setLoading(true);
+    try {
+      const { data } = await api.post('/auth/2fa/send', {
+        challengeToken: challenge.challengeToken,
+        ...(challenge.requiresRecipientSelection ? { recipientId } : {}),
+      });
+      setChallenge((previous) => ({ ...previous, ...data }));
+      setOtp(''); setNow(Date.now());
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not send the verification email.'));
+      if (err.response?.status === 429) setChallenge((previous) => ({ ...previous, resendAt: new Date(Date.now() + 60000).toISOString() }));
+    } finally { setLoading(false); }
+  };
+  const verifyOtp = async (event) => {
+    event.preventDefault(); setError(''); setLoading(true);
+    try {
+      const { data } = await api.post('/auth/2fa/verify', { challengeToken: challenge.challengeToken, otp });
+      setSession(data);
+      router.replace(roleHomePath(data.user.role));
+    } catch (err) { setError(getApiErrorMessage(err, 'Verification failed. Please sign in again.')); }
+    finally { setLoading(false); }
+  };
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -34,8 +67,12 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const { user } = await login(form.email, form.password);
-      router.replace(roleHomePath(user.role));
+      const data = await login(form.email, form.password);
+      setForm((previous) => ({ ...previous, password: '' }));
+      if (data.twoFactorRequired) {
+        setChallenge(data); setNow(Date.now());
+        setRecipientId(data.recipientOptions?.[0]?.id || '');
+      } else router.replace(roleHomePath(data.user.role));
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404) {
@@ -116,6 +153,24 @@ export default function LoginPage() {
           </div>
 
           <Card className="p-6">
+            {challenge ? (
+              <form onSubmit={verifyOtp} className="space-y-4">
+                <h2 className="font-semibold">Verify your sign-in</h2>
+                <p className="text-sm text-muted-foreground">{challenge.sent ? `Enter the 6-digit code sent to ${challenge.recipientLabel}. It expires in 5 minutes.` : 'Choose where to receive your verification code.'}</p>
+                {challenge.requiresRecipientSelection && <Select label="Send code to" value={recipientId} disabled={loading} onChange={(event) => setRecipientId(event.target.value)}>
+                  {challenge.recipientOptions.map((recipient) => <option key={recipient.id} value={recipient.id}>{recipient.label}</option>)}
+                </Select>}
+                {challenge.sent && <>
+                  <Input label="Verification code" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} />
+                  <Button type="submit" className="w-full" disabled={loading || otp.length !== 6}>{loading ? 'Verifying...' : 'Verify and sign in'}</Button>
+                </>}
+                {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+                <Button type="button" variant="outline" className="w-full" onClick={sendOtp} disabled={loading || cooldown > 0}>
+                  {cooldown ? `Resend OTP in ${cooldown}s` : challenge.sent ? 'Resend OTP' : 'Send OTP'}
+                </Button>
+                <button type="button" className="text-sm text-primary" disabled={loading} onClick={() => { setChallenge(null); setOtp(''); setError(''); }}>Back to sign in</button>
+              </form>
+            ) : (
             <form onSubmit={submit} className="space-y-4">
               {error && (
                 <div className="soft-alert border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300 animate-fade-in">{error}</div>
@@ -143,6 +198,7 @@ export default function LoginPage() {
                 {loading ? 'Signing in…' : 'Sign in'}
               </Button>
             </form>
+            )}
           </Card>
 
           <div className="mt-5 text-center text-xs text-muted-foreground">

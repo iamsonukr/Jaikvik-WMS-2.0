@@ -4,6 +4,7 @@ import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Input, Spinner } from '@/components/ui';
 import { Settings as SettingsIcon } from 'lucide-react';
 import api from '@/lib/api';
+import TwoFactorSettings from '@/components/security/TwoFactorSettings';
 
 export default function AdminSettingsPage() {
   const [form, setForm] = useState(null);
@@ -33,6 +34,7 @@ export default function AdminSettingsPage() {
   return (
     <AppShell allowedRoles={['admin', 'master']}>
       <PageHeader title="Settings" subtitle="Platform-wide defaults. Razorpay/Meta credentials are configured via environment variables, not here." />
+      <TwoFactorSettings />
 
       {!form ? (
         <div className="flex justify-center py-16"><Spinner /></div>

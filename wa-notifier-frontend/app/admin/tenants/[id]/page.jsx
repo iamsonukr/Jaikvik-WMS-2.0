@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { normalizeRole } from '@/lib/roles';
 import Link from 'next/link';
 import api from '@/lib/api';
+import AdminTwoFactorControl from '@/components/security/AdminTwoFactorControl';
 import {
   isFacebookOrigin,
   isSuccessfulEmbeddedSignupEvent,
@@ -1250,6 +1251,7 @@ export default function TenantDetailPage() {
                         <td className="py-3 pr-3">{ROLE_LABEL[u.role] || u.role}</td>
                         <td className="py-3 pr-3">
                           <Badge label={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} />
+                          {role === 'admin' && <AdminTwoFactorControl member={u} onUpdated={(updated) => setTenantUsers((previous) => previous.map((member) => member._id === updated._id ? { ...member, ...updated } : member))} />}
                         </td>
                         <td className="py-3 pr-3 text-muted-foreground">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : 'Never'}</td>
                         <td className="py-3 text-right">

@@ -6,6 +6,7 @@ import { Badge, Button, Card, Input, PageHeader, Spinner, StatCard } from '@/com
 import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
+import TwoFactorSettings from '@/components/security/TwoFactorSettings';
 import {
   CalendarDays, CheckCircle2, CreditCard, ExternalLink, KeyRound, MessageCircle,
   RefreshCw, ShieldCheck, UserCircle, Wallet as WalletIcon,
@@ -76,9 +77,10 @@ function UsageRow({ label, used, limit }) {
 }
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, setSession } = useAuth();
   const { clients, refreshClients, loading: clientsLoading } = useClient();
   const [profile, setProfile] = useState({ name: '', email: '' });
+  const [profilePassword, setProfilePassword] = useState('');
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [notice, setNotice] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -136,7 +138,9 @@ export default function SettingsPage() {
   const saveProfile = async () => {
     setSavingProfile(true);
     try {
-      await api.patch('/auth/me', { name: profile.name, email: profile.email });
+      const { data } = await api.patch('/auth/me', { name: profile.name, email: profile.email, currentPassword: profilePassword });
+      if (data.access_token) setSession(data);
+      setProfilePassword('');
       setNotice('Profile updated.');
     } catch (err) {
       setNotice('Error: ' + (err?.response?.data?.message || 'Could not update profile'));
@@ -152,7 +156,8 @@ export default function SettingsPage() {
     if (pw.next !== pw.confirm) { setNotice('Error: New passwords do not match'); return; }
     setSavingPw(true);
     try {
-      await api.patch('/auth/password', { currentPassword: pw.current, newPassword: pw.next });
+      const { data } = await api.patch('/auth/password', { currentPassword: pw.current, newPassword: pw.next });
+      if (data.access_token) setSession(data);
       setPw({ current: '', next: '', confirm: '' });
       setNotice('Password updated.');
     } catch (err) {
@@ -203,6 +208,7 @@ export default function SettingsPage() {
         }
       />
 
+      <TwoFactorSettings />
       {loadingAccount && !subscription ? (
         <div className="flex justify-center py-20"><Spinner size={32} /></div>
       ) : (
@@ -387,6 +393,7 @@ export default function SettingsPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <Input label="Name" value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} />
                 <Input label="Email" value={profile.email} onChange={e => setProfile(p => ({ ...p, email: e.target.value }))} />
+                {user?.twoFactorEnabled && profile.email !== user.email && <Input label="Current password to change verification email" type="password" autoComplete="current-password" value={profilePassword} onChange={(event) => setProfilePassword(event.target.value)} />}
               </div>
               <Button onClick={saveProfile} disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save profile'}</Button>
             </Card>

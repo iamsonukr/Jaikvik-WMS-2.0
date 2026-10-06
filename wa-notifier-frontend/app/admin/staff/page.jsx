@@ -4,6 +4,7 @@ import AppShell from '@/components/layout/AppShell';
 import { PageHeader, Card, Button, Input, Select, Modal, Badge, Empty, Spinner, SortableTh, PaginationControls, sortItems, usePagination } from '@/components/ui';
 import { UsersRound, Plus } from 'lucide-react';
 import api from '@/lib/api';
+import AdminTwoFactorControl from '@/components/security/AdminTwoFactorControl';
 
 const PERMISSION_OPTIONS = ['clients:read', 'clients:write', 'wallet:credit', 'plans:write'];
 const BLANK = { name: '', email: '', password: '', role: 'master', permissions: [] };
@@ -148,6 +149,7 @@ export default function StaffPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge label={s.isActive ? 'Active' : 'Disabled'} color={s.isActive ? 'green' : 'red'} />
+                      <AdminTwoFactorControl member={s} onUpdated={load} />
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDate(s.createdAt)}</td>
                     <td className="px-4 py-3 text-right">

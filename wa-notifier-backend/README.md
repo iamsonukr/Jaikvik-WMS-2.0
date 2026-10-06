@@ -2,6 +2,8 @@
 
 Standalone NestJS REST API for the Jaikvik WMS WhatsApp Business Platform.
 
+Email two-factor authentication setup, migration and testing: [TWO-FACTOR.md](../TWO-FACTOR.md).
+
 ## Stack
 - **NestJS 10** — framework
 - **MongoDB 7** via Mongoose — database

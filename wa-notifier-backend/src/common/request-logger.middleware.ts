@@ -11,6 +11,10 @@ const SENSITIVE_QUERY_KEYS = new Set([
   'secret',
   'token',
   'state',
+  'otp',
+  'challengetoken',
+  'currentpassword',
+  'resend_api_key',
 ]);
 
 function sanitizeUrl(originalUrl: string) {

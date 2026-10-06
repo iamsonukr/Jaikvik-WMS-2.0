@@ -7,6 +7,7 @@ import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/role.enum';
+import { OtpSendDto, OtpVerifyDto, TwoFactorSettingsDto, TwoFactorAdminDto, ProfileDto, ChangePasswordDto } from './auth.dto';
 
 @Controller('auth')
 @UseGuards(JwtAuthGuard)
@@ -15,17 +16,22 @@ export class AuthController {
 
   @Public() @Post('register') register(@Body() dto: RegisterDto) { return this.authService.register(dto); }
   @Public() @Post('login')    login(@Body() dto: LoginDto)       { return this.authService.login(dto); }
+  @Public() @Post('2fa/send') sendOtp(@Body() dto: OtpSendDto) { return this.authService.sendOtp(dto); }
+  @Public() @Post('2fa/verify') verifyOtp(@Body() dto: OtpVerifyDto) { return this.authService.verifyOtp(dto); }
+  @Patch('2fa') updateTwoFactor(@CurrentUser() user: any, @Body() dto: TwoFactorSettingsDto) { return this.authService.updateTwoFactor(user._id, dto); }
+  @Roles(UserRole.ADMIN)
+  @Patch('users/:id/2fa') manageTwoFactor(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: TwoFactorAdminDto) { return this.authService.manageTwoFactor(user._id, id, dto); }
 
   @Get('me')
   me(@CurrentUser() user: any) { return this.authService.me(user._id); }
 
   @Patch('me')
-  updateProfile(@CurrentUser() user: any, @Body() body: { name?: string; email?: string }) {
+  updateProfile(@CurrentUser() user: any, @Body() body: ProfileDto) {
     return this.authService.updateProfile(user._id, body);
   }
 
   @Patch('password')
-  updatePassword(@CurrentUser() user: any, @Body() body: { currentPassword: string; newPassword: string }) {
+  updatePassword(@CurrentUser() user: any, @Body() body: ChangePasswordDto) {
     return this.authService.updatePassword(user._id, body.currentPassword, body.newPassword);
   }
 

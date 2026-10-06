@@ -9,6 +9,8 @@ import { TENANT_SCOPED_ROLES, UserRole, normalizeUserRole } from '../common/enum
 import { TenantsService } from '../tenants/tenants.service';
 import { toObjectId } from '../common/mongo-id';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { TwoFactorService } from './two-factor.service';
+import { OtpSendDto, OtpVerifyDto, TwoFactorSettingsDto, TwoFactorAdminDto, ProfileDto } from './auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -17,6 +19,7 @@ export class AuthService {
     private jwtService: JwtService,
     private tenantsService: TenantsService,
     private subscriptionsService: SubscriptionsService,
+    private twoFactor: TwoFactorService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -42,15 +45,37 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.userModel.findOne({ email: dto.email });
+    const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() });
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    if (!user.isActive) throw new UnauthorizedException('This account has been disabled');
-    await this.assertTenantActive(user);
+    if (!user.isActive) throw new UnauthorizedException('Invalid credentials');
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
+    try { await this.assertTenantActive(user); } catch { throw new UnauthorizedException('Invalid credentials'); }
+    if (user.twoFactorEnabled) return this.twoFactor.begin(user);
     user.lastLoginAt = new Date();
     await user.save();
     return this.tokenFor(user);
+  }
+
+  sendOtp(dto: OtpSendDto) { return this.twoFactor.send(dto.challengeToken, dto.recipientId); }
+  async verifyOtp(dto: OtpVerifyDto) {
+    const verified = await this.twoFactor.verify(dto.challengeToken, dto.otp);
+    const user = await this.userModel.findById(verified._id);
+    if (!user || !user.isActive || user.password !== verified.password || user.email !== verified.email || (user.securityVersion || 0) !== (verified.securityVersion || 0)) {
+      throw new UnauthorizedException('Verification failed. Please sign in again.');
+    }
+    try { await this.assertTenantActive(user); } catch { throw new UnauthorizedException('Verification failed. Please sign in again.'); }
+    user.lastLoginAt = new Date();
+    await user.save();
+    return this.tokenFor(user);
+  }
+  async updateTwoFactor(userId: string, dto: TwoFactorSettingsDto) {
+    const user = await this.twoFactor.setEnabled(userId, userId, dto.enabled, dto.currentPassword);
+    return this.tokenFor(user);
+  }
+  async manageTwoFactor(actorId: string, targetId: string, dto: TwoFactorAdminDto) {
+    const user = await this.twoFactor.setEnabled(actorId, targetId, dto.action === 'reset' ? undefined : dto.action === 'enable', dto.currentPassword);
+    return String(actorId) === String(targetId) ? this.tokenFor(user) : { user };
   }
 
   async me(userId: string) {
@@ -83,7 +108,7 @@ export class AuthService {
   }
 
   async updateStaff(id: string, dto: { role?: string; permissions?: string[]; isActive?: boolean }) {
-    const user = await this.userModel.findByIdAndUpdate(id, dto, { new: true }).select('-password');
+    const user = await this.userModel.findByIdAndUpdate(id, { $set: dto, $inc: { securityVersion: 1 } }, { new: true }).select('-password');
     if (!user) throw new BadRequestException('Staff account not found');
     return user;
   }
@@ -243,17 +268,24 @@ export class AuthService {
     return { message: 'Client login user deleted' };
   }
 
-  async updateProfile(userId: string, dto: { name?: string; email?: string }) {
-    return this.userModel.findByIdAndUpdate(userId, dto, { new: true }).select('-password');
+  async updateProfile(userId: string, dto: ProfileDto) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new UnauthorizedException('Unable to update profile.');
+    const email = dto.email?.trim().toLowerCase();
+    if (email && email !== user.email && user.twoFactorEnabled) await this.twoFactor.confirmPassword(userId, dto.currentPassword || '');
+    if (email) user.email = email;
+    if (dto.name !== undefined) user.name = dto.name;
+    await user.save();
+    const updated = user.toObject();
+    delete updated.password;
+    return { ...updated, ...this.tokenFor(user) };
   }
 
   async updatePassword(userId: string, currentPassword: string, newPassword: string) {
-    const user = await this.userModel.findById(userId);
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) throw new BadRequestException('Current password is incorrect');
+    const user = await this.twoFactor.confirmPassword(userId, currentPassword);
     user.password = newPassword; // pre-save hook hashes it
     await user.save();
-    return { message: 'Password updated' };
+    return { message: 'Password updated', ...this.tokenFor(user) };
   }
 
   private async assertTenantExists(tenantId: string) {
@@ -289,6 +321,7 @@ export class AuthService {
       email: user.email,
       role,
       tenantId: user.tenantId ?? null,
+      securityVersion: user.securityVersion || 0,
     };
     return {
       access_token: this.jwtService.sign(payload),
@@ -299,6 +332,7 @@ export class AuthService {
         role,
         tenantId: user.tenantId ?? null,
         permissions: user.permissions ?? [],
+        twoFactorEnabled: user.twoFactorEnabled || false,
       },
     };
   }

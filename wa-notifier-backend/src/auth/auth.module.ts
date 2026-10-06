@@ -8,10 +8,13 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { TenantsModule } from '../tenants/tenants.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { LoginChallenge, LoginChallengeSchema } from './login-challenge.schema';
+import { TwoFactorService } from './two-factor.service';
+import { EmailService } from '../common/email.service';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }, { name: LoginChallenge.name, schema: LoginChallengeSchema }]),
     TenantsModule,
     SubscriptionsModule,
     JwtModule.registerAsync({
@@ -22,7 +25,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, TwoFactorService, EmailService],
   controllers: [AuthController],
   exports: [JwtModule],
 })

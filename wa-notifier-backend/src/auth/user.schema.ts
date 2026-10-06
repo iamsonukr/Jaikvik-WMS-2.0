@@ -26,12 +26,20 @@ export class User {
   @Prop({ default: true }) isActive: boolean;
   @Prop() name: string;
   @Prop() lastLoginAt?: Date;
+  @Prop({ default: false }) twoFactorEnabled: boolean;
+  @Prop({ default: 0 }) securityVersion: number;
+  @Prop({ select: false }) otpNextSendAt?: Date;
+  @Prop({ select: false }) securityPasswordAttempts?: number;
+  @Prop({ select: false }) securityPasswordWindow?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ tenantId: 1 });
 
 UserSchema.pre('save', async function (next) {
+  if (!this.isNew && ['password', 'email', 'role', 'isActive'].some((field) => this.isModified(field))) {
+    this.securityVersion = (this.securityVersion || 0) + 1;
+  }
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 10);
   next();

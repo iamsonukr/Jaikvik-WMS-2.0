@@ -21,9 +21,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string }) {
+  async validate(payload: { sub: string; securityVersion?: number }) {
     const user = await this.userModel.findById(payload.sub).select('-password');
     if (!user || !user.isActive) throw new UnauthorizedException();
+    if ((payload.securityVersion || 0) !== (user.securityVersion || 0)) throw new UnauthorizedException();
     const normalized = user.toObject();
     normalized.role = normalizeUserRole(normalized.role) as any;
     if (TENANT_SCOPED_ROLES.includes(normalized.role as UserRole)) {
