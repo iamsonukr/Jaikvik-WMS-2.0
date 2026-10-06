@@ -310,8 +310,9 @@ export default function InboxWorkspace({ allowedRoles }) {
       const matchesAssignee = assigneeFilter === 'all'
         || (assigneeFilter === 'unassigned' && !thread.assignedTo)
         || String(thread.assignedTo || '') === assigneeFilter;
-      const activityDate = thread.createdAt ? format(new Date(thread.createdAt), 'yyyy-MM-dd') : '';
-      const matchesDate = !invalidDateRange && (!dateFrom || activityDate >= dateFrom) && (!dateTo || activityDate <= dateTo);
+      const activity = new Date(thread.createdAt);
+      const activityDate = thread.createdAt && !Number.isNaN(activity.getTime()) ? format(activity, 'yyyy-MM-dd') : '';
+      const matchesDate = !invalidDateRange && (!(dateFrom || dateTo) || Boolean(activityDate)) && (!dateFrom || activityDate >= dateFrom) && (!dateTo || activityDate <= dateTo);
       return matchesSearch && matchesStatus && matchesPriority && matchesTag && matchesAssignee && matchesDate;
     });
   }, [threads, search, statusFilter, priorityFilter, tagFilter, assigneeFilter, dateFrom, dateTo, invalidDateRange]);
