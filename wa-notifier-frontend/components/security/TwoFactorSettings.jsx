@@ -8,11 +8,12 @@ import SecondaryEmailSettings from './SecondaryEmailSettings';
 export default function TwoFactorSettings() {
   const { setSession } = useAuth();
   const [enabled, setEnabled] = useState(null);
+  const [emailVerified, setEmailVerified] = useState(false);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  useEffect(() => { api.get('/auth/me').then(({ data }) => setEnabled(Boolean(data.twoFactorEnabled))).catch(() => setError('Could not load security settings.')); }, []);
+  useEffect(() => { api.get('/auth/me').then(({ data }) => { setEnabled(Boolean(data.twoFactorEnabled)); setEmailVerified(Boolean(data.emailVerified)); }).catch(() => setError('Could not load security settings.')); }, []);
   const save = async (event) => {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
     try {
@@ -27,7 +28,8 @@ export default function TwoFactorSettings() {
       <div className="flex items-center justify-between"><h2 className="font-semibold">Email two-factor authentication</h2><Badge label={enabled == null ? 'Loading' : enabled ? 'Enabled' : 'Disabled'} color={enabled ? 'green' : 'gray'} /></div>
       <p className="text-sm text-muted-foreground">Require an email verification code at sign-in. Confirm your current password to change this setting.</p>
       <Input label="Current password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
-      <Button type="submit" disabled={busy || enabled == null || !password}>{busy ? 'Saving...' : enabled ? 'Disable 2FA' : 'Enable 2FA'}</Button>
+      {!emailVerified && <p className="text-sm text-muted-foreground">Verify your registered email at sign-in before enabling two-step verification. It stays disabled until you enable it.</p>}
+      <Button type="submit" disabled={busy || enabled == null || !password || (!enabled && !emailVerified)}>{busy ? 'Saving...' : enabled ? 'Disable 2FA' : 'Enable 2FA'}</Button>
       {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
       {message && <p role="status" className="text-sm text-emerald-600">{message}</p>}
     </form>

@@ -16,6 +16,10 @@ export class TwoFactorAdminDto {
   @IsIn(['enable', 'disable', 'reset', 'remove-secondary']) action: 'enable' | 'disable' | 'reset' | 'remove-secondary';
   @IsString() @MinLength(1) @MaxLength(200) currentPassword: string;
 }
+export class RemoveAccountEmailDto {
+  @IsIn(['primary', 'secondary']) emailType: 'primary' | 'secondary';
+  @IsString() @MinLength(1) currentPassword: string;
+}
 export class ProfileDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsEmail() email?: string;

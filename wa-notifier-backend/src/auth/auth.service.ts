@@ -43,6 +43,7 @@ export class AuthService {
       name: dto.name,
       role: UserRole.CLIENT_OWNER,
       emailVerified: true,
+      twoFactorEnabled: false,
       tenantId: tenant._id,
     });
     await this.subscriptionsService.activateSignupTrial(String(tenant._id), signupTrialPlan);
@@ -78,7 +79,7 @@ export class AuthService {
         // The primary code already proved control of the registered email. An admin
         // still needs the environment-routed second factor; other accounts use the
         // just-verified primary code for this sign-in only.
-        if (normalizeUserRole(user.role) === UserRole.ADMIN || user.useSecondaryEmailForOtp) {
+        if (normalizeUserRole(user.role) === UserRole.ADMIN || (user.secondaryEmail && user.secondaryEmailVerifiedAt)) {
           return this.twoFactor.begin(user, 'login', true);
         }
       }
@@ -108,7 +109,6 @@ export class AuthService {
   resendRegistration(token: string) { return this.emailVerification.resend(token, 'signup'); }
   async startSecondaryEmail(userId: string, email: string, password: string) {
     const user = await this.twoFactor.confirmPassword(userId, password);
-    if (normalizeUserRole(user.role) === UserRole.ADMIN) throw new BadRequestException('Admin OTP recipients are configured through the environment.');
     if (email.trim().toLowerCase() === user.email) throw new BadRequestException('Use a different secondary email address.');
     return this.emailVerification.issue('secondary', email, String(user._id), user.securityVersion || 0);
   }
@@ -118,12 +118,27 @@ export class AuthService {
   }
   async verifySecondaryEmail(userId: string, token: string, otp: string) {
     const user = await this.userModel.findById(userId);
-    if (normalizeUserRole(user.role) === UserRole.ADMIN) throw new BadRequestException('Admin OTP recipients are configured through the environment.');
     const email = await this.emailVerification.consume(token, otp, 'secondary', undefined, String(user._id), user.securityVersion || 0);
     const updated = await this.userModel.findOneAndUpdate({ _id: user._id, password: user.password, isActive: true, $or: [{ securityVersion: user.securityVersion || 0 }, { securityVersion: { $exists: false } }] }, {
       $set: { secondaryEmail: email, secondaryEmailVerifiedAt: new Date(), useSecondaryEmailForOtp: true }, $inc: { securityVersion: 1 },
     }, { new: true });
     if (!updated) throw new BadRequestException('Security settings changed. Verify the secondary email again.');
+    return this.tokenFor(updated);
+  }
+  async removeAccountEmail(userId: string, emailType: 'primary' | 'secondary', password: string) {
+    const user = await this.twoFactor.confirmPassword(userId, password);
+    if (!user.secondaryEmail || (emailType === 'primary' && !user.secondaryEmailVerifiedAt)) throw new BadRequestException('Link and verify a secondary email before removing your primary email.');
+    let updated;
+    try {
+      updated = await this.userModel.findOneAndUpdate({ _id: user._id, password: user.password, email: user.email, secondaryEmail: user.secondaryEmail, isActive: true, $or: [{ securityVersion: user.securityVersion || 0 }, { securityVersion: { $exists: false } }] }, {
+        $set: { ...(emailType === 'primary' ? { email: user.secondaryEmail, emailVerified: true } : {}), useSecondaryEmailForOtp: false },
+        $unset: { secondaryEmail: 1, secondaryEmailVerifiedAt: 1 }, $inc: { securityVersion: 1 },
+      }, { new: true });
+    } catch (error) {
+      if (error?.code === 11000) throw new BadRequestException('This email cannot be used as your primary email.');
+      throw error;
+    }
+    if (!updated) throw new BadRequestException('Security settings changed. Please try again.');
     return this.tokenFor(updated);
   }
   async secondaryEmailPreference(userId: string, useSecondary: boolean, password: string) {
@@ -152,6 +167,7 @@ export class AuthService {
       name: dto.name,
       role: dto.role,
       emailVerified: false,
+      twoFactorEnabled: false,
       tenantId: null, // platform staff are never scoped to a tenant
       permissions: dto.permissions || [],
     });
@@ -187,6 +203,7 @@ export class AuthService {
       role: dto.role,
       tenantId: toObjectId(tenantId, 'tenantId'),
       emailVerified: false,
+      twoFactorEnabled: false,
     });
 
     const created = user.toObject();

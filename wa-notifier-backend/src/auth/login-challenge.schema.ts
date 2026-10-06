@@ -12,6 +12,7 @@ export class LoginChallenge {
   @Prop() otpHash?: string;
   @Prop() otpExpiresAt?: Date;
   @Prop() recipient?: string;
+  @Prop() deliveryId?: string;
   @Prop({ default: 0 }) attempts: number;
 }
 export const LoginChallengeSchema = SchemaFactory.createForClass(LoginChallenge);

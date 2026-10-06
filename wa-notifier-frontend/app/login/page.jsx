@@ -43,7 +43,7 @@ export default function LoginPage() {
       setOtp(''); setNow(Date.now());
     } catch (err) {
       setError(getApiErrorMessage(err, 'Could not send the verification email.'));
-      if (err.response?.status === 429) setChallenge((previous) => ({ ...previous, resendAt: new Date(Date.now() + 60000).toISOString() }));
+        if (err.response?.status === 429 && err.response?.data?.retryAt) setChallenge((previous) => ({ ...previous, resendAt: err.response.data.retryAt }));
     } finally { setLoading(false); }
   };
   const verifyOtp = async (event) => {
@@ -161,7 +161,7 @@ export default function LoginPage() {
               <form onSubmit={verifyOtp} className="space-y-4">
                 <h2 className="font-semibold">Verify your sign-in</h2>
                 <p className="text-sm text-muted-foreground">{challenge.sent ? `Enter the 6-digit code sent to ${challenge.recipientLabel}. It expires in 5 minutes.` : challenge.requiresRecipientSelection ? 'Choose where to receive your verification code.' : `Send your login verification code to ${challenge.recipientLabel}.`}</p>
-                {challenge.requiresRecipientSelection && <Select label="Send code to" value={recipientId} disabled={loading} onChange={(event) => setRecipientId(event.target.value)}>
+                {challenge.requiresRecipientSelection && <Select label="Send code to" value={recipientId} disabled={loading} onChange={(event) => { setRecipientId(event.target.value); setOtp(''); }}>
                   {challenge.recipientOptions.map((recipient) => <option key={recipient.id} value={recipient.id}>{recipient.label}</option>)}
                 </Select>}
                 {challenge.sent && <>

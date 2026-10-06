@@ -80,6 +80,68 @@ function fixture(role = 'master', configValues = {}) {
 }
 const rejected = (status) => (error) => error.getStatus() === status;
 
+test('failed verification resend can be retried with the browser challenge token', async () => {
+  const { verification, verifications, delivered, email } = verificationFixture();
+  const start = await verification.issue('secondary', 'backup@example.com', id, 0);
+  verifications.rows[0].nextSendAt = new Date(0);
+  const send = email.sendOtpEmail;
+  email.sendOtpEmail = async () => { throw new Error('delivery unavailable'); };
+  await assert.rejects(() => verification.resend(start.challengeToken, 'secondary', id, 0), /delivery unavailable/);
+  email.sendOtpEmail = send;
+  const retry = await verification.resend(start.challengeToken, 'secondary', id, 0);
+  assert.equal(retry.challengeToken, start.challengeToken);
+  assert.equal(await verification.consume(start.challengeToken, delivered[1].otp, 'secondary', undefined, id, 0), 'backup@example.com');
+});
+
+test('login delivery failure allows immediate retry; active cooldown returns its actual deadline', async () => {
+  const { service, users, email } = fixture();
+  const send = email.sendOtpEmail;
+  email.sendOtpEmail = async () => { throw new Error('delivery unavailable'); };
+  await assert.rejects(() => service.begin(users.rows[0]), /delivery unavailable/);
+  email.sendOtpEmail = send;
+  const start = await service.begin(users.rows[0]);
+  await assert.rejects(() => service.send(start.challengeToken), (error) => error.getStatus() === 429 && error.getResponse().retryAt === users.rows[0].otpNextSendAt.toISOString());
+});
+
+test('admin codes cannot authenticate a recipient removed from the whitelist', async () => {
+  const values = { ADMIN_OTP_EMAILS: 'a@example.com,b@example.com' };
+  const { service, users, delivered } = fixture('admin', values);
+  const start = await service.begin(users.rows[0]);
+  await service.send(start.challengeToken, '0');
+  values.ADMIN_OTP_EMAILS = 'b@example.com';
+  await assert.rejects(() => service.verify(start.challengeToken, delivered[0].otp), rejected(401));
+});
+
+test('malformed stored OTP hashes return verification errors rather than server errors', async () => {
+  const { service, users, challenges } = fixture();
+  const start = await service.begin(users.rows[0]);
+  challenges.rows[0].otpHash = 'invalid';
+  await assert.rejects(() => service.verify(start.challengeToken, '123456'), rejected(401));
+  const { verification, verifications } = verificationFixture();
+  const signup = await verification.issue('signup', 'new@example.com');
+  verifications.rows[0].otpHash = 'invalid';
+  await assert.rejects(() => verification.consume(signup.challengeToken, '123456', 'signup'), rejected(400));
+});
+
+test('late email delivery cannot overwrite the latest login resend code', async () => {
+  const { service, users, email, delivered } = fixture();
+  const start = await service.begin(users.rows[0], 'login', true);
+  let release, entered;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  const sending = new Promise((resolve) => { entered = resolve; });
+  email.sendOtpEmail = async (to, otp) => {
+    delivered.push({ to, otp });
+    if (delivered.length === 1) { entered(); await waiting; }
+  };
+  const first = service.send(start.challengeToken);
+  await sending;
+  users.rows[0].otpNextSendAt = new Date(0);
+  await service.send(start.challengeToken);
+  release();
+  await assert.rejects(() => first, rejected(401));
+  assert.ok(await service.verify(start.challengeToken, delivered[1].otp));
+});
+
 test('secure generation produces six-digit codes including leading zero format', () => {
   const codes = Array.from({ length: 1000 }, generateOtp);
   assert.ok(codes.every((code) => /^\d{6}$/.test(code)));
@@ -191,12 +253,12 @@ test('password confirmation blocks after five failed tries', async () => {
   await assert.rejects(() => service.confirmPassword(id, password), rejected(429));
 });
 
-test('provider failure grants no session, clears pending hash and keeps resend cooldown', async () => {
+test('provider failure grants no session, clears pending hash and releases resend cooldown', async () => {
   const { service, users, challenges, email } = fixture();
   email.sendOtpEmail = async () => { throw new Error('delivery unavailable'); };
   await assert.rejects(() => service.begin(users.rows[0]), /delivery unavailable/);
   assert.equal(challenges.rows.length, 0);
-  assert.ok(users.rows[0].otpNextSendAt > new Date());
+  assert.ok(users.rows[0].otpNextSendAt <= new Date());
 });
 
 test('credential/security changes invalidate pending challenges', async () => {
@@ -318,7 +380,7 @@ test('signup proof is bound to email and purpose, hashed, five-minute expiry and
   await assert.rejects(() => verification.issue('signup', 'new@example.com'), rejected(429));
 });
 
-test('signup cooldown survives fresh requests; resends rotate token without resetting attempts', async () => {
+test('signup cooldown survives fresh requests; resends retain token without resetting attempts', async () => {
   const { verification, verifications, delivered } = verificationFixture();
   const start = await verification.issue('signup', 'new@example.com');
   await assert.rejects(() => verification.issue('signup', 'new@example.com'), rejected(429));
@@ -327,7 +389,7 @@ test('signup cooldown survives fresh requests; resends rotate token without rese
   await assert.rejects(() => verification.consume(start.challengeToken, wrong, 'signup'), rejected(400));
   verifications.rows[0].nextSendAt = new Date(0);
   const resend = await verification.resend(start.challengeToken, 'signup');
-  assert.notEqual(resend.challengeToken, start.challengeToken);
+  assert.equal(resend.challengeToken, start.challengeToken);
   assert.equal(verifications.rows[0].attempts, 1);
   await assert.rejects(() => verification.consume(start.challengeToken, delivered[0].otp, 'signup'), rejected(400));
   assert.equal(await verification.consume(resend.challengeToken, delivered[1].otp, 'signup'), 'new@example.com');
@@ -358,6 +420,7 @@ test('account creation provisions no tenant/user or session before signup proof'
   const result = await auth.register({ ...dto, challengeToken: start.challengeToken, otp: delivered[0].otp });
   assert.equal(tenants, 1); assert.equal(sessions, 1);
   assert.equal(result.user.emailVerified, true);
+  assert.equal(result.user.twoFactorEnabled, false);
   assert.equal(result.user.role, 'client_owner');
 });
 
@@ -374,7 +437,9 @@ test('secondary email requires password and proof bound to user/session version 
   assert.ok(result.user.secondaryEmailVerifiedAt);
   assert.equal(result.user.useSecondaryEmailForOtp, true);
   assert.equal(users.rows[0].securityVersion, 1);
-  await service.begin(await users.findById(id));
+  const login = await service.begin(await users.findById(id));
+  assert.equal(login.requiresRecipientSelection, true);
+  await service.send(login.challengeToken, '1');
   assert.equal(delivered[1].to, 'second@example.com');
   await auth.secondaryEmailPreference(id, false, password);
   assert.equal(users.rows[0].useSecondaryEmailForOtp, false);
@@ -385,8 +450,53 @@ test('admin routing cannot be overridden by secondary email, and unverified addr
   const auth = new AuthService(users, {}, {}, {}, service, verification);
   await assert.rejects(() => auth.secondaryEmailPreference(id, true, password), rejected(400));
   users.rows[0].role = 'admin';
-  await assert.rejects(() => auth.startSecondaryEmail(id, 'second@example.com', password), rejected(400));
+  await auth.startSecondaryEmail(id, 'second@example.com', password);
   await assert.rejects(() => auth.secondaryEmailPreference(id, true, password), rejected(400));
+});
+
+test('all non-admin roles choose only their primary or verified secondary at login', async () => {
+  for (const role of ['master', 'client_owner', 'client_user']) {
+    const { service, users, delivered } = fixture(role);
+    Object.assign(users.rows[0], { secondaryEmail: 'backup@example.com', secondaryEmailVerifiedAt: new Date() });
+    const start = await service.begin(users.rows[0]);
+    assert.equal(start.requiresRecipientSelection, true);
+    assert.equal(delivered.length, 0);
+    assert.equal(start.recipientOptions.length, 2);
+    await assert.rejects(() => service.send(start.challengeToken, 'backup@example.com'), rejected(401));
+    await assert.rejects(() => service.send(start.challengeToken, '2'), rejected(401));
+    await service.send(start.challengeToken, '0');
+    assert.equal(delivered[0].to, 'member@example.com');
+    users.rows[0].otpNextSendAt = new Date(0);
+    await service.send(start.challengeToken, '1');
+    assert.equal(delivered[1].to, 'backup@example.com');
+    assert.ok(await service.verify(start.challengeToken, delivered[1].otp));
+  }
+});
+
+test('primary email removal promotes a verified secondary and invalidates existing sessions', async () => {
+  for (const role of ['admin', 'master', 'client_owner', 'client_user']) {
+    const { service, users } = fixture(role);
+    const auth = new AuthService(users, { sign() { return 'updated-session'; } }, {}, {}, service);
+    await assert.rejects(() => auth.removeAccountEmail(id, 'primary', password), rejected(400));
+    Object.assign(users.rows[0], { secondaryEmail: 'backup@example.com', secondaryEmailVerifiedAt: new Date() });
+    await assert.rejects(() => auth.removeAccountEmail(id, 'primary', 'wrong'), rejected(400));
+    const result = await auth.removeAccountEmail(id, 'primary', password);
+    assert.equal(result.user.email, 'backup@example.com');
+    assert.equal(result.user.emailVerified, true);
+    assert.equal(result.user.secondaryEmail, undefined);
+    assert.equal(users.rows[0].securityVersion, 1);
+    assert.equal(result.user.twoFactorEnabled, true);
+  }
+});
+
+test('secondary removal preserves primary; unverified secondary cannot become primary', async () => {
+  const { service, users } = fixture();
+  const auth = new AuthService(users, { sign() { return 'updated-session'; } }, {}, {}, service);
+  users.rows[0].secondaryEmail = 'unverified@example.com';
+  await assert.rejects(() => auth.removeAccountEmail(id, 'primary', password), rejected(400));
+  const result = await auth.removeAccountEmail(id, 'secondary', password);
+  assert.equal(result.user.email, 'member@example.com');
+  assert.equal(result.user.secondaryEmail, undefined);
 });
 
 test('admin-created accounts require primary-email verification even with 2FA off', async () => {
@@ -429,7 +539,8 @@ test('admin removal of secondary email requires password, keeps 2FA and invalida
   const { service, users, challenges, verification, verifications, delivered } = verificationFixture();
   Object.assign(users.rows[0], { secondaryEmail: 'secondary@example.com', secondaryEmailVerifiedAt: new Date(), useSecondaryEmailForOtp: true });
   users.rows.push({ ...users.rows[0], _id: adminId, role: 'admin' });
-  await service.begin(await users.findById(id));
+  const login = await service.begin(await users.findById(id));
+  await service.send(login.challengeToken, '1');
   const pending = await verification.issue('secondary', 'replacement@example.com', id, 0);
   await assert.rejects(() => service.setEnabled(adminId, id, undefined, 'wrong', true), rejected(400));
   assert.equal(users.rows[0].secondaryEmail, 'secondary@example.com');
@@ -446,4 +557,40 @@ test('admin removal of secondary email requires password, keeps 2FA and invalida
   users.rows[0].otpNextSendAt = new Date(0);
   await service.begin(await users.findById(id));
   assert.equal(delivered[2].to, users.rows[0].email);
+});
+
+test('first secondary-email request sends a code and failed delivery does not leave a cooldown', async () => {
+  const { verification, email, delivered, verifications } = verificationFixture();
+  const send = email.sendOtpEmail;
+  email.sendOtpEmail = async () => { throw new Error('delivery failed'); };
+  await assert.rejects(() => verification.issue('secondary', 'second@example.com', id, 0), /delivery failed/);
+  assert.equal(delivered.length, 0);
+  assert.ok(verifications.rows[0].nextSendAt <= new Date());
+  assert.equal(verifications.rows[0].otpHash, undefined);
+  email.sendOtpEmail = send;
+  const result = await verification.issue('secondary', 'second@example.com', id, 0);
+  assert.ok(result.challengeToken);
+  assert.equal(delivered.length, 1);
+  await assert.rejects(() => verification.issue('secondary', 'second@example.com', id, 0), (error) => error.getStatus() === 429 && Boolean(error.getResponse().retryAt));
+});
+
+test('unrelated database uniqueness failures are not reported as fake OTP cooldowns', async (t) => {
+  const { verification, verifications } = verificationFixture();
+  t.mock.method(verifications, 'findOneAndUpdate', () => { throw Object.assign(new Error('database constraint'), { code: 11000 }); });
+  t.mock.method(verification.logger, 'error', () => {});
+  await assert.rejects(() => verification.issue('secondary', 'second@example.com', id, 0), rejected(503));
+});
+
+test('own and admin 2FA enablement requires verified primary email; disabling stays allowed', async () => {
+  const { service, users } = fixture();
+  users.rows[0].emailVerified = false;
+  users.rows[0].twoFactorEnabled = false;
+  users.rows.push({ ...users.rows[0], _id: adminId, role: 'admin', emailVerified: true });
+  await assert.rejects(() => service.setEnabled(id, id, true, password), rejected(400));
+  await assert.rejects(() => service.setEnabled(adminId, id, true, password), rejected(400));
+  assert.equal(users.rows[0].twoFactorEnabled, false);
+  await service.setEnabled(id, id, false, password);
+  users.rows[0].emailVerified = true;
+  await service.setEnabled(id, id, true, password);
+  assert.equal(users.rows[0].twoFactorEnabled, true);
 });

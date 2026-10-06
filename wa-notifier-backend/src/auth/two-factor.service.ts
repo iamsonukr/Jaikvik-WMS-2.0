@@ -41,16 +41,22 @@ export class TwoFactorService {
   async begin(user: UserDocument, purpose = 'login', deferSend = false) {
     this.email.assertConfigured();
     const admin = purpose === 'login' && normalizeUserRole(user.role) === UserRole.ADMIN;
-    const recipients = admin ? this.adminRecipients() : [];
+    const recipients = this.recipients(user, purpose);
+    const selection = admin || recipients.length > 1;
     const token = randomBytes(32).toString('hex');
     await this.challenges.create({ purpose, tokenHash: this.hash(token), userId: user._id, credentialHash: this.credentials(user), expiresAt: new Date(Date.now() + 10 * 60000) });
-    const result = { twoFactorRequired: true, challengeToken: token, recipientOptions: recipients.map((email, index) => ({ id: String(index), label: maskEmail(email) })), requiresRecipientSelection: admin };
+    const result = { twoFactorRequired: true, challengeToken: token, recipientOptions: selection ? recipients.map((email, index) => ({ id: String(index), label: maskEmail(email) })) : [], requiresRecipientSelection: selection };
     if (deferSend) return { ...result, sent: false, resendAt: user.otpNextSendAt?.toISOString(), recipientLabel: maskEmail(!admin && user.useSecondaryEmailForOtp && user.secondaryEmailVerifiedAt ? user.secondaryEmail : user.email) };
-    if (!admin) {
+    if (!selection) {
       try { return { ...result, ...await this.send(token) }; }
       catch (error) { await this.challenges.deleteOne({ tokenHash: this.hash(token) }); throw error; }
     }
     return result;
+  }
+  private recipients(user: UserDocument, purpose: string) {
+    if (purpose === 'primary') return [user.email];
+    if (normalizeUserRole(user.role) === UserRole.ADMIN) return this.adminRecipients();
+    return [...new Set([user.email, ...(user.secondaryEmail && user.secondaryEmailVerifiedAt ? [user.secondaryEmail] : [])])];
   }
   private async lookup(token: string) {
     const challenge = await this.challenges.findOne({ tokenHash: this.hash(token), expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } });
@@ -62,8 +68,8 @@ export class TwoFactorService {
   async send(token: string, recipientId?: string) {
     const { challenge, user } = await this.lookup(token);
     let recipient = challenge.purpose !== 'primary' && user.useSecondaryEmailForOtp && user.secondaryEmailVerifiedAt ? user.secondaryEmail : user.email;
-    if (challenge.purpose !== 'primary' && normalizeUserRole(user.role) === UserRole.ADMIN) {
-      const recipients = this.adminRecipients();
+    if (challenge.purpose !== 'primary' && (this.recipients(user, challenge.purpose).length > 1 || normalizeUserRole(user.role) === UserRole.ADMIN)) {
+      const recipients = this.recipients(user, challenge.purpose);
       if (recipientId == null && challenge.recipient) recipient = challenge.recipient;
       else if (recipientId != null && /^(0|[1-9]\d*)$/.test(recipientId)) recipient = recipients[Number(recipientId)];
       else throw invalid();
@@ -72,25 +78,37 @@ export class TwoFactorService {
     const now = new Date();
     const next = new Date(now.getTime() + 60000);
     const reserved = await this.users.findOneAndUpdate({ _id: user._id, $or: [{ otpNextSendAt: { $exists: false } }, { otpNextSendAt: { $lte: now } }] }, { $set: { otpNextSendAt: next } });
-    if (!reserved) throw new HttpException('Please wait 60 seconds before requesting another code.', 429);
+    if (!reserved) {
+      const current = await this.users.findById(user._id).select('+otpNextSendAt');
+      const retryAt = current?.otpNextSendAt || next;
+      const seconds = Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000));
+      throw new HttpException({ message: `Please wait ${seconds} seconds before requesting another code.`, retryAt: retryAt.toISOString() }, 429);
+    }
     const otp = generateOtp();
     const otpHash = this.otpHash(challenge.tokenHash, otp);
     const otpExpiresAt = new Date(now.getTime() + 5 * 60000);
-    const updated = await this.challenges.findOneAndUpdate({ _id: challenge._id, expiresAt: { $gt: now }, attempts: { $lt: 5 } }, { $set: { recipient }, $unset: { otpHash: 1, otpExpiresAt: 1 } });
-    if (!updated) throw invalid();
-    await this.email.sendOtpEmail(recipient, otp, challenge.purpose === 'primary' ? 'account verification' : 'sign-in');
-    const ready = await this.challenges.findOneAndUpdate({ _id: challenge._id, expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } }, { $set: { otpHash, otpExpiresAt } });
+    const deliveryId = randomBytes(16).toString('hex');
+    const updated = await this.challenges.findOneAndUpdate({ _id: challenge._id, expiresAt: { $gt: now }, attempts: { $lt: 5 } }, { $set: { recipient, deliveryId }, $unset: { otpHash: 1, otpExpiresAt: 1 } });
+    try {
+      if (!updated) throw invalid();
+      await this.email.sendOtpEmail(recipient, otp, challenge.purpose === 'primary' ? 'account verification' : 'sign-in');
+    } catch (error) {
+      await this.users.updateOne({ _id: user._id, otpNextSendAt: next }, { $set: { otpNextSendAt: new Date() } });
+      throw error;
+    }
+    const ready = await this.challenges.findOneAndUpdate({ _id: challenge._id, deliveryId, expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } }, { $set: { otpHash, otpExpiresAt } });
     if (!ready) throw invalid();
     return { sent: true, recipientLabel: maskEmail(recipient), resendAt: next.toISOString(), otpExpiresAt: otpExpiresAt.toISOString() };
   }
   async verify(token: string, otp: string) {
     const { challenge, user } = await this.lookup(token);
+    if (challenge.purpose !== 'primary' && normalizeUserRole(user.role) === UserRole.ADMIN && !this.adminRecipients().includes(challenge.recipient)) throw invalid();
     const reserved = await this.challenges.findOneAndUpdate({ _id: challenge._id, otpHash: { $exists: true }, otpExpiresAt: { $gt: new Date() }, expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } }, { $inc: { attempts: 1 } }, { new: true });
     if (!reserved) throw invalid();
     const expected = Buffer.from(reserved.otpHash, 'hex');
     const actualHash = this.otpHash(challenge.tokenHash, otp);
     const actual = Buffer.from(actualHash, 'hex');
-    if (!timingSafeEqual(expected, actual)) {
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       if (reserved.attempts >= 5) await this.challenges.deleteOne({ _id: challenge._id });
       throw invalid();
     }
@@ -116,6 +134,7 @@ export class TwoFactorService {
     const target = await this.users.findById(toObjectId(targetId, 'userId'));
     if (!target) throw invalid();
     if (enabled === true) {
+      if (!target.emailVerified) throw new BadRequestException('Verify your registered email address before enabling two-step verification.');
       this.email.assertConfigured();
       if (normalizeUserRole(target.role) === UserRole.ADMIN) this.adminRecipients();
     }
