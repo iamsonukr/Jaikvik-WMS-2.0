@@ -224,6 +224,12 @@ export default function InboxWorkspace({ allowedRoles }) {
   const [updatingThread, setUpdatingThread] = useState(false);
   const [sendError, setSendError] = useState('');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [exportMode, setExportMode] = useState('conversations');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
@@ -304,12 +310,14 @@ export default function InboxWorkspace({ allowedRoles }) {
       const matchesAssignee = assigneeFilter === 'all'
         || (assigneeFilter === 'unassigned' && !thread.assignedTo)
         || String(thread.assignedTo || '') === assigneeFilter;
-      return matchesSearch && matchesStatus && matchesPriority && matchesTag && matchesAssignee;
+      const activityDate = thread.createdAt ? format(new Date(thread.createdAt), 'yyyy-MM-dd') : '';
+      const matchesDate = !invalidDateRange && (!dateFrom || activityDate >= dateFrom) && (!dateTo || activityDate <= dateTo);
+      return matchesSearch && matchesStatus && matchesPriority && matchesTag && matchesAssignee && matchesDate;
     });
-  }, [threads, search, statusFilter, priorityFilter, tagFilter, assigneeFilter]);
+  }, [threads, search, statusFilter, priorityFilter, tagFilter, assigneeFilter, dateFrom, dateTo, invalidDateRange]);
   const threadsPage = usePagination(filteredThreads, {
     initialPageSize: 25,
-    resetKey: `${search}|${statusFilter}|${priorityFilter}|${tagFilter}|${assigneeFilter}`,
+    resetKey: `${search}|${statusFilter}|${priorityFilter}|${tagFilter}|${assigneeFilter}|${dateFrom}|${dateTo}`,
   });
 
   const statusOptions = useMemo(() => {
@@ -322,6 +330,37 @@ export default function InboxWorkspace({ allowedRoles }) {
   ), [threads]);
 
   const teamById = useMemo(() => new Map(team.map((member) => [String(member._id), member])), [team]);
+
+  const exportLeads = async () => {
+    if (!activeClient || invalidDateRange || exporting) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      const end = dateTo ? new Date(`${dateTo}T00:00:00`) : null;
+      if (end) end.setDate(end.getDate() + 1);
+      const { data } = await api.get('/inbox/export', {
+        params: {
+          whatsappAccountId: activeClient._id, mode: exportMode, search,
+          status: statusFilter, priority: priorityFilter, tag: tagFilter, assignee: assigneeFilter,
+          from: dateFrom ? new Date(`${dateFrom}T00:00:00`).toISOString() : undefined,
+          to: end?.toISOString(),
+        },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `inbox-${exportMode}-${dateFrom || 'all'}-${dateTo || 'latest'}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setExportError('Could not export leads. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const sendReply = async () => {
     if (!reply.trim() || !active) return;
@@ -432,6 +471,21 @@ export default function InboxWorkspace({ allowedRoles }) {
             </div>
             <div className="grid gap-1.5">
               <Input className="h-8 text-xs" placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <div className="grid grid-cols-2 gap-2">
+                <Input label="From date" type="date" className="h-8 text-xs" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <Input label="To date" type="date" className="h-8 text-xs" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">Filter by latest conversation activity. Export includes all matching leads and their full history.</p>
+              {invalidDateRange && <p role="alert" className="text-xs text-red-600">From date must be on or before To date.</p>}
+              {(dateFrom || dateTo) && <button type="button" className="text-left text-xs text-brand" onClick={() => { setDateFrom(''); setDateTo(''); }}>Clear dates</button>}
+              <Select aria-label="Export content" className="h-8 text-xs" value={exportMode} onChange={(e) => setExportMode(e.target.value)}>
+                <option value="contacts">Contact details only (CSV)</option>
+                <option value="conversations">Contacts + conversations (CSV)</option>
+              </Select>
+              <Button size="sm" variant="outline" onClick={exportLeads} disabled={!activeClient || exporting || invalidDateRange || !filteredThreads.length}>
+                <Download size={13} /> {exporting ? 'Exporting...' : `Export leads (${filteredThreads.length})`}
+              </Button>
+              {exportError && <p role="alert" className="text-xs text-red-600">{exportError}</p>}
               <div className="grid grid-cols-2 gap-2">
                 <Select className="h-8 text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="all">All statuses</option>

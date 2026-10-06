@@ -10,11 +10,13 @@ import { TemplatesModule } from '../templates/templates.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { Tenant, TenantSchema } from '../tenants/tenant.schema';
 import { Plan, PlanSchema } from '../plans/plan.schema';
+import { Contact, ContactSchema } from '../contacts/contact.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
+      { name: Contact.name, schema: ContactSchema },
       { name: Tenant.name, schema: TenantSchema },
       { name: Plan.name, schema: PlanSchema },
     ]),

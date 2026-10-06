@@ -11,6 +11,16 @@ export class InboxController {
   constructor(private svc: InboxService) {}
 
   @UseGuards(TenantOwnershipGuard)
+  @Get('export')
+  async exportLeads(@Query() query: any, @Res() res: Response) {
+    const csv = await this.svc.exportLeads(query.whatsappAccountId || query.clientId, query);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="inbox-leads.csv"');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(csv);
+  }
+
+  @UseGuards(TenantOwnershipGuard)
   @Get('threads')
   threads(@Query('whatsappAccountId') aid: string, @Query('clientId') cid: string) {
     return this.svc.threads(aid || cid);

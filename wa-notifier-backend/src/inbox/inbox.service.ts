@@ -10,6 +10,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { Tenant, TenantDocument } from '../tenants/tenant.schema';
 import { Plan, PlanDocument } from '../plans/plan.schema';
 import { MessageCategory } from '../common/enums/message-category.enum';
+import { Contact, ContactDocument } from '../contacts/contact.schema';
 
 @Injectable()
 export class InboxService {
@@ -21,6 +22,7 @@ export class InboxService {
     private wallet: WalletService,
     @InjectModel(Tenant.name) private tenantModel: Model<TenantDocument>,
     @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
+    @InjectModel(Contact.name) private contactModel: Model<ContactDocument>,
   ) { }
 
   /** All unique threads (latest message per phone) */
@@ -39,6 +41,59 @@ export class InboxService {
       .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone })
       .sort({ createdAt: 1 })
       .limit(200);
+  }
+
+  async exportLeads(whatsappAccountId: string, options: any) {
+    const scope = this.whatsappAccountIdQuery(whatsappAccountId);
+    const parseDate = (value: string) => {
+      if (!value) return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid export date.');
+      return date;
+    };
+    const from = parseDate(options.from);
+    const to = parseDate(options.to);
+    if (from && to && from >= to) throw new BadRequestException('Start date must be before end date.');
+    if (!['contacts', 'conversations'].includes(options.mode)) throw new BadRequestException('Invalid export mode.');
+    const query = String(options.search || '').trim().toLowerCase();
+    const threads = (await this.threads(whatsappAccountId)).filter((thread) => {
+      const tags = thread.threadTags || [];
+      const date = new Date(thread.createdAt);
+      return (!from || date >= from) && (!to || date < to)
+        && (!query || [thread.contactName, thread.phone, thread.text, thread.threadStatus, thread.priority, ...tags].some((value) => String(value || '').toLowerCase().includes(query)))
+        && (!options.status || options.status === 'all' || thread.threadStatus === options.status)
+        && (!options.priority || options.priority === 'all' || (thread.priority || 'normal') === options.priority)
+        && (!options.tag || options.tag === 'all' || tags.includes(options.tag))
+        && (!options.assignee || options.assignee === 'all' || (options.assignee === 'unassigned' ? !thread.assignedTo : String(thread.assignedTo || '') === options.assignee));
+    });
+    const phones = threads.map((thread) => thread.phone);
+    const normalize = (phone: string) => String(phone || '').replace(/\D/g, '');
+    const contacts = await this.contactModel.find(whatsappAccountIdFilter(whatsappAccountId)).lean();
+    const byPhone = new Map(contacts.map((contact) => [normalize(contact.phone), contact]));
+    const threadByPhone = new Map(threads.map((thread) => [thread.phone, thread]));
+    // Quote every cell and neutralize spreadsheet formulas in user-supplied values.
+    const cell = (value: any) => {
+      let result = value == null ? '' : value instanceof Date ? value.toISOString() : typeof value === 'object' ? JSON.stringify(value) : String(value);
+      if (/^[\s]*[=+\-@]/.test(result)) result = "'" + result;
+      return '"' + result.replace(/"/g, '""') + '"';
+    };
+    const details = (thread: any) => {
+      const contact = byPhone.get(normalize(thread.phone));
+      return [contact?.name || thread.contactName, thread.phone, contact?.tags || [], contact?.customFields || {}, contact?.variables || {}, thread.threadStatus, thread.priority, thread.threadTags || [], thread.createdAt];
+    };
+    const headers = ['Name', 'Phone', 'Contact tags', 'Custom contact fields', 'Contact variables', 'Conversation status', 'Priority', 'Conversation tags', 'Latest activity (UTC)'];
+    const rows = [headers];
+    if (options.mode === 'contacts') {
+      for (const thread of threads) rows.push(details(thread));
+    } else {
+      headers.push('Message date (UTC)', 'Direction', 'Type', 'Text', 'Media details', 'Structured content', 'Delivery status');
+      // Export the complete history, independently of the 200-message inbox preview limit.
+      const cursor = this.model.find({ ...scope, phone: { $in: phones } }).sort({ phone: 1, createdAt: 1, _id: 1 }).lean().cursor();
+      for await (const message of cursor) {
+        rows.push([...details(threadByPhone.get(message.phone)), (message as any).createdAt, message.direction, message.type, message.text, message.media, message.payload, message.deliveryStatus]);
+      }
+    }
+    return '\uFEFF' + rows.map((row) => row.map(cell).join(',')).join('\r\n');
   }
 
   async mediaAttachment(whatsappAccountId: string, messageId: string) {
