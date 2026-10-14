@@ -2,7 +2,10 @@
 
 Standalone Next.js 14 dashboard for the Jaikvik WMS WhatsApp Business Platform. Talks to the [wa-notifier-backend](../wa-notifier-backend) API over HTTP — fully decoupled, deployable independently (Vercel, Docker, any Node host).
 
+Client Help Center: `/client/help`, available to client owners and team members. Content coverage and maintenance notes: [CLIENT-HELP-CENTER.md](../CLIENT-HELP-CENTER.md).
+
 ## Stack
+
 - **Next.js 14** (App Router)
 - **Tailwind CSS**
 - **Recharts** — analytics charts
@@ -66,6 +69,34 @@ Since this is fully standalone, you can deploy it anywhere independent of the ba
 - **Static export**: not supported as-is (uses dynamic routes + client auth), use Node server deployment
 
 Just ensure your backend has `CORS_ORIGIN` set to this frontend's deployed URL.
+
+### VPS builds and missing CSS
+
+`npm run build` also packages `.next/static` and `public` into
+`.next/standalone`. Next.js standalone output does not include these assets
+automatically; without them, the standalone server returns 404 for CSS and JS.
+Use `npm run build` rather than calling `next build` directly so the packaging
+step runs.
+
+For a first deployment from the frontend directory:
+
+```bash
+npm ci --include=dev
+npm run build
+HOSTNAME=0.0.0.0 PORT=3000 npm run start:standalone
+```
+
+If PM2 already manages the frontend, stop that process before rebuilding in
+its live directory, run `npm run build`, and restart the same process after
+the build succeeds. Rebuilding a live `.next` directory can remove assets
+that the running server is still referencing. For deployments without downtime,
+build in a separate release directory and switch to the completed release.
+
+Proxy all frontend requests, including `/_next/static/`, to the frontend Node
+server. If Nginx serves those files directly, its alias must point to the current
+release's static directory. Avoid caching HTML across deployments, since it can
+reference old asset hashes. Check a failing CSS request in browser DevTools:
+it should return HTTP 200 with a `text/css` content type.
 
 ## Project Structure
 

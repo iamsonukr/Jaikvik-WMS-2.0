@@ -6,6 +6,7 @@ import AppShell from '@/components/layout/AppShell';
 import { Badge, Button, Input, Select, Spinner, StatusBadge, PaginationControls, usePagination } from '@/components/ui';
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
+import { visibleMessage, extraMessageContent, audioFilename } from '@/lib/inbound-message.mjs';
 
 const text = (value) => String(value || '').toLowerCase();
 const PRIORITY_COLOR = { low: 'gray', normal: 'blue', high: 'yellow', urgent: 'red' };
@@ -26,6 +27,7 @@ function mediaLabel(media) {
 }
 
 function messageSnippet(message) {
+  message = visibleMessage(message);
   if (message.text) return message.text;
   const type = String(message.type || '').toLowerCase();
   if (type === 'image') return message.media?.caption || 'Photo';
@@ -74,11 +76,13 @@ function MessageReadStatus({ message }) {
 }
 
 function MediaPreview({ message, whatsappAccountId }) {
+  message = visibleMessage(message);
   const media = message.media || {};
   const type = String(message.type || media.type || '').toLowerCase();
   const [objectUrl, setObjectUrl] = useState(media.url || media.link || media.previewUrl || '');
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [playbackFailed, setPlaybackFailed] = useState(false);
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
@@ -86,6 +90,7 @@ function MediaPreview({ message, whatsappAccountId }) {
     let localUrl = '';
 
     setObjectUrl('');
+    setPlaybackFailed(false);
     setLoading(false);
     if (!media.id || !message._id || !whatsappAccountId) {
       setObjectUrl(media.url || media.link || media.previewUrl || '');
@@ -98,7 +103,9 @@ function MediaPreview({ message, whatsappAccountId }) {
     api.get(`/inbox/messages/${message._id}/media?whatsappAccountId=${whatsappAccountId}`, { responseType: 'blob' })
       .then((response) => {
         if (cancelled) return;
-        localUrl = URL.createObjectURL(response.data);
+        const blob = response.data;
+        const mime = blob.type && blob.type !== 'application/octet-stream' ? blob.type : media.mime_type;
+        localUrl = URL.createObjectURL(mime ? new Blob([blob], { type: mime }) : blob);
         setObjectUrl(localUrl);
       })
       .catch(() => {
@@ -112,7 +119,7 @@ function MediaPreview({ message, whatsappAccountId }) {
       cancelled = true;
       if (localUrl) URL.revokeObjectURL(localUrl);
     };
-  }, [message._id, media.id, media.url, media.link, media.previewUrl, whatsappAccountId, retry]);
+  }, [message._id, media.id, media.url, media.link, media.previewUrl, media.mime_type, whatsappAccountId, retry]);
 
   if (!['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;
 
@@ -157,8 +164,11 @@ function MediaPreview({ message, whatsappAccountId }) {
   if (url && type === 'audio') {
     return (
       <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2">
-        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">{mediaIcon(type)} <span>{label}</span></div>
-        <audio src={url} onError={() => setFailed(true)} controls className="w-full" />
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">{mediaIcon(type)} <span>{media.voice ? 'Voice message' : 'Audio message'}</span></div>
+        <audio key={url} src={url} onError={() => setPlaybackFailed(true)} controls preload="metadata" aria-label={media.voice ? 'Client voice message' : 'Client audio message'} className="w-full" />
+        {playbackFailed && <p className="mt-2 text-xs">This browser could not play the audio. Download it to listen in an audio player.</p>}
+        <a href={url} download={audioFilename(media)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-xs underline"><Download size={13} />Download audio</a>
+        {playbackFailed && media.id && <button type="button" onClick={() => setRetry(value => value + 1)} className="ml-3 text-xs underline">Retry audio</button>}
       </div>
     );
   }
@@ -179,6 +189,7 @@ function MediaPreview({ message, whatsappAccountId }) {
 }
 
 function StructuredMessage({ message }) {
+  message = visibleMessage(message);
   const payload = message.payload || {};
   const type = String(message.type || '').toLowerCase();
   const showValue = (value) => typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '');
@@ -207,9 +218,19 @@ function StructuredMessage({ message }) {
   if (type === 'contacts' && payload.contacts) return <div className="space-y-2">{payload.contacts.map((contact, index) => <div key={index}><p className="font-semibold">{contact.name?.formatted_name || [contact.name?.first_name, contact.name?.last_name].filter(Boolean).join(' ') || 'Contact'}</p>{fields(Object.fromEntries(Object.entries(contact).filter(([key]) => key !== 'name')))}</div>)}</div>;
   if (type === 'reaction' && payload.reaction) return <p>{payload.reaction.emoji ? `Reaction: ${payload.reaction.emoji}` : 'Reaction removed'}{payload.reaction.message_id && <span className="mt-1 block break-all text-xs text-muted-foreground">To message: {payload.reaction.message_id}</span>}</p>;
   if (['revoked', 'revoke', 'deleted'].includes(type)) return <p className="italic text-muted-foreground">Message deleted</p>;
-  if (['unknown', 'unsupported'].includes(type)) return <div><p>WhatsApp did not provide this message’s content.</p>{payload.errors?.map((error, index) => <p key={index} className="mt-1 text-xs text-muted-foreground">{error.error_data?.details || error.message || error.title || `WhatsApp error ${error.code}`}</p>)}</div>;
+  if (['unknown', 'unsupported'].includes(type)) {
+    const available = extraMessageContent(payload);
+    if (message.text) return null;
+    return <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3" role="status">
+      <p className="font-semibold">Client message needs attention</p>
+      <p>WhatsApp sent a message notification without supported content. The original content cannot be retrieved from this notification.</p>
+      <p>Please ask the client to resend it as plain text, a regular photo/video, or a document.</p>
+      {Array.isArray(payload.errors) && payload.errors.map((error, index) => <p key={index} className="text-xs text-muted-foreground">{error.code != null ? `WhatsApp error ${error.code}: ` : ''}{error.error_data?.details || error.message || error.title || 'Content unavailable'}</p>)}
+      {Object.keys(available).length > 0 && <div><p className="text-xs font-semibold">Available message content</p>{fields(available)}</div>}
+    </div>;
+  }
   if (message.text || ['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;
-  const data = payload[type];
+  const data = payload[type] || extraMessageContent(payload);
   return <div><p>{messageSnippet(message)}</p>{data && <div className="mt-2">{typeof data === 'object' ? fields(data) : showValue(data)}</div>}</div>;
 }
 
@@ -710,7 +731,7 @@ export default function InboxWorkspace({ allowedRoles }) {
                     <div className={`max-w-[86%] rounded-xl px-3 py-1.5 text-[13px] shadow-sm ring-1 sm:max-w-[68%] ${message.direction === 'outbound'
                       ? 'rounded-br-[3px] bg-[#dcf8c6] text-slate-900 ring-[#b7e7a5] dark:bg-[#075e54] dark:text-white dark:ring-white/10'
                       : 'rounded-bl-[3px] bg-white text-slate-900 ring-slate-200 dark:bg-slate-900 dark:text-slate-50 dark:ring-white/10'}`}>
-                      {message.text && <p className="whitespace-pre-wrap leading-snug">{message.text}</p>}
+                      {visibleMessage(message).text && <p className="whitespace-pre-wrap leading-snug">{visibleMessage(message).text}</p>}
                       <MediaPreview message={message} whatsappAccountId={activeClient._id} />
                       <StructuredMessage message={message} />
                       <div className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${message.direction === 'outbound' ? 'text-slate-600 dark:text-white/70' : 'text-muted-foreground'}`}>

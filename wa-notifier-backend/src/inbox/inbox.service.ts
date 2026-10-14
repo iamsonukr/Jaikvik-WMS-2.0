@@ -40,8 +40,7 @@ export class InboxService {
   messages(whatsappAccountId: string, phone: string) {
     return this.model
       .find({ ...this.whatsappAccountIdQuery(whatsappAccountId), phone })
-      .sort({ createdAt: 1 })
-      .limit(200);
+      .sort({ createdAt: 1, _id: 1 });
   }
 
   async exportLeads(whatsappAccountId: string, options: any) {
@@ -151,7 +150,9 @@ export class InboxService {
     });
     if (!message) throw new NotFoundException('Message not found.');
 
-    const mediaId = message.media?.id;
+    const payloadMedia = ['image', 'audio', 'video', 'document', 'sticker']
+      .map(type => message.payload?.[type]).find(media => media?.id);
+    const mediaId = message.media?.id || payloadMedia?.id;
     if (!mediaId) throw new BadRequestException('This message does not contain downloadable media.');
 
     const account = await this.clients.findOne(whatsappAccountId);

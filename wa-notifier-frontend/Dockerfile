@@ -12,7 +12,6 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# npm run build packages static and public assets into standalone via postbuild.
 EXPOSE 3000
 CMD ["node", "server.js"]

@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/prepare-standalone.mjs",
+    "start:standalone": "node .next/standalone/server.js",
     "start": "next start"
   },
   "dependencies": {

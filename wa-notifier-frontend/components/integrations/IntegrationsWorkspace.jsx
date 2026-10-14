@@ -12,6 +12,11 @@ export default function IntegrationsWorkspace({ basePath }) {
       </div>
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <article className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6">
+          <div className="flex items-center gap-3"><CalendarDays size={26} /><h2 className="text-lg font-semibold">Google Calendar</h2></div>
+          <p className="flex-1 text-sm text-muted-foreground">Link calendar appointments to WhatsApp recipients and send automatic reminders.</p>
+          <Link href={`${basePath}/integrations/google-calendar`} className={buttonVariants({ variant: 'outline' })}>Manage Google Calendar<ArrowRight size={16} /></Link>
+        </article>
+        <article className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6">
           <div className="flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-3 text-blue-600 dark:text-blue-400"><CalendarDays size={26} /></div><h2 className="text-lg font-semibold">Calendly</h2></div>
           <p className="flex-1 text-sm text-muted-foreground">Send WhatsApp booking confirmations, cancellation updates and appointment reminders from Calendly.</p>
           <Link href={`${basePath}/integrations/calendly`} className={buttonVariants({ variant: 'outline' })}>Manage Calendly<ArrowRight size={16} /></Link>

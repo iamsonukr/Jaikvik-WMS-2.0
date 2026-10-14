@@ -172,7 +172,7 @@ export class MetaService {
 
       return {
         buffer: Buffer.from(response.data),
-        contentType: response.headers['content-type'] || info.mime_type || 'application/octet-stream',
+        contentType: info.mime_type || response.headers['content-type'] || 'application/octet-stream',
         fileSize: info.file_size,
         sha256: info.sha256,
       };

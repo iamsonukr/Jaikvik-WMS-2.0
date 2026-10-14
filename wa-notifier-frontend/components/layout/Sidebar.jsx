@@ -6,7 +6,7 @@ import {
   LayoutDashboard, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, X,
   Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound, Users, Receipt, Bell, LifeBuoy,
-  ChevronsLeft, ChevronsRight, Landmark, Plug,
+  ChevronsLeft, ChevronsRight, Landmark, Plug, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useClient } from '@/hooks/useClient';
@@ -84,8 +84,12 @@ const clientNav = [
   { href: '/client/plans',      label: 'Plans',       icon: CreditCard, badgeKey: 'plans' },
   { href: '/client/wallet',      label: 'Wallet',      icon: Wallet, badgeKey: 'wallet' },
   { href: '/client/payments',    label: 'Payments',    icon: Receipt, badgeKey: 'payments' },
-  { href: '/client/tickets',     label: 'Support & Tickets', icon: LifeBuoy, badgeKey: 'tickets' },
   { href: '/client/settings',    label: 'Settings',    icon: Settings },
+];
+
+const clientSupportNav = [
+  { href: '/client/help', label: 'FAQ & Help Center', icon: BookOpen },
+  { href: '/client/tickets', label: 'Support & Tickets', icon: LifeBuoy, badgeKey: 'tickets' },
 ];
 
 const ROLE_LABEL = { admin: 'Admin', master: 'Master', client_owner: 'Client', client_user: 'Client' };
@@ -353,7 +357,10 @@ export default function Sidebar({ open = false, onClose = () => {}, collapsed = 
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
-        {isClient && <NavGroup items={clientNavForRole} pathname={pathname} onClose={onClose} collapsed={collapsed} badges={clientBadges} />}
+        {isClient && <>
+          <NavGroup items={clientNavForRole} pathname={pathname} onClose={onClose} collapsed={collapsed} badges={clientBadges} />
+          <NavGroup title="Support" items={clientSupportNav} pathname={pathname} onClose={onClose} collapsed={collapsed} badges={clientBadges} bordered />
+        </>}
         {isMaster && (
           <>
             <NavGroup

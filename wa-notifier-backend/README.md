@@ -3,6 +3,7 @@
 Standalone NestJS REST API for the Jaikvik WMS WhatsApp Business Platform.
 
 Email two-factor authentication setup, migration and testing: [TWO-FACTOR.md](../TWO-FACTOR.md).
+Google Calendar connection and WhatsApp reminder setup: [GOOGLE-CALENDAR.md](../GOOGLE-CALENDAR.md).
 
 ## Stack
 - **NestJS 10** — framework
