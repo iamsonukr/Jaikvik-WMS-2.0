@@ -222,11 +222,11 @@ function StructuredMessage({ message }) {
     const available = extraMessageContent(payload);
     if (message.text) return null;
     return <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3" role="status">
-      <p className="font-semibold">Client message needs attention</p>
-      <p>WhatsApp sent a message notification without supported content. The original content cannot be retrieved from this notification.</p>
-      <p>Please ask the client to resend it as plain text, a regular photo/video, or a document.</p>
-      {Array.isArray(payload.errors) && payload.errors.map((error, index) => <p key={index} className="text-xs text-muted-foreground">{error.code != null ? `WhatsApp error ${error.code}: ` : ''}{error.error_data?.details || error.message || error.title || 'Content unavailable'}</p>)}
-      {Object.keys(available).length > 0 && <div><p className="text-xs font-semibold">Available message content</p>{fields(available)}</div>}
+      <p className="font-semibold">{Object.keys(available).length ? 'Message preview unavailable' : 'Message unavailable'}</p>
+      {Object.keys(available).length > 0
+        ? <div>{fields(available)}</div>
+        : <><p>WhatsApp did not provide the content of this message.</p><p className="text-sm">Ask the sender to resend it as text, a photo, video, audio, or document.</p></>}
+      {Array.isArray(payload.errors) && payload.errors.length > 0 && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">WhatsApp details</summary>{payload.errors.map((error, index) => <p key={index}>{error.code != null ? `Error ${error.code}: ` : ''}{error.error_data?.details || error.message || error.title || 'Content unavailable'}</p>)}</details>}
     </div>;
   }
   if (message.text || ['image', 'audio', 'video', 'document', 'sticker'].includes(type)) return null;

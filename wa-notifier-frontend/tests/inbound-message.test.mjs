@@ -26,3 +26,20 @@ test('keeps true unsupported notifications and unfamiliar content visible', () =
   assert.deepEqual(extraMessageContent(message.payload), { poll: { question: 'When?' } });
   assert.deepEqual(extraMessageContent({ type: 'unknown', errors: [] }), {});
 });
+
+test('sender identifiers and unsupported descriptors are not message content', () => {
+  const payload = { type: 'unsupported', from_user_id: 'IN.1645951517147230', unsupported: { type: 'unknown', raw_type: 'unknown' }, errors: [{ code: 131051 }] };
+  assert.deepEqual(extraMessageContent(payload), {});
+  assert.equal(visibleMessage({ type: 'unsupported', payload }).type, 'unsupported');
+});
+
+test('recovers stored text and attachments without inventing missing content', () => {
+  assert.equal(visibleMessage({ type: 'unknown', text: 'Original message' }).type, 'text');
+  assert.equal(visibleMessage({ type: 'unknown', payload: { text: 'Original message' } }).text, 'Original message');
+  for (const [mime, type] of [['image/jpeg', 'image'], ['video/mp4', 'video'], ['application/pdf', 'document']]) {
+    const message = visibleMessage({ type: 'unsupported', media: { id: 'attachment', mime_type: mime } });
+    assert.equal(message.type, type);
+    assert.equal(message.media.id, 'attachment');
+  }
+  assert.equal(visibleMessage({ type: 'unknown', media: {} }).type, 'unknown');
+});
