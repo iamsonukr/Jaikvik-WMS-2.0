@@ -267,6 +267,7 @@ function FAQ() {
                 onClick={() => setOpenIndex(openIndex === i ? -1 : i)}
                 className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left text-sm font-medium"
               >
+                
                 {f.q}
                 <ChevronDown size={16} className={`shrink-0 transition-transform ${openIndex === i ? 'rotate-180' : ''}`} />
               </button>
