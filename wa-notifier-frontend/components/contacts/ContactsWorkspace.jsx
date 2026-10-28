@@ -126,7 +126,8 @@ function exportContactsCsv(items, customFields = [], filename = 'contacts-export
       contact.isOptedOut ? 'opted_out' : 'active',
     ].map(csvCell).join(',')),
   ];
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  // Excel may otherwise open UTF-8 CSV files using a legacy encoding and show Hindi as question marks.
+  const blob = new Blob(['\uFEFF', lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -586,7 +587,9 @@ export default function ContactsWorkspace() {
     setImportResult(null);
     setImportPreview(null);
     try {
-      const text = await file.text();
+      // Decode the CSV explicitly as UTF-8; strip a possible BOM before parsing the header.
+      const bytes = await file.arrayBuffer();
+      const text = new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
       const parsed = parseCSVText(text);
       setImportFileName(file.name);
       setImportHeaders(parsed.headers);
