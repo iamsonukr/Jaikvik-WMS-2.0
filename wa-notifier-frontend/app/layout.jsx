@@ -7,7 +7,7 @@ export const metadata = { title: 'Jaikvik WMS', description: 'WhatsApp Business 
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="hi" suppressHydrationWarning>
       <body>
         <ThemeProvider>
           <AuthProvider>

@@ -27,13 +27,13 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
-  const [form, setForm] = useState({ name: '', templateName: '', languageCode: 'en' });
+  const [form, setForm] = useState({ name: '', templateName: '', languageCode: 'en', headerImageUrl: '' });
 
   useEffect(() => {
     let cancelled = false;
     setTemplates([]); setTags([]); setSegments([]);
     setSelectedTags([]); setSelectedSegmentIds([]);
-    setForm({ name: '', templateName: '', languageCode: 'en' });
+    setForm({ name: '', templateName: '', languageCode: 'en', headerImageUrl: '' });
     if (!activeClient) return;
     Promise.all([
       api.get(`/templates?whatsappAccountId=${activeClient._id}`),
@@ -75,6 +75,12 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
     if (!activeClient) { setError('Select a client first.'); return; }
     if (!form.name.trim()) { setError('Campaign name is required.'); return; }
     if (!form.templateName) { setError('Select a template.'); return; }
+    const header = selected?.components?.find(component => component.type?.toUpperCase() === 'HEADER');
+    const isImageHeader = header?.format?.toUpperCase() === 'IMAGE';
+    if (isImageHeader && !/^https:\/\/.+/.test(form.headerImageUrl.trim())) {
+      setError('Enter a public HTTPS image URL for this template’s image header.');
+      return;
+    }
     if ((sendNow || schedule) && (count === 0 || count === null)) {
       setError('No contacts match this audience. Adjust your tags or add contacts before sending.');
       return;
@@ -89,7 +95,10 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
         whatsappAccountId: activeClient._id,
         targetTags: selectedTags,
         targetSegmentIds: selectedSegmentIds,
-        components: [],
+        components: isImageHeader ? [{
+          type: 'header',
+          parameters: [{ type: 'image', image: { link: form.headerImageUrl.trim() } }],
+        }] : [],
         status: schedule ? 'scheduled' : 'draft',
         scheduledAt: schedule ? new Date(scheduledAt).toISOString() : undefined,
       });
@@ -136,6 +145,14 @@ export default function NewBroadcastWorkspace({ allowedRoles, basePath }) {
               <p className="leading-relaxed text-foreground">
                 {selected.components?.find(c => c.type === 'BODY')?.text || 'No body text'}
               </p>
+            </div>
+          )}
+          {selected?.components?.some(component => component.type?.toUpperCase() === 'HEADER' && component.format?.toUpperCase() === 'IMAGE') && (
+            <div className="space-y-2">
+              <Input label="Header image URL *" type="url" value={form.headerImageUrl}
+                onChange={e => setForm(p => ({ ...p, headerImageUrl: e.target.value }))}
+                placeholder="https://example.com/image.jpg" disabled={!activeClient} />
+              <p className="text-xs text-muted-foreground">Use a public HTTPS link to an image that Meta can fetch. The image is sent with every campaign message.</p>
             </div>
           )}
         </Card>
