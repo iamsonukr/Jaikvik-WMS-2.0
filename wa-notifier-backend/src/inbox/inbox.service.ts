@@ -238,6 +238,7 @@ export class InboxService {
     templateName: string,
     languageCode?: string,
     bodyParameters: string[] = [],
+    headerImageUrl?: string,
   ) {
     const account = await this.clients.findOne(whatsappAccountId);
     if (!account) throw new NotFoundException('WhatsApp account not found.');
@@ -247,6 +248,9 @@ export class InboxService {
       throw new BadRequestException('Only approved templates can be sent.');
     }
 
+    const language = languageCode || template.language || 'en';
+    // Validate all required template parameters before charging the wallet.
+    const components = this.buildSendComponents(template.components || [], bodyParameters, headerImageUrl);
     const category = this.normalizeCategory(template.category);
     const tenantId = this.resolveTenantId(account);
     const price = await this.resolvePlanPrice(String(tenantId), category);
@@ -261,8 +265,6 @@ export class InboxService {
       })
       : null;
 
-    const language = languageCode || template.language || 'en';
-    const components = this.buildSendComponents(template.components || [], bodyParameters);
     let res: any;
     try {
       const accessToken = this.clients.getOperationalAccessToken(account, 'messaging');
@@ -515,20 +517,30 @@ export class InboxService {
     });
   }
 
-  private buildSendComponents(templateComponents: any[], bodyParameters: string[]) {
-    const body = templateComponents.find((component: any) => component?.type === 'BODY')?.text || '';
+  private buildSendComponents(templateComponents: any[], bodyParameters: string[], headerImageUrl?: string) {
+    const header = templateComponents.find((component: any) => String(component?.type).toUpperCase() === 'HEADER');
+    const body = templateComponents.find((component: any) => String(component?.type).toUpperCase() === 'BODY')?.text || '';
     const placeholderCount = this.placeholderCount(body);
-    if (!placeholderCount) return [];
-
-    const values = bodyParameters.map((value) => String(value || '').trim());
-    if (values.length < placeholderCount || values.slice(0, placeholderCount).some((value) => !value)) {
-      throw new BadRequestException(`Provide ${placeholderCount} body parameter value(s) for this template.`);
+    const components: any[] = [];
+    if (String(header?.format || '').toUpperCase() === 'IMAGE') {
+      const link = String(headerImageUrl || '').trim();
+      if (!/^https:\/\//i.test(link)) {
+        throw new BadRequestException('This template requires a public HTTPS image URL for its image header.');
+      }
+      components.push({ type: 'header', parameters: [{ type: 'image', image: { link } }] });
     }
 
-    return [{
-      type: 'body',
-      parameters: values.slice(0, placeholderCount).map((text) => ({ type: 'text', text })),
-    }];
+    if (placeholderCount) {
+      const values = bodyParameters.map((value) => String(value || '').trim());
+      if (values.length < placeholderCount || values.slice(0, placeholderCount).some((value) => !value)) {
+        throw new BadRequestException(`Provide ${placeholderCount} body parameter value(s) for this template.`);
+      }
+      components.push({
+        type: 'body',
+        parameters: values.slice(0, placeholderCount).map((text) => ({ type: 'text', text })),
+      });
+    }
+    return components;
   }
 
   private placeholderCount(text: string) {

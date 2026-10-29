@@ -59,13 +59,14 @@ export class InboxController {
 
   @UseGuards(TenantOwnershipGuard)
   @Post('template')
-  template(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; templateName: string; languageCode?: string; bodyParameters?: string[] }) {
+  template(@Body() body: { whatsappAccountId?: string; clientId?: string; phone: string; templateName: string; languageCode?: string; bodyParameters?: string[]; headerImageUrl?: string }) {
     return this.svc.sendTemplate(
       body.whatsappAccountId || body.clientId,
       body.phone,
       body.templateName,
       body.languageCode,
       body.bodyParameters || [],
+      body.headerImageUrl,
     );
   }
 

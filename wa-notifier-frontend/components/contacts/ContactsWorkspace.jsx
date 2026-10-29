@@ -211,6 +211,7 @@ export default function ContactsWorkspace() {
   const [messageText, setMessageText] = useState('');
   const [selectedTemplateName, setSelectedTemplateName] = useState('');
   const [templateParams, setTemplateParams] = useState([]);
+  const [templateHeaderImageUrl, setTemplateHeaderImageUrl] = useState('');
   const [messageError, setMessageError] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [contactSort, setContactSort] = useState({ key: 'name', direction: 'asc' });
@@ -224,6 +225,8 @@ export default function ContactsWorkspace() {
     [templates],
   );
   const selectedTemplate = approvedTemplates.find((template) => template.name === selectedTemplateName);
+  const selectedTemplateHasImageHeader = selectedTemplate?.components?.some((component) =>
+    String(component?.type).toUpperCase() === 'HEADER' && String(component?.format).toUpperCase() === 'IMAGE');
   const requiredParams = bodyPlaceholderCount(selectedTemplate);
 
   const currentAccountId = useRef(activeClient?._id);
@@ -520,6 +523,7 @@ export default function ContactsWorkspace() {
     setMessageMode(firstTemplate ? 'template' : 'text');
     setSelectedTemplateName(firstTemplate?.name || '');
     setTemplateParams([]);
+    setTemplateHeaderImageUrl('');
     setMessageText('');
     setMessageError('');
     setMessageModal(true);
@@ -532,6 +536,7 @@ export default function ContactsWorkspace() {
     setMessageText('');
     setSelectedTemplateName('');
     setTemplateParams([]);
+    setTemplateHeaderImageUrl('');
     setMessageError('');
   };
 
@@ -550,6 +555,10 @@ export default function ContactsWorkspace() {
       setMessageError(`Provide ${requiredParams} template parameter value(s).`);
       return;
     }
+    if (messageMode === 'template' && selectedTemplateHasImageHeader && !/^https:\/\/.+/i.test(templateHeaderImageUrl.trim())) {
+      setMessageError('Enter a public HTTPS image URL for this template’s image header.');
+      return;
+    }
 
     setSendingMessage(true);
     setMessageError('');
@@ -561,6 +570,7 @@ export default function ContactsWorkspace() {
           templateName: selectedTemplate.name,
           languageCode: selectedTemplate.language,
           bodyParameters: templateParams.slice(0, requiredParams),
+          headerImageUrl: templateHeaderImageUrl.trim() || undefined,
         });
       } else {
         await api.post('/inbox/reply', {
@@ -785,6 +795,7 @@ export default function ContactsWorkspace() {
   });
   const canSend = messageMode === 'template'
     ? Boolean(selectedTemplate) && templateParams.slice(0, requiredParams).every((value) => value.trim())
+      && (!selectedTemplateHasImageHeader || /^https:\/\/.+/i.test(templateHeaderImageUrl.trim()))
     : Boolean(messageText.trim());
 
   return (
@@ -1497,7 +1508,7 @@ export default function ContactsWorkspace() {
               <Select
                 label="Template *"
                 value={selectedTemplateName}
-                onChange={(e) => setSelectedTemplateName(e.target.value)}
+                onChange={(e) => { setSelectedTemplateName(e.target.value); setTemplateParams([]); setTemplateHeaderImageUrl(''); }}
               >
                 {approvedTemplates.length === 0 && <option value="">No approved templates</option>}
                 {approvedTemplates.map((template) => (
@@ -1507,6 +1518,14 @@ export default function ContactsWorkspace() {
               {selectedTemplate && (
                 <div className="rounded-lg border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
                   {bodyText(selectedTemplate) || 'No body text'}
+                </div>
+              )}
+              {selectedTemplateHasImageHeader && (
+                <div className="space-y-1.5">
+                  <Input label="Header image URL *" type="url" value={templateHeaderImageUrl}
+                    onChange={(e) => setTemplateHeaderImageUrl(e.target.value)}
+                    placeholder="https://example.com/image.jpg" />
+                  <p className="text-xs text-muted-foreground">Use a public HTTPS image link that Meta can fetch.</p>
                 </div>
               )}
               {Array.from({ length: requiredParams }, (_, index) => (
