@@ -199,6 +199,16 @@ export class ContactsService {
     const existing = await this.model.findById(id);
     if (!existing) throw new NotFoundException('Contact not found');
     const next: Partial<Contact> = { ...dto };
+    if (dto.phone !== undefined) {
+      const phone = this.normalizePhone(dto.phone);
+      if (!this.isValidPhone(phone)) {
+        throw new BadRequestException('Enter a valid phone number in E.164 format, e.g. +919876543210');
+      }
+      const accountId = String(existing.whatsappAccountId || (existing as any).clientId);
+      const duplicate = await this.model.findOne({ ...this.whatsappAccountIdQuery(accountId), phone, _id: { $ne: existing._id } });
+      if (duplicate) throw new BadRequestException('A contact with this phone number already exists for this WhatsApp account');
+      next.phone = phone;
+    }
     if (dto.tags) next.tags = await this.allowedTags(String(existing.whatsappAccountId || (existing as any).clientId), dto.tags);
     if (dto.customFields) {
       next.customFields = await this.allowedCustomFieldValues(String(existing.whatsappAccountId || (existing as any).clientId), dto.customFields);

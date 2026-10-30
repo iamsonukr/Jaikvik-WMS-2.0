@@ -1,9 +1,10 @@
-import { IsBoolean, IsIn, IsMongoId, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsMongoId, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateChatbotRuleDto {
   @IsOptional() @IsMongoId() whatsappAccountId?: string;
   @IsOptional() @IsMongoId() clientId?: string;
   @IsString() @MinLength(1) keyword: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) keywords?: string[];
   @IsOptional() @IsIn(['contains', 'exact', 'starts_with']) matchType?: string;
   @IsString() @MinLength(1) replyText: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
@@ -12,6 +13,7 @@ export class CreateChatbotRuleDto {
 
 export class UpdateChatbotRuleDto {
   @IsOptional() @IsString() keyword?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) keywords?: string[];
   @IsOptional() @IsIn(['contains', 'exact', 'starts_with']) matchType?: string;
   @IsOptional() @IsString() replyText?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;

@@ -14,6 +14,7 @@ export class CreateContactDto {
 }
 
 export class UpdateContactDto {
+  @IsOptional() @IsString() @MinLength(1) phone?: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsArray() tags?: string[];
   @IsOptional() @IsObject() variables?: Record<string, string>;

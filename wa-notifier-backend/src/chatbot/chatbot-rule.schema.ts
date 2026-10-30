@@ -8,6 +8,7 @@ export class ChatbotRule {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WhatsAppAccount', required: true }) whatsappAccountId: Types.ObjectId;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Tenant' }) tenantId?: Types.ObjectId;
   @Prop({ required: true }) keyword: string;         // exact or contains
+  @Prop({ type: [String], default: [] }) keywords: string[];
   @Prop({ default: 'contains' }) matchType: string;  // exact | contains | starts_with
   @Prop({ required: true }) replyText: string;
   @Prop({ default: true }) isActive: boolean;

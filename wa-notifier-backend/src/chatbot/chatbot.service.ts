@@ -38,11 +38,13 @@ export class ChatbotService {
     ]);
     const lower = text.toLowerCase();
     for (const rule of rules) {
-      const kw = rule.keyword.toLowerCase();
-      const hit =
-        rule.matchType === 'exact'       ? lower === kw :
-        rule.matchType === 'starts_with' ? lower.startsWith(kw) :
-        lower.includes(kw);
+      const keywords = (rule.keywords?.length ? rule.keywords : [rule.keyword]).filter(Boolean);
+      const hit = keywords.some((keyword) => {
+        const kw = keyword.toLowerCase();
+        return rule.matchType === 'exact'       ? lower === kw :
+          rule.matchType === 'starts_with' ? lower.startsWith(kw) :
+          lower.includes(kw);
+      });
       if (hit) return rule.replyText;
     }
     return null;

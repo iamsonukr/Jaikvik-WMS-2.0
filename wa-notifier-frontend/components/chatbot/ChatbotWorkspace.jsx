@@ -6,7 +6,7 @@ import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, SortableT
 import { useClient } from '@/hooks/useClient';
 import api from '@/lib/api';
 
-const blank = { keyword: '', matchType: 'contains', replyText: '', priority: 0, isActive: true };
+const blank = { keywords: [''], matchType: 'contains', replyText: '', priority: 0, isActive: true };
 const matchColors = { contains: 'blue', exact: 'gray', starts_with: 'yellow' };
 const text = (value) => String(value || '').toLowerCase();
 
@@ -33,7 +33,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
 
   const openNew = () => { setForm(blank); setFormError(''); setEditing(null); setModal(true); };
   const openEdit = (rule) => {
-    setForm({ keyword: rule.keyword, matchType: rule.matchType, replyText: rule.replyText, priority: rule.priority, isActive: rule.isActive });
+    setForm({ keywords: rule.keywords?.length ? rule.keywords : [rule.keyword || ''], matchType: rule.matchType, replyText: rule.replyText, priority: rule.priority, isActive: rule.isActive });
     setFormError('');
     setEditing(rule._id);
     setModal(true);
@@ -42,13 +42,15 @@ export default function ChatbotWorkspace({ allowedRoles }) {
 
   const save = async () => {
     if (!activeClient) { setFormError('Select a client first.'); return; }
-    if (!form.keyword.trim()) { setFormError('Keyword is required.'); return; }
+    const keywords = form.keywords.map((keyword) => keyword.trim()).filter(Boolean);
+    if (!keywords.length) { setFormError('At least one keyword is required.'); return; }
     if (!form.replyText.trim()) { setFormError('Auto reply text is required.'); return; }
     setFormError('');
     setSaving(true);
     try {
-      if (editing) await api.patch(`/chatbot/${editing}`, form);
-      else await api.post('/chatbot', { ...form, whatsappAccountId: activeClient._id });
+      const payload = { ...form, keywords, keyword: keywords[0] };
+      if (editing) await api.patch(`/chatbot/${editing}`, payload);
+      else await api.post('/chatbot', { ...payload, whatsappAccountId: activeClient._id });
       close();
       load();
     } catch (err) {
@@ -82,7 +84,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
     const query = text(search.trim());
     return rules.filter((rule) => {
       const matchesSearch = !query
-        || text(rule.keyword).includes(query)
+        || (rule.keywords || [rule.keyword]).some((keyword) => text(keyword).includes(query))
         || text(rule.matchType).includes(query)
         || text(rule.replyText).includes(query);
       const matchesMatch = matchFilter === 'all' || rule.matchType === matchFilter;
@@ -95,7 +97,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
 
   const sortedRules = useMemo(() => sortItems(filteredRules, sort, {
     priority: (rule) => rule.priority ?? 0,
-    keyword: (rule) => rule.keyword,
+    keyword: (rule) => (rule.keywords || [rule.keyword]).join(', '),
     match: (rule) => rule.matchType,
     reply: (rule) => rule.replyText,
     status: (rule) => Boolean(rule.isActive),
@@ -160,7 +162,7 @@ export default function ChatbotWorkspace({ allowedRoles }) {
                 {rulesPage.pageItems.map((rule) => (
                   <tr key={rule._id} className="table-row-hover">
                     <td className="px-4 py-3 text-muted-foreground">{rule.priority}</td>
-                    <td className="px-4 py-3 font-mono font-medium">"{rule.keyword}"</td>
+                    <td className="px-4 py-3 font-mono font-medium">{(rule.keywords || [rule.keyword]).filter(Boolean).map((keyword) => `"${keyword}"`).join(', ')}</td>
                     <td className="px-4 py-3"><Badge label={rule.matchType} color={matchColors[rule.matchType] || 'gray'} /></td>
                     <td className="max-w-md truncate px-4 py-3 text-muted-foreground">{rule.replyText}</td>
                     <td className="px-4 py-3">
@@ -189,7 +191,17 @@ export default function ChatbotWorkspace({ allowedRoles }) {
         footer={<><Button variant="outline" onClick={close}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button></>}>
         <div className="space-y-3">
           {formError && <div className="soft-alert border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300">{formError}</div>}
-          <Input label="Keyword *" value={form.keyword} onChange={(e) => setForm((prev) => ({ ...prev, keyword: e.target.value }))} placeholder="hello" />
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Trigger texts *</label>
+            {form.keywords.map((keyword, index) => (
+              <div key={index} className="flex gap-2">
+                <Input value={keyword} onChange={(e) => setForm((prev) => ({ ...prev, keywords: prev.keywords.map((item, i) => i === index ? e.target.value : item) }))} placeholder={index === 0 ? 'hi' : 'hello'} />
+                {form.keywords.length > 1 && <Button type="button" variant="outline" onClick={() => setForm((prev) => ({ ...prev, keywords: prev.keywords.filter((_, i) => i !== index) }))} aria-label="Remove trigger text"><Trash2 size={14} /></Button>}
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={() => setForm((prev) => ({ ...prev, keywords: [...prev.keywords, ''] }))}><Plus size={14} />Add trigger text</Button>
+            <p className="text-xs text-muted-foreground">Any trigger text can send this rule’s auto reply.</p>
+          </div>
           <Select label="Match Type" value={form.matchType} onChange={(e) => setForm((prev) => ({ ...prev, matchType: e.target.value }))}>
             <option value="contains">Contains</option>
             <option value="exact">Exact match</option>

@@ -175,6 +175,7 @@ export default function ContactsWorkspace() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(blank);
+  const [editingContactId, setEditingContactId] = useState(null);
   const [tagModal, setTagModal] = useState(false);
   const [tagForm, setTagForm] = useState(blankTag);
   const [fieldModal, setFieldModal] = useState(false);
@@ -285,21 +286,35 @@ export default function ContactsWorkspace() {
       const dto = {
         ...form,
         phone,
-        whatsappAccountId: activeClient._id,
         tags: form.tags,
-        ...(Object.keys(customFieldValues).length ? { customFields: customFieldValues } : {}),
+        ...(editingContactId ? { customFields: customFieldValues } : Object.keys(customFieldValues).length ? { customFields: customFieldValues } : {}),
       };
-      const { data } = await api.post('/contacts', dto);
+      const { data } = editingContactId
+        ? await api.patch(`/contacts/${editingContactId}`, dto)
+        : await api.post('/contacts', { ...dto, whatsappAccountId: activeClient._id });
       const saved = normalizeContact(data);
       setContacts((prev) => [saved, ...prev.filter((contact) => contact._id !== saved._id)]);
       setModal(false);
       setForm(blank);
+      setEditingContactId(null);
       load();
     } catch (err) {
       setFormError(err?.response?.data?.message || 'Could not save contact. The phone number may already exist.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const editContact = (contact) => {
+    setForm({
+      name: contact.name || '',
+      phone: contact.phone || '',
+      tags: Array.isArray(contact.tags) ? contact.tags : [],
+      customFields: { ...(contact.customFields || {}) },
+    });
+    setEditingContactId(contact._id);
+    setFormError('');
+    setModal(true);
   };
 
   const remove = async (id) => {
@@ -825,7 +840,7 @@ export default function ContactsWorkspace() {
             <Button variant="outline" onClick={() => setGroupPanelOpen((open) => !open)} disabled={!activeClient}>
               <Users size={15} />Segments
             </Button>
-            <Button onClick={() => { setForm(blank); setFormError(''); setModal(true); }} disabled={!activeClient}>
+            <Button onClick={() => { setForm(blank); setEditingContactId(null); setFormError(''); setModal(true); }} disabled={!activeClient}>
               <Plus size={15} />Add Contact
             </Button>
           </div>
@@ -1043,6 +1058,9 @@ export default function ContactsWorkspace() {
                         >
                           <Send size={14} />
                         </button>
+                        <button onClick={() => editContact(contact)} className="text-muted-foreground transition-colors hover:text-brand" aria-label={`Edit ${contact.name || contact.phone}`}>
+                          <Pencil size={14} />
+                        </button>
                         <button onClick={() => remove(contact._id)} className="text-muted-foreground hover:text-red-500 transition-colors" aria-label={`Delete ${contact.name || contact.phone}`}>
                           <Trash2 size={14} />
                         </button>
@@ -1250,11 +1268,11 @@ export default function ContactsWorkspace() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title="Add Contact"
+        title={editingContactId ? 'Edit Contact' : 'Add Contact'}
         footer={(
           <>
             <Button variant="outline" onClick={() => setModal(false)}>Cancel</Button>
-            <Button onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Saving...' : editingContactId ? 'Update Contact' : 'Save'}</Button>
           </>
         )}
       >
