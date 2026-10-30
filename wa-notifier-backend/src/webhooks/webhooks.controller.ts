@@ -124,9 +124,17 @@ export class WebhooksController {
 
             // Chatbot auto-reply on text
             if (msg.type === 'text' && msg.text?.body) {
-              const reply = await this.chatbot.match(String(client._id), msg.text.body);
-              if (reply) {
-                await this.inbox.reply(String(client._id), msg.from, reply).catch(() => null);
+              try {
+                const reply = await this.chatbot.match(String(client._id), msg.text.body);
+                if (reply) {
+                  await this.inbox.reply(String(client._id), msg.from, reply).catch((err) => {
+                    this.logger.error(`Chatbot reply send failed for inbound message ${msg.id} on account ${client._id}: ${err?.message || err}`);
+                  });
+                } else {
+                  this.logger.debug(`No active chatbot rule matched inbound message ${msg.id} on account ${client._id}`);
+                }
+              } catch (err) {
+                this.logger.error(`Chatbot matching failed for inbound message ${msg.id} on account ${client._id}: ${err?.message || err}`);
               }
             }
           }

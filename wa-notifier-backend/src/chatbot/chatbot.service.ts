@@ -36,11 +36,12 @@ export class ChatbotService {
       { $match: { ...this.whatsappAccountIdQuery(whatsappAccountId), isActive: true } },
       { $sort: { priority: 1 } },
     ]);
-    const lower = text.toLowerCase();
+    const lower = String(text || '').trim().toLowerCase();
     for (const rule of rules) {
       const keywords = (rule.keywords?.length ? rule.keywords : [rule.keyword]).filter(Boolean);
       const hit = keywords.some((keyword) => {
-        const kw = keyword.toLowerCase();
+        const kw = String(keyword || '').trim().toLowerCase();
+        if (!kw) return false;
         return rule.matchType === 'exact'       ? lower === kw :
           rule.matchType === 'starts_with' ? lower.startsWith(kw) :
           lower.includes(kw);
