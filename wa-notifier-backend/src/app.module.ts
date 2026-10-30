@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -26,6 +26,9 @@ import { SheetsModule } from './google-sheets/sheets.module';
 import { ZapierModule } from './zapier/zapier.module';
 import { CalendlyModule } from './calendly/calendly.module';
 import { CalendarModule } from './google-calendar/calendar.module';
+import { ErrorLogsModule } from './error-logs/error-logs.module';
+import { ErrorLogFilter } from './common/filters/error-log.filter';
+import { PersistentErrorLogger } from './common/persistent-error-logger';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ResourceOwnershipGuard } from './common/guards/resource-ownership.guard';
@@ -61,6 +64,7 @@ import { ResourceOwnershipGuard } from './common/guards/resource-ownership.guard
     ZapierModule,
     CalendlyModule,
     CalendarModule,
+    ErrorLogsModule,
   ],
   providers: [
     // Guards run in registration order: JwtAuthGuard populates req.user first
@@ -70,6 +74,8 @@ import { ResourceOwnershipGuard } from './common/guards/resource-ownership.guard
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     ResourceOwnershipGuard,
+    { provide: APP_FILTER, useClass: ErrorLogFilter },
+    PersistentErrorLogger,
   ],
 })
 export class AppModule {}

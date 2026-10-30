@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { requestLogger } from './common/request-logger.middleware';
+import { PersistentErrorLogger } from './common/persistent-error-logger';
 
 function getCorsOrigins() {
   const raw = process.env.CORS_ORIGIN;
@@ -16,6 +17,7 @@ function getCorsOrigins() {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.useLogger(app.get(PersistentErrorLogger));
 
   app.setGlobalPrefix('api');
   app.use(requestLogger);

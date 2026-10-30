@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, UserCircle, FileText, Megaphone,
   Inbox, Bot, BarChart2, Settings, MessageCircle, LogOut, X,
-  Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound, Users, Receipt, Bell, LifeBuoy,
+  Wallet, CreditCard, Building2, Tags, ScrollText, UsersRound, Users, Receipt, Bell, LifeBuoy, Bug,
   ChevronsLeft, ChevronsRight, Landmark, Plug, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -52,6 +52,7 @@ const controlPanelNav = [
   { href: '/admin/expenses',    label: 'Expenses',       icon: Landmark },
   { href: '/admin/staff',       label: 'Staff & Roles',  icon: UsersRound, adminOnly: true },
   { href: '/admin/audit-logs',  label: 'Audit Logs',     icon: ScrollText },
+  { href: '/admin/error-logs',  label: 'Error Logs',     icon: Bug },
   { href: '/admin/tickets',     label: 'Support & Tickets', icon: LifeBuoy },
   { href: '/admin/settings',    label: 'Settings',       icon: Settings },
 ];
