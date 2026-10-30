@@ -93,7 +93,9 @@ export class MetaService {
           `WhatsApp message failed: ${message} | code ${metaError.code}${metaError?.error_subcode ? ` | subcode ${metaError.error_subcode}` : ''}`,
         );
       }
-      throw new BadRequestException(`WhatsApp message failed: ${message}`);
+      throw new BadRequestException(
+        `WhatsApp message failed: ${message}${metaError?.code ? ` | code ${metaError.code}` : ''}${metaError?.error_subcode ? ` | subcode ${metaError.error_subcode}` : ''}`,
+      );
     }
   }
 

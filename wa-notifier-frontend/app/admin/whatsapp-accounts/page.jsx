@@ -518,6 +518,29 @@ export default function AdminWhatsAppAccountsPage() {
         ) : diagResult ? (
           <div className="space-y-3 text-sm">
             <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Access token checks</p>
+              <p className="mb-3 text-xs text-muted-foreground">Operational token source: {diagResult.configuration?.operationalAccessTokenSource || 'account'}</p>
+              {[
+                { label: 'Saved account token', token: diagResult.token, error: diagResult.tokenError },
+                ...(diagResult.operationalToken ? [{ label: 'Provider operational token', token: diagResult.operationalToken }] : []),
+              ].map(({ label, token, error }) => (
+                <div key={label} className="mb-3 last:mb-0 rounded-md border border-border/70 p-3">
+                  <p className="mb-2 font-medium">{label}</p>
+                  {error ? <p className="text-destructive">{error}</p> : token ? (
+                    <div className="grid gap-1 sm:grid-cols-2">
+                      <p>Valid: <span className="font-medium">{token.isValid === true ? 'Yes' : token.isValid === false ? 'No' : 'Unknown'}</span></p>
+                      <p>Type: <span className="font-medium">{token.type || 'Unknown'}</span></p>
+                      <p>Expires: <span className="font-medium">{token.expiresAt ? new Date(token.expiresAt * 1000).toLocaleString() : 'Unknown / non-expiring'}</span></p>
+                      <p>WhatsApp messaging permission: <span className="font-medium">{token.hasWhatsappBusinessMessaging ? 'Granted' : 'Missing'}</span></p>
+                      <p className="sm:col-span-2 break-words">Scopes: <span className="font-medium">{token.scopes?.join(', ') || 'None reported'}</span></p>
+                    </div>
+                  ) : <p className="text-muted-foreground">Token status was not returned.</p>}
+                </div>
+              ))}
+              {diagResult.operationalTokenError && <p className="mt-2 text-destructive">Operational token error: {diagResult.operationalTokenError}</p>}
+              {diagResult.warnings?.map((warning, index) => <p key={index} className="mt-2 text-amber-700 dark:text-amber-300">{warning}</p>)}
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
               <p className="mb-2 text-xs font-medium text-muted-foreground">Phone number health</p>
               {diagResult.phoneNumber ? (
                 <div className="grid gap-2 sm:grid-cols-2">

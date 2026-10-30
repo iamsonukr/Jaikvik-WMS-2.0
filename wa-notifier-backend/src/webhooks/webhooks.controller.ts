@@ -146,10 +146,10 @@ export class WebhooksController {
     return { status: 'ok' };
   }  
 
-  // Simple in-memory cache — avoids a DB hit on every message
   private _clientCache: Map<string, any> = new Map();
 
   private async findClientByPhoneNumberId(phoneNumberId: string) {
+    // Simple cache for routing inbound messages to WhatsApp accounts.
     if (this._clientCache.has(phoneNumberId)) {
       const cached = this._clientCache.get(phoneNumberId);
       if (cached) return cached;
